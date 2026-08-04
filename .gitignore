@@ -1,0 +1,24 @@
+# Dependencies
+node_modules/
+client/node_modules/
+server/node_modules/
+
+# Environment variables and local configuration
+.env
+.env.*
+!.env.example
+client/.env.local
+server/.env
+
+# Build output and test coverage
+dist/
+build/
+coverage/
+
+# Logs and operating-system files
+*.log
+.DS_Store
+
+# Editor settings
+.vscode/
+.idea/
