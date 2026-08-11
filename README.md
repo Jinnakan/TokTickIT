@@ -3,29 +3,37 @@
 ## Requirements
 
 - Node.js 20 or later
-- PostgreSQL 15 or later
+- Docker Desktop (recommended for the provided PostgreSQL 15 service), or PostgreSQL 15 or later
 
 ## Initial setup
 
-1. Create local environment files:
+1. Start PostgreSQL. With Docker Desktop running, use the included configuration:
+
+   ```bash
+   docker compose up -d
+   ```
+
+   If you use a separately installed PostgreSQL instance, create a `toktickit` database and use its credentials in the next step.
+
+2. Create the local environment file:
 
    ```bash
    cp .env.example server/.env
    ```
 
-2. Set `DATABASE_URL` in `server/.env` for your local PostgreSQL database.
-3. Install dependencies:
+3. Set `DATABASE_URL` in `server/.env` if your PostgreSQL credentials differ from the supplied Docker defaults.
+4. Install dependencies:
 
    ```bash
    cd client && npm install
    cd ../server && npm install
    ```
 
-4. Create the database schema:
+5. Generate Prisma Client and apply the tracked initial migration:
 
    ```bash
    npm run prisma:generate
-   npm run prisma:migrate -- --name init
+   npx prisma migrate deploy
    ```
 
 ## Run the applications
@@ -48,3 +56,9 @@ cd server && npm run db:check
 ```
 
 `db:check` confirms that the PostgreSQL database in `server/.env` is reachable.
+
+To stop the local database while retaining its data, run:
+
+```bash
+docker compose stop
+```
