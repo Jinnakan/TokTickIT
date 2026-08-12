@@ -34,6 +34,7 @@
    ```bash
    npm run prisma:generate
    npx prisma migrate deploy
+   npm run prisma:seed
    ```
 
 ## Run the applications
@@ -56,6 +57,7 @@ cd server && npm run db:check
 ```
 
 `db:check` confirms that the PostgreSQL database in `server/.env` is reachable.
+`prisma:seed` can be run repeatedly; it adds the four required categories only when each name is missing.
 
 To stop the local database while retaining its data, run:
 
