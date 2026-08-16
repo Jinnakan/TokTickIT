@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { app } from '../../src/app.js'
 
 describe('GET /api/categories', () => {
-  it('returns the starter category list', async () => {
+  it('returns the seeded categories in ID order', async () => {
     const response = await request(app).get('/api/categories')
 
     expect(response.status).toBe(200)
