@@ -90,6 +90,5 @@ model Attachment {
   removedAt        DateTime?
   removedReason    String?
 
-  @@index([ticketId])
   @@index([ticketId, isRemoved])
 }
