@@ -91,7 +91,7 @@ deferred to a later sprint.
 | BR-20 | A removed Attachment's metadata (filename, size, uploaded date, removed date, removed reason) remains visible on the Ticket, but the file itself cannot be downloaded or previewed. |
 | BR-21 | If Ticket creation succeeds but one or more attachment uploads fail, the Ticket is still created and returned with its Ticket Number; failed attachments are not retried automatically and must be added again from Ticket Detail (compensating action, not a rolled-back transaction). |
 | BR-22 | Every Requester-scoped API request must include the selected Development Requester's id via the `X-Dev-Requester-Id` header; a missing, unknown, or inactive id is rejected before any ownership check runs. |
-| BR-23 | In Lab 3, the Development Requester selector and the `X-Dev-Requester-Id` header are replaced by real authenticated sessions; the Ticket/Attachment ownership model (`requesterId` foreign key) does not need to change, only how the current requester is established.
+| BR-23 | In Lab 3, the Development Requester selector and the `X-Dev-Requester-Id` header are replaced by real authenticated sessions; the Ticket/Attachment ownership model (`requesterId` foreign key) does not need to change, only how the current requester is established.|
 
 ## 6. UI Specification Summary
 
@@ -157,7 +157,7 @@ Full request/response shapes, statuses, and error cases are in
 | AC-15 | Given the Development Requester API call fails, when the Requester Selection screen loads, then a safe failure state is shown instead of a blank or crashed screen. |
 | AC-16 | Given zero active Development Requesters exist, when the Requester Selection screen loads, then an empty state explains no Requesters are available instead of showing an empty dropdown silently. |
 | AC-17 | Given a Requester is on a screen at desktop, tablet, and mobile viewport widths, when the layout renders, then no labels are clipped, no controls overlap, and the page never scrolls horizontally. |
-| AC-18 | Given the backend is unreachable, when My Tickets attempts to load, then a failure state with retry is shown and stale/partial data is not presented as current.
+| AC-18 | Given the backend is unreachable, when My Tickets attempts to load, then a failure state with retry is shown and stale/partial data is not presented as current.|
 
 ## 10. Definition of Done
 
