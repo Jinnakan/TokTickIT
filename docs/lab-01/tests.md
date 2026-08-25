@@ -1,20 +1,22 @@
-# Lab 01 API tests
+# Lab 1 Automated Tests
 
-## Health endpoint
+Test File | Tool | Test Description
+--- | --- | ---
+`server/tests/lab-01/health.test.ts` (API-01) | Supertest | `GET /api/health` returns 200 and `{ status: "ok", service: "TokTickIT API" }`
+`server/tests/lab-01/categories.test.ts` (API-02) | Supertest | `GET /api/categories` returns the four seeded categories in ID order
+`client/tests/lab-01/heading.test.tsx` (UI-01) | Vitest | TokTickIT heading renders
+`client/tests/lab-01/category-list.test.tsx` (UI-02) | Vitest | Loading state changes to the rendered category list after `Check System` is clicked
+`client/tests/lab-01/error-state.test.tsx` (UI-03) | Vitest | API failure displays a useful error message
 
-`GET /api/health` must respond with status `200` and this JSON body:
+## Running the tests
 
-```json
-{ "status": "ok" }
+Server tests (from `server/`):
+
+```bash
+npm test
 ```
 
-## Categories endpoint
-
-`GET /api/categories` must respond with status `200` and a list of starter
-categories. Lab 01 uses in-memory data, so the endpoint does not need a
-PostgreSQL connection. A later lab can replace this list with Prisma queries.
-
-Run the automated tests from `server/`:
+Client tests (from `client/`):
 
 ```bash
 npm test

@@ -8,6 +8,7 @@ server/node_modules/
 .env.*
 !.env.example
 client/.env.local
+client/.vite/
 server/.env
 
 # Build output and test coverage
