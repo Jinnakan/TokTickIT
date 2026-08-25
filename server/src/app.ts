@@ -24,3 +24,17 @@ app.get('/api/categories', async (_request, response, next) => {
     next(error)
   }
 })
+
+app.get('/api/dev-requesters', async (_request, response, next) => {
+  try {
+    const requesters = await prisma.devRequester.findMany({
+      where: { isActive: true },
+      select: { id: true, name: true, email: true },
+      orderBy: { id: 'asc' },
+    })
+
+    response.status(200).json(requesters)
+  } catch (error) {
+    next(error)
+  }
+})
