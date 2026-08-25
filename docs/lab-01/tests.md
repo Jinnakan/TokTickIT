@@ -1,30 +1,22 @@
-# Lab 01 automated tests
+# Lab 1 Automated Tests
 
-## Health endpoint
+Test File | Tool | Test Description
+--- | --- | ---
+`server/tests/lab-01/health.test.ts` (API-01) | Supertest | `GET /api/health` returns 200 and `{ status: "ok", service: "TokTickIT API" }`
+`server/tests/lab-01/categories.test.ts` (API-02) | Supertest | `GET /api/categories` returns the four seeded categories in ID order
+`client/tests/lab-01/heading.test.tsx` (UI-01) | Vitest | TokTickIT heading renders
+`client/tests/lab-01/category-list.test.tsx` (UI-02) | Vitest | Loading state changes to the rendered category list after `Check System` is clicked
+`client/tests/lab-01/error-state.test.tsx` (UI-03) | Vitest | API failure displays a useful error message
 
-`GET /api/health` must respond with status `200` and this JSON body:
+## Running the tests
 
-```json
-{ "status": "ok", "service": "TokTickIT API" }
-```
-
-## Categories endpoint
-
-`GET /api/categories` must respond with status `200` and return the four seeded
-categories from PostgreSQL through Prisma in ascending ID order.
-
-## React category-list behavior
-
-The client Vitest suite verifies that the app shows a loading state, renders the
-categories returned by the API, and displays a useful error if the API fails.
-
-Run the server tests from `server/`:
+Server tests (from `server/`):
 
 ```bash
 npm test
 ```
 
-Run the client tests from `client/`:
+Client tests (from `client/`):
 
 ```bash
 npm test
