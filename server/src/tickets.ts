@@ -15,7 +15,7 @@ import {
   type FieldErrors,
   type SortDirection,
   type TicketSortField,
-} from './ticket-rules.js'
+} from '@toktickit/shared'
 
 export const ticketsRouter = Router()
 

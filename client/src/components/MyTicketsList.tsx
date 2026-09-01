@@ -6,7 +6,7 @@ import {
   PRIORITY_LABELS,
   TICKET_STATUSES,
   STATUS_LABELS,
-} from '../../../server/src/ticket-rules.js'
+} from '@toktickit/shared'
 import type { Priority, SortDirection, TicketListItem, TicketListMeta, TicketSortField, TicketStatus } from '../types/ticket.js'
 import { PriorityBadge, StatusBadge } from './TicketBadges.js'
 

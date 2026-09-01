@@ -1,0 +1,9 @@
+{
+  "name": "toktickit",
+  "private": true,
+  "workspaces": [
+    "client",
+    "server",
+    "packages/*"
+  ]
+}

@@ -6,7 +6,7 @@ import {
   PRIORITY_LABELS,
   SUMMARY_MAX_LENGTH,
   validateTicketFields,
-} from '../../../server/src/ticket-rules.js'
+} from '@toktickit/shared'
 import type { CreateTicketInput, FieldErrors, Priority, Ticket } from '../types/ticket.js'
 
 type ReferenceStatus = 'loading' | 'ready' | 'error'

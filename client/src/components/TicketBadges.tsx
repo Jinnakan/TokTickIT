@@ -1,4 +1,4 @@
-import { PRIORITY_LABELS, STATUS_LABELS } from '../../../server/src/ticket-rules.js'
+import { PRIORITY_LABELS, STATUS_LABELS } from '@toktickit/shared'
 import type { Priority, TicketStatus } from '../types/ticket.js'
 
 const PRIORITY_BADGE_CLASS: Record<Priority, string> = {

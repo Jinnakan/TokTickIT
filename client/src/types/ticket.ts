@@ -3,7 +3,7 @@ import type {
   TicketSortField,
   SortDirection,
   TicketStatusValue as ServerTicketStatus,
-} from '../../../server/src/ticket-rules.js'
+} from '@toktickit/shared'
 
 export type Priority = ServerPriority
 export type TicketStatus = ServerTicketStatus

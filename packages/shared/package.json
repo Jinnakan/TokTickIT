@@ -1,0 +1,14 @@
+{
+  "name": "@toktickit/shared",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "types": "./src/ticket-rules.ts",
+  "main": "./src/ticket-rules.ts",
+  "exports": {
+    ".": {
+      "types": "./src/ticket-rules.ts",
+      "default": "./src/ticket-rules.ts"
+    }
+  }
+}

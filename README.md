@@ -22,11 +22,10 @@
    ```
 
 3. Set `DATABASE_URL` in `server/.env` if your PostgreSQL credentials differ from the supplied Docker defaults.
-4. Install dependencies:
+4. Install dependencies. This is an npm workspace (`client`, `server`, and `packages/shared`), so run install once from the repo root — this also links `packages/shared` into both `client` and `server`:
 
    ```bash
-   cd client && npm install
-   cd ../server && npm install
+   npm install
    ```
 
 5. Generate Prisma Client and apply the tracked initial migration:
