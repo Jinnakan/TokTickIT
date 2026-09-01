@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { App } from '../../src/App.js'
+import { stubAppFetch } from './test-helpers.js'
 
 const seededRequesters = [
   { id: 1, name: 'Jennifer Anderson', email: 'jennifer.anderson@toktickit.test' },
@@ -46,7 +47,7 @@ describe('Development Requester Selection', () => {
   })
 
   it('lets a Requester select an identity and reach the app shell', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => seededRequesters }))
+    stubAppFetch({ devRequesters: seededRequesters })
 
     render(<App />)
 

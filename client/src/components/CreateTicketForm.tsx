@@ -3,6 +3,7 @@ import { fetchActiveCategories, fetchActiveRelatedSystems, type ReferenceItem } 
 import { createTicket, TicketValidationError } from '../api/tickets.js'
 import {
   PRIORITIES,
+  PRIORITY_LABELS,
   SUMMARY_MAX_LENGTH,
   validateTicketFields,
 } from '../../../server/src/ticket-rules.js'
@@ -10,13 +11,13 @@ import type { CreateTicketInput, FieldErrors, Priority, Ticket } from '../types/
 
 type ReferenceStatus = 'loading' | 'ready' | 'error'
 
-const PRIORITY_LABELS: Record<Priority, string> = {
-  LOW: 'Low',
-  MEDIUM: 'Medium',
-  HIGH: 'High',
-}
-
-export function CreateTicketForm({ requesterId }: { requesterId: number }) {
+export function CreateTicketForm({
+  requesterId,
+  onViewMyTickets,
+}: {
+  requesterId: number
+  onViewMyTickets?: () => void
+}) {
   const [categories, setCategories] = useState<ReferenceItem[]>([])
   const [relatedSystems, setRelatedSystems] = useState<ReferenceItem[]>([])
   const [referenceStatus, setReferenceStatus] = useState<ReferenceStatus>('loading')
@@ -120,9 +121,16 @@ export function CreateTicketForm({ requesterId }: { requesterId: number }) {
             <strong>Ticket created.</strong> Your official Ticket Number is{' '}
             <strong>{createdTicket.ticketNumber}</strong>.
           </div>
-          <button type="button" className="btn btn-primary" onClick={handleCreateAnother}>
-            Create Another Ticket
-          </button>
+          <div className="d-flex gap-2">
+            <button type="button" className="btn btn-primary" onClick={handleCreateAnother}>
+              Create Another Ticket
+            </button>
+            {onViewMyTickets && (
+              <button type="button" className="btn btn-outline-primary" onClick={onViewMyTickets}>
+                Back to My Tickets
+              </button>
+            )}
+          </div>
         </div>
       </div>
     )

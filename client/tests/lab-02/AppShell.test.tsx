@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { App } from '../../src/App.js'
+import { stubAppFetch } from './test-helpers.js'
 
 const seededRequesters = [
   { id: 1, name: 'Jennifer Anderson', email: 'jennifer.anderson@toktickit.test' },
@@ -17,7 +18,7 @@ afterEach(() => {
 describe('App shell requester context', () => {
   it('restores the selected Requester from sessionStorage on load', async () => {
     window.sessionStorage.setItem('toktickit.devRequesterId', '1')
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => seededRequesters }))
+    stubAppFetch({ devRequesters: seededRequesters })
 
     render(<App />)
 
@@ -29,7 +30,7 @@ describe('App shell requester context', () => {
 
   it('treats a stored id for a no-longer-active Requester as no selection', async () => {
     window.sessionStorage.setItem('toktickit.devRequesterId', '999')
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => seededRequesters }))
+    stubAppFetch({ devRequesters: seededRequesters })
 
     render(<App />)
 
@@ -41,7 +42,7 @@ describe('App shell requester context', () => {
 
   it('Change Requester clears the selection and returns to the Selection screen', async () => {
     window.sessionStorage.setItem('toktickit.devRequesterId', '1')
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => seededRequesters }))
+    stubAppFetch({ devRequesters: seededRequesters })
 
     render(<App />)
 

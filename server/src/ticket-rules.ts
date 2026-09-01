@@ -6,6 +6,29 @@ export const DESCRIPTION_MAX_LENGTH = 2000
 export const PRIORITIES = ['LOW', 'MEDIUM', 'HIGH'] as const
 export type Priority = (typeof PRIORITIES)[number]
 
+export const PRIORITY_LABELS: Record<Priority, string> = {
+  LOW: 'Low',
+  MEDIUM: 'Medium',
+  HIGH: 'High',
+}
+
+export const TICKET_STATUSES = ['NEW'] as const
+export type TicketStatusValue = (typeof TICKET_STATUSES)[number]
+
+export const STATUS_LABELS: Record<TicketStatusValue, string> = {
+  NEW: 'New',
+}
+
+export const TICKET_SORT_FIELDS = ['createdAt', 'ticketNumber', 'summary'] as const
+export type TicketSortField = (typeof TICKET_SORT_FIELDS)[number]
+
+export const SORT_DIRECTIONS = ['asc', 'desc'] as const
+export type SortDirection = (typeof SORT_DIRECTIONS)[number]
+
+export const DEFAULT_PAGE = 1
+export const DEFAULT_PAGE_SIZE = 10
+export const MAX_PAGE_SIZE = 50
+
 export type FieldErrors = Record<string, string>
 
 export type TicketFieldInput = {
