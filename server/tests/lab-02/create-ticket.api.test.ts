@@ -56,7 +56,10 @@ describe('POST /api/tickets', () => {
   it('rejects a missing summary with a field-level message and creates no row (AC-04)', async () => {
     const requesterId = await activeRequesterId()
     const body = await validBody()
-    const beforeCount = await prisma.ticket.count()
+    // Scoped to this requester, not a global count -- other test files create
+    // tickets concurrently against the same database, so an unscoped count
+    // races and flakes.
+    const beforeCount = await prisma.ticket.count({ where: { requesterId } })
 
     const response = await request(app)
       .post('/api/tickets')
@@ -66,7 +69,7 @@ describe('POST /api/tickets', () => {
     expect(response.status).toBe(400)
     expect(response.body.error).toBe('VALIDATION_FAILED')
     expect(response.body.fields.summary).toBeDefined()
-    expect(await prisma.ticket.count()).toBe(beforeCount)
+    expect(await prisma.ticket.count({ where: { requesterId } })).toBe(beforeCount)
   })
 
   it('rejects a summary shorter than 5 or longer than 150 characters (AC-05)', async () => {
@@ -91,7 +94,7 @@ describe('POST /api/tickets', () => {
   it('rejects an inactive or unknown Category and creates no row (AC-06)', async () => {
     const requesterId = await activeRequesterId()
     const body = await validBody()
-    const beforeCount = await prisma.ticket.count()
+    const beforeCount = await prisma.ticket.count({ where: { requesterId } })
 
     const response = await request(app)
       .post('/api/tickets')
@@ -101,6 +104,6 @@ describe('POST /api/tickets', () => {
     expect(response.status).toBe(400)
     expect(response.body.error).toBe('VALIDATION_FAILED')
     expect(response.body.fields.categoryId).toBeDefined()
-    expect(await prisma.ticket.count()).toBe(beforeCount)
+    expect(await prisma.ticket.count({ where: { requesterId } })).toBe(beforeCount)
   })
 })

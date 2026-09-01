@@ -10,6 +10,15 @@ export class TicketValidationError extends Error {
   }
 }
 
+export class TicketAccessError extends Error {
+  status: 404 | 403
+
+  constructor(status: 404 | 403) {
+    super(status === 404 ? 'Ticket not found.' : 'This ticket belongs to a different Requester.')
+    this.status = status
+  }
+}
+
 export async function createTicket(input: CreateTicketInput, requesterId: number): Promise<Ticket> {
   const response = await fetch('/api/tickets', {
     method: 'POST',
@@ -59,4 +68,21 @@ export async function fetchTickets(
   }
 
   return response.json() as Promise<TicketListResponse>
+}
+
+export async function fetchTicket(ticketId: number, requesterId: number, signal?: AbortSignal): Promise<Ticket> {
+  const response = await fetch(`/api/tickets/${ticketId}`, {
+    headers: devRequesterHeaders(requesterId),
+    signal,
+  })
+
+  if (response.status === 404 || response.status === 403) {
+    throw new TicketAccessError(response.status)
+  }
+
+  if (!response.ok) {
+    throw new Error('Unable to load the ticket.')
+  }
+
+  return response.json() as Promise<Ticket>
 }

@@ -31,9 +31,11 @@ function formatDate(iso: string): string {
 export function MyTicketsList({
   requesterId,
   onCreateTicket,
+  onOpenTicket,
 }: {
   requesterId: number
   onCreateTicket: () => void
+  onOpenTicket: (ticketId: number) => void
 }) {
   const [categories, setCategories] = useState<ReferenceItem[]>([])
 
@@ -255,7 +257,19 @@ export function MyTicketsList({
               </thead>
               <tbody>
                 {tickets.map((ticket) => (
-                  <tr key={ticket.id}>
+                  <tr
+                    key={ticket.id}
+                    role="button"
+                    tabIndex={0}
+                    style={{ cursor: 'pointer' }}
+                    onClick={() => onOpenTicket(ticket.id)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault()
+                        onOpenTicket(ticket.id)
+                      }
+                    }}
+                  >
                     <td>{ticket.ticketNumber}</td>
                     <td>{formatDate(ticket.createdAt)}</td>
                     <td>{ticket.summary}</td>
@@ -270,7 +284,20 @@ export function MyTicketsList({
 
           <div className="d-md-none d-flex flex-column gap-2">
             {tickets.map((ticket) => (
-              <div key={ticket.id} className="card">
+              <div
+                key={ticket.id}
+                className="card"
+                role="button"
+                tabIndex={0}
+                style={{ cursor: 'pointer' }}
+                onClick={() => onOpenTicket(ticket.id)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault()
+                    onOpenTicket(ticket.id)
+                  }
+                }}
+              >
                 <div className="card-body">
                   <div className="d-flex justify-content-between">
                     <strong>{ticket.ticketNumber}</strong>

@@ -19,10 +19,12 @@
     "@prisma/client": "^6.0.0",
     "@toktickit/shared": "*",
     "dotenv": "^16.0.0",
-    "express": "^5.0.0"
+    "express": "^5.0.0",
+    "multer": "^2.3.0"
   },
   "devDependencies": {
     "@types/express": "^5.0.0",
+    "@types/multer": "^2.2.0",
     "@types/node": "^22.0.0",
     "@types/supertest": "^6.0.0",
     "prisma": "^6.0.0",

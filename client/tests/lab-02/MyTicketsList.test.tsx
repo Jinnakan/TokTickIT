@@ -34,7 +34,7 @@ describe('MyTicketsList', () => {
   it('shows the true-empty state when the Requester has zero tickets total (AC-10)', async () => {
     stubFetch({ data: [], meta: { page: 1, pageSize: 10, totalItems: 0, totalPages: 0 } })
 
-    render(<MyTicketsList requesterId={1} onCreateTicket={() => {}} />)
+    render(<MyTicketsList requesterId={1} onCreateTicket={() => {}} onOpenTicket={() => {}} />)
 
     await waitFor(() => {
       expect(screen.getByRole('status')).toHaveTextContent("You haven't created any tickets yet.")
@@ -44,7 +44,7 @@ describe('MyTicketsList', () => {
   it('shows a distinct no-results state when a search matches nothing (AC-10)', async () => {
     stubFetch({ data: [], meta: { page: 1, pageSize: 10, totalItems: 0, totalPages: 0 } })
 
-    render(<MyTicketsList requesterId={1} onCreateTicket={() => {}} />)
+    render(<MyTicketsList requesterId={1} onCreateTicket={() => {}} onOpenTicket={() => {}} />)
     await waitFor(() => {
       expect(screen.getByRole('status')).toHaveTextContent("You haven't created any tickets yet.")
     })
@@ -59,13 +59,25 @@ describe('MyTicketsList', () => {
   it('renders returned tickets with badges in the desktop table', async () => {
     stubFetch({ data: [ticketRow()], meta: { page: 1, pageSize: 10, totalItems: 1, totalPages: 1 } })
 
-    render(<MyTicketsList requesterId={1} onCreateTicket={() => {}} />)
+    render(<MyTicketsList requesterId={1} onCreateTicket={() => {}} onOpenTicket={() => {}} />)
 
     const table = await screen.findByRole('table')
     const withinTable = within(table)
     expect(withinTable.getByText('TKT-2026-000001')).toBeInTheDocument()
     expect(withinTable.getByText('Medium')).toBeInTheDocument()
     expect(withinTable.getByText('New')).toBeInTheDocument()
+  })
+
+  it('calls onOpenTicket with the ticket id when a row is clicked', async () => {
+    stubFetch({ data: [ticketRow()], meta: { page: 1, pageSize: 10, totalItems: 1, totalPages: 1 } })
+    const onOpenTicket = vi.fn()
+
+    render(<MyTicketsList requesterId={1} onCreateTicket={() => {}} onOpenTicket={onOpenTicket} />)
+
+    const table = await screen.findByRole('table')
+    fireEvent.click(within(table).getByText('TKT-2026-000001'))
+
+    expect(onOpenTicket).toHaveBeenCalledWith(1)
   })
 
   it('shows a failure state with no stale data on API failure (AC-18)', async () => {
@@ -75,7 +87,7 @@ describe('MyTicketsList', () => {
       throw new Error(`Unexpected fetch: ${url}`)
     }))
 
-    render(<MyTicketsList requesterId={1} onCreateTicket={() => {}} />)
+    render(<MyTicketsList requesterId={1} onCreateTicket={() => {}} onOpenTicket={() => {}} />)
 
     expect(await screen.findByText('Unable to load tickets.')).toBeInTheDocument()
   })
@@ -86,7 +98,7 @@ describe('MyTicketsList', () => {
       meta: { page: 1, pageSize: 1, totalItems: 2, totalPages: 2 },
     })
 
-    render(<MyTicketsList requesterId={1} onCreateTicket={() => {}} />)
+    render(<MyTicketsList requesterId={1} onCreateTicket={() => {}} onOpenTicket={() => {}} />)
     const table = await screen.findByRole('table')
     within(table).getByText('TKT-2026-000001')
 

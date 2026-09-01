@@ -16,6 +16,9 @@ dist/
 build/
 coverage/
 
+# Uploaded attachment files (metadata lives in Postgres, not git)
+server/uploads/
+
 # Logs and operating-system files
 *.log
 .DS_Store
