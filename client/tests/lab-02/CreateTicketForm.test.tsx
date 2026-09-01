@@ -27,7 +27,7 @@ afterEach(() => {
 
 async function renderReadyForm() {
   stubReferenceDataFetch()
-  render(<CreateTicketForm requesterId={1} />)
+  render(<CreateTicketForm requesterId={1} requesterName="Jennifer Anderson" />)
   await screen.findByRole('heading', { name: 'Create Ticket' })
 }
 
@@ -40,7 +40,7 @@ describe('CreateTicketForm', () => {
       }
       return null
     })
-    render(<CreateTicketForm requesterId={1} />)
+    render(<CreateTicketForm requesterId={1} requesterName="Jennifer Anderson" />)
     await screen.findByRole('heading', { name: 'Create Ticket' })
 
     fireEvent.click(screen.getByRole('button', { name: 'Submit' }))
@@ -72,7 +72,7 @@ describe('CreateTicketForm', () => {
       throw new Error(`Unexpected fetch: ${url}`)
     }))
 
-    render(<CreateTicketForm requesterId={1} />)
+    render(<CreateTicketForm requesterId={1} requesterName="Jennifer Anderson" />)
     await screen.findByRole('heading', { name: 'Create Ticket' })
 
     fireEvent.change(screen.getByLabelText('Category *'), { target: { value: '1' } })
@@ -103,7 +103,7 @@ describe('CreateTicketForm', () => {
       throw new Error(`Unexpected fetch: ${url}`)
     }))
 
-    render(<CreateTicketForm requesterId={1} />)
+    render(<CreateTicketForm requesterId={1} requesterName="Jennifer Anderson" />)
     await screen.findByRole('heading', { name: 'Create Ticket' })
 
     fireEvent.change(screen.getByLabelText('Category *'), { target: { value: '1' } })
@@ -132,7 +132,7 @@ describe('CreateTicketForm', () => {
       throw new Error(`Unexpected fetch: ${url}`)
     }))
 
-    render(<CreateTicketForm requesterId={1} />)
+    render(<CreateTicketForm requesterId={1} requesterName="Jennifer Anderson" />)
     await screen.findByRole('heading', { name: 'Create Ticket' })
 
     fireEvent.change(screen.getByLabelText('Category *'), { target: { value: '1' } })
