@@ -43,7 +43,13 @@ function AppContent() {
       )
     }
 
-    return <CreateTicketForm requesterId={selectedRequester!.id} onViewMyTickets={() => navigate('my-tickets')} />
+    return (
+      <CreateTicketForm
+        requesterId={selectedRequester!.id}
+        requesterName={selectedRequester!.name}
+        onViewMyTickets={() => navigate('my-tickets')}
+      />
+    )
   }
 
   return (

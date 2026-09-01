@@ -15,29 +15,15 @@ export function AppShell({
 
   return (
     <div className="app-shell">
-      <header className="navbar navbar-expand-md" style={{ backgroundColor: '#006B3C' }}>
+      <header className="navbar navbar-expand-md" style={{ backgroundColor: 'var(--zg-primary)' }}>
         <div className="container">
           <span className="navbar-brand text-white fw-bold d-flex align-items-center gap-2 mb-0">
             <span className="brand-mark" aria-hidden="true">T</span>
             TokTickIT
           </span>
-          <nav className="d-flex align-items-center gap-2">
-            <button
-              type="button"
-              className={`btn btn-sm ${activeView === 'my-tickets' ? 'btn-light' : 'btn-outline-light'}`}
-              aria-current={activeView === 'my-tickets' ? 'page' : undefined}
-              onClick={() => onNavigate('my-tickets')}
-            >
-              My Tickets
-            </button>
-            <button
-              type="button"
-              className={`btn btn-sm ${activeView === 'create-ticket' ? 'btn-light' : 'btn-outline-light'}`}
-              aria-current={activeView === 'create-ticket' ? 'page' : undefined}
-              onClick={() => onNavigate('create-ticket')}
-            >
-              Create Ticket
-            </button>
+          <nav className="d-flex align-items-center gap-3">
+            <NavLink label="My Tickets" active={activeView === 'my-tickets'} onClick={() => onNavigate('my-tickets')} />
+            <NavLink label="Create Ticket" active={activeView === 'create-ticket'} onClick={() => onNavigate('create-ticket')} />
           </nav>
           <div className="d-flex align-items-center gap-3">
             <span className="text-white">{selectedRequester?.name}</span>
@@ -49,5 +35,27 @@ export function AppShell({
       </header>
       <main className="container py-4">{children}</main>
     </div>
+  )
+}
+
+/** Active nav item is visually distinct via underline + weight (ui-spec.md §5.1) rather than a
+ * filled background — a dark secondary-green fill on the dark primary-green header would fail
+ * contrast, so the distinction is white text/underline vs. muted text, not color alone. */
+function NavLink({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      className="btn btn-sm p-0 border-0 bg-transparent"
+      aria-current={active ? 'page' : undefined}
+      onClick={onClick}
+      style={{
+        color: active ? '#fff' : 'rgba(255, 255, 255, 0.75)',
+        fontWeight: active ? 600 : 400,
+        textDecoration: active ? 'underline' : 'none',
+        textUnderlineOffset: '4px',
+      }}
+    >
+      {label}
+    </button>
   )
 }

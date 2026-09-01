@@ -125,12 +125,12 @@ export function TicketDetail({
 
           <div className="mb-3">
             <div className="form-label fw-semibold mb-1">Summary</div>
-            <p className="border rounded p-2 bg-light-subtle mb-0">{ticket.summary}</p>
+            <p className="border rounded p-2 field-readonly mb-0">{ticket.summary}</p>
           </div>
 
           <div>
             <div className="form-label fw-semibold mb-1">Description</div>
-            <p className="border rounded p-2 bg-light-subtle mb-0" style={{ whiteSpace: 'pre-wrap' }}>
+            <p className="border rounded p-2 field-readonly mb-0" style={{ whiteSpace: 'pre-wrap' }}>
               {ticket.description}
             </p>
           </div>
@@ -146,7 +146,7 @@ function ReadOnlyField({ label, value }: { label: string; value: string }) {
   return (
     <div className="col-md-6">
       <div className="form-label fw-semibold mb-1">{label}</div>
-      <div className="form-control bg-light-subtle" aria-readonly="true">
+      <div className="form-control field-readonly" aria-readonly="true">
         {value}
       </div>
     </div>

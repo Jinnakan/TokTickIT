@@ -2,13 +2,13 @@ import { PRIORITY_LABELS, STATUS_LABELS } from '@toktickit/shared'
 import type { Priority, TicketStatus } from '../types/ticket.js'
 
 const PRIORITY_BADGE_CLASS: Record<Priority, string> = {
-  LOW: 'text-bg-success-subtle text-success-emphasis',
-  MEDIUM: 'text-bg-warning-subtle text-warning-emphasis',
-  HIGH: 'text-bg-danger-subtle text-danger-emphasis',
+  LOW: 'bg-success-subtle text-success-emphasis',
+  MEDIUM: 'bg-warning-subtle text-warning-emphasis',
+  HIGH: 'bg-danger-subtle text-danger-emphasis',
 }
 
 const STATUS_BADGE_CLASS: Record<TicketStatus, string> = {
-  NEW: 'text-bg-success-subtle text-success-emphasis',
+  NEW: 'bg-success-subtle text-success-emphasis',
 }
 
 export function PriorityBadge({ priority }: { priority: Priority }) {

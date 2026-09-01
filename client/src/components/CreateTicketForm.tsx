@@ -13,9 +13,11 @@ type ReferenceStatus = 'loading' | 'ready' | 'error'
 
 export function CreateTicketForm({
   requesterId,
+  requesterName,
   onViewMyTickets,
 }: {
   requesterId: number
+  requesterName: string
   onViewMyTickets?: () => void
 }) {
   const [categories, setCategories] = useState<ReferenceItem[]>([])
@@ -164,6 +166,27 @@ export function CreateTicketForm({
             {submitError}
           </div>
         )}
+
+        <div className="row g-3 mb-3">
+          <div className="col-md-4">
+            <div className="form-label fw-semibold mb-1">Ticket Number</div>
+            <div className="form-control field-readonly" aria-readonly="true">
+              Assigned after submission
+            </div>
+          </div>
+          <div className="col-md-4">
+            <div className="form-label fw-semibold mb-1">Ticket Date</div>
+            <div className="form-control field-readonly" aria-readonly="true">
+              Assigned after submission
+            </div>
+          </div>
+          <div className="col-md-4">
+            <div className="form-label fw-semibold mb-1">Requester</div>
+            <div className="form-control field-readonly" aria-readonly="true">
+              {requesterName}
+            </div>
+          </div>
+        </div>
 
         <fieldset disabled={isSubmitting} className="border-0 p-0 m-0">
           <div className="row g-3 mb-3">
