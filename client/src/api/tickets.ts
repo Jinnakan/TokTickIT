@@ -1,4 +1,4 @@
-import type { CreateTicketInput, FieldErrors, Ticket } from '../types/ticket.js'
+import type { CreateTicketInput, FieldErrors, Ticket, TicketListQuery, TicketListResponse } from '../types/ticket.js'
 import { devRequesterHeaders } from './http.js'
 
 export class TicketValidationError extends Error {
@@ -33,4 +33,30 @@ export async function createTicket(input: CreateTicketInput, requesterId: number
   }
 
   return response.json() as Promise<Ticket>
+}
+
+export async function fetchTickets(
+  query: TicketListQuery,
+  requesterId: number,
+  signal?: AbortSignal,
+): Promise<TicketListResponse> {
+  const params = new URLSearchParams()
+  if (query.search) params.set('search', query.search)
+  if (query.categoryId !== undefined) params.set('categoryId', String(query.categoryId))
+  if (query.requestedPriority) params.set('requestedPriority', query.requestedPriority)
+  if (query.currentStatus) params.set('currentStatus', query.currentStatus)
+  if (query.sortBy) params.set('sortBy', query.sortBy)
+  if (query.sortDir) params.set('sortDir', query.sortDir)
+  if (query.page !== undefined) params.set('page', String(query.page))
+
+  const response = await fetch(`/api/tickets?${params.toString()}`, {
+    headers: devRequesterHeaders(requesterId),
+    signal,
+  })
+
+  if (!response.ok) {
+    throw new Error('Unable to load tickets.')
+  }
+
+  return response.json() as Promise<TicketListResponse>
 }
