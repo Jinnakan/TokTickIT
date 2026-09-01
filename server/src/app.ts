@@ -1,6 +1,7 @@
 import express from 'express'
 import { prisma } from './prisma.js'
 import { ticketsRouter } from './tickets.js'
+import { attachmentsRouter, ticketAttachmentsRouter } from './attachments.js'
 
 export const app = express()
 
@@ -55,4 +56,6 @@ app.get('/api/dev-requesters', async (_request, response, next) => {
   }
 })
 
+app.use('/api/tickets/:ticketId/attachments', ticketAttachmentsRouter)
+app.use('/api/attachments', attachmentsRouter)
 app.use('/api/tickets', ticketsRouter)

@@ -3,6 +3,7 @@ import { Router } from 'express'
 import type { Prisma, Priority, TicketStatus } from '@prisma/client'
 import { prisma } from './prisma.js'
 import { requireDevRequester } from './dev-requester-context.js'
+import { resolveOwnedTicket, respondOwnershipFailure } from './ticket-ownership.js'
 import {
   DEFAULT_PAGE,
   DEFAULT_PAGE_SIZE,
@@ -222,6 +223,28 @@ ticketsRouter.get('/', requireDevRequester, async (request, response, next) => {
         totalPages: Math.ceil(totalItems / query.pageSize),
       },
     })
+  } catch (error) {
+    next(error)
+  }
+})
+
+ticketsRouter.get('/:id', requireDevRequester, async (request, response, next) => {
+  try {
+    const ticketId = toInteger(request.params.id)
+    const requesterId = response.locals.devRequesterId as number
+
+    if (ticketId === null) {
+      response.status(404).json({ error: 'TICKET_NOT_FOUND' })
+      return
+    }
+
+    const result = await resolveOwnedTicket(ticketId, requesterId)
+    if (result.status !== 'ok') {
+      respondOwnershipFailure(response, result, { notFound: 'TICKET_NOT_FOUND', forbidden: 'TICKET_FORBIDDEN' })
+      return
+    }
+
+    response.status(200).json(result.value)
   } catch (error) {
     next(error)
   }
