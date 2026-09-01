@@ -1,43 +1,19 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { fetchActiveCategories, fetchActiveRelatedSystems, type ReferenceItem } from '../api/referenceData.js'
 import { createTicket, TicketValidationError } from '../api/tickets.js'
+import {
+  PRIORITIES,
+  SUMMARY_MAX_LENGTH,
+  validateTicketFields,
+} from '../../../server/src/ticket-rules.js'
 import type { CreateTicketInput, FieldErrors, Priority, Ticket } from '../types/ticket.js'
-
-const SUMMARY_MIN = 5
-const SUMMARY_MAX = 150
-const DESCRIPTION_MIN = 10
-const DESCRIPTION_MAX = 2000
 
 type ReferenceStatus = 'loading' | 'ready' | 'error'
 
-function validate(input: {
-  categoryId: string
-  relatedSystemId: string
-  requestedPriority: string
-  summary: string
-  description: string
-}): FieldErrors {
-  const fields: FieldErrors = {}
-  const summary = input.summary.trim()
-  const description = input.description.trim()
-
-  if (input.categoryId === '') {
-    fields.categoryId = 'Category is required.'
-  }
-  if (input.relatedSystemId === '') {
-    fields.relatedSystemId = 'Related System is required.'
-  }
-  if (input.requestedPriority === '') {
-    fields.requestedPriority = 'Requested Priority is required.'
-  }
-  if (summary.length < SUMMARY_MIN || summary.length > SUMMARY_MAX) {
-    fields.summary = `Summary must be ${SUMMARY_MIN}-${SUMMARY_MAX} characters.`
-  }
-  if (description.length < DESCRIPTION_MIN || description.length > DESCRIPTION_MAX) {
-    fields.description = `Description must be ${DESCRIPTION_MIN}-${DESCRIPTION_MAX} characters.`
-  }
-
-  return fields
+const PRIORITY_LABELS: Record<Priority, string> = {
+  LOW: 'Low',
+  MEDIUM: 'Medium',
+  HIGH: 'High',
 }
 
 export function CreateTicketForm({ requesterId }: { requesterId: number }) {
@@ -82,11 +58,21 @@ export function CreateTicketForm({ requesterId }: { requesterId: number }) {
     }
   }, [])
 
+  function runClientValidation(): FieldErrors {
+    return validateTicketFields({
+      categoryId: categoryId === '' ? null : Number(categoryId),
+      relatedSystemId: relatedSystemId === '' ? null : Number(relatedSystemId),
+      requestedPriority,
+      summary,
+      description,
+    })
+  }
+
   async function handleSubmit(event: FormEvent) {
     event.preventDefault()
     setSubmitError('')
 
-    const errors = validate({ categoryId, relatedSystemId, requestedPriority, summary, description })
+    const errors = runClientValidation()
     setFieldErrors(errors)
     if (Object.keys(errors).length > 0) {
       return
@@ -171,102 +157,137 @@ export function CreateTicketForm({ requesterId }: { requesterId: number }) {
           </div>
         )}
 
-        <div className="row g-3 mb-3">
-          <div className="col-md-6">
-            <label htmlFor="ticket-category" className="form-label fw-semibold">
-              Category <span className="text-danger">*</span>
-            </label>
-            <select
-              id="ticket-category"
-              className={`form-select${fieldErrors.categoryId ? ' is-invalid' : ''}`}
-              value={categoryId}
-              onChange={(event) => setCategoryId(event.target.value)}
-            >
-              <option value="">Select a category…</option>
-              {categories.map((category) => (
-                <option key={category.id} value={category.id}>
-                  {category.name}
-                </option>
-              ))}
-            </select>
-            {fieldErrors.categoryId && <div className="invalid-feedback d-block">{fieldErrors.categoryId}</div>}
+        <fieldset disabled={isSubmitting} className="border-0 p-0 m-0">
+          <div className="row g-3 mb-3">
+            <div className="col-md-6">
+              <label htmlFor="ticket-category" className="form-label fw-semibold">
+                Category <span className="text-danger">*</span>
+              </label>
+              <select
+                id="ticket-category"
+                className={`form-select${fieldErrors.categoryId ? ' is-invalid' : ''}`}
+                value={categoryId}
+                onChange={(event) => setCategoryId(event.target.value)}
+                aria-required="true"
+                aria-invalid={Boolean(fieldErrors.categoryId)}
+                aria-describedby={fieldErrors.categoryId ? 'ticket-category-error' : undefined}
+              >
+                <option value="">Select a category…</option>
+                {categories.map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {category.name}
+                  </option>
+                ))}
+              </select>
+              {fieldErrors.categoryId && (
+                <div id="ticket-category-error" className="invalid-feedback d-block">
+                  {fieldErrors.categoryId}
+                </div>
+              )}
+            </div>
+
+            <div className="col-md-6">
+              <label htmlFor="ticket-related-system" className="form-label fw-semibold">
+                Related System <span className="text-danger">*</span>
+              </label>
+              <select
+                id="ticket-related-system"
+                className={`form-select${fieldErrors.relatedSystemId ? ' is-invalid' : ''}`}
+                value={relatedSystemId}
+                onChange={(event) => setRelatedSystemId(event.target.value)}
+                aria-required="true"
+                aria-invalid={Boolean(fieldErrors.relatedSystemId)}
+                aria-describedby={fieldErrors.relatedSystemId ? 'ticket-related-system-error' : undefined}
+              >
+                <option value="">Select a related system…</option>
+                {relatedSystems.map((relatedSystem) => (
+                  <option key={relatedSystem.id} value={relatedSystem.id}>
+                    {relatedSystem.name}
+                  </option>
+                ))}
+              </select>
+              {fieldErrors.relatedSystemId && (
+                <div id="ticket-related-system-error" className="invalid-feedback d-block">
+                  {fieldErrors.relatedSystemId}
+                </div>
+              )}
+            </div>
           </div>
 
-          <div className="col-md-6">
-            <label htmlFor="ticket-related-system" className="form-label fw-semibold">
-              Related System <span className="text-danger">*</span>
+          <div className="mb-3">
+            <label htmlFor="ticket-priority" className="form-label fw-semibold">
+              Requested Priority <span className="text-danger">*</span>
             </label>
             <select
-              id="ticket-related-system"
-              className={`form-select${fieldErrors.relatedSystemId ? ' is-invalid' : ''}`}
-              value={relatedSystemId}
-              onChange={(event) => setRelatedSystemId(event.target.value)}
+              id="ticket-priority"
+              className={`form-select${fieldErrors.requestedPriority ? ' is-invalid' : ''}`}
+              value={requestedPriority}
+              onChange={(event) => setRequestedPriority(event.target.value as Priority | '')}
+              aria-required="true"
+              aria-invalid={Boolean(fieldErrors.requestedPriority)}
+              aria-describedby={fieldErrors.requestedPriority ? 'ticket-priority-error' : undefined}
             >
-              <option value="">Select a related system…</option>
-              {relatedSystems.map((relatedSystem) => (
-                <option key={relatedSystem.id} value={relatedSystem.id}>
-                  {relatedSystem.name}
+              <option value="">Select a priority…</option>
+              {PRIORITIES.map((priority) => (
+                <option key={priority} value={priority}>
+                  {PRIORITY_LABELS[priority]}
                 </option>
               ))}
             </select>
-            {fieldErrors.relatedSystemId && (
-              <div className="invalid-feedback d-block">{fieldErrors.relatedSystemId}</div>
+            {fieldErrors.requestedPriority && (
+              <div id="ticket-priority-error" className="invalid-feedback d-block">
+                {fieldErrors.requestedPriority}
+              </div>
             )}
           </div>
-        </div>
 
-        <div className="mb-3">
-          <label htmlFor="ticket-priority" className="form-label fw-semibold">
-            Requested Priority <span className="text-danger">*</span>
-          </label>
-          <select
-            id="ticket-priority"
-            className={`form-select${fieldErrors.requestedPriority ? ' is-invalid' : ''}`}
-            value={requestedPriority}
-            onChange={(event) => setRequestedPriority(event.target.value as Priority | '')}
-          >
-            <option value="">Select a priority…</option>
-            <option value="LOW">Low</option>
-            <option value="MEDIUM">Medium</option>
-            <option value="HIGH">High</option>
-          </select>
-          {fieldErrors.requestedPriority && (
-            <div className="invalid-feedback d-block">{fieldErrors.requestedPriority}</div>
-          )}
-        </div>
+          <div className="mb-3">
+            <label htmlFor="ticket-summary" className="form-label fw-semibold">
+              Ticket Summary <span className="text-danger">*</span>
+            </label>
+            <input
+              id="ticket-summary"
+              type="text"
+              className={`form-control${fieldErrors.summary ? ' is-invalid' : ''}`}
+              value={summary}
+              onChange={(event) => setSummary(event.target.value)}
+              maxLength={SUMMARY_MAX_LENGTH}
+              aria-required="true"
+              aria-invalid={Boolean(fieldErrors.summary)}
+              aria-describedby={fieldErrors.summary ? 'ticket-summary-error' : undefined}
+            />
+            {fieldErrors.summary && (
+              <div id="ticket-summary-error" className="invalid-feedback d-block">
+                {fieldErrors.summary}
+              </div>
+            )}
+          </div>
 
-        <div className="mb-3">
-          <label htmlFor="ticket-summary" className="form-label fw-semibold">
-            Ticket Summary <span className="text-danger">*</span>
-          </label>
-          <input
-            id="ticket-summary"
-            type="text"
-            className={`form-control${fieldErrors.summary ? ' is-invalid' : ''}`}
-            value={summary}
-            onChange={(event) => setSummary(event.target.value)}
-            maxLength={SUMMARY_MAX}
-          />
-          {fieldErrors.summary && <div className="invalid-feedback d-block">{fieldErrors.summary}</div>}
-        </div>
+          <div className="mb-4">
+            <label htmlFor="ticket-description" className="form-label fw-semibold">
+              Description <span className="text-danger">*</span>
+            </label>
+            <textarea
+              id="ticket-description"
+              className={`form-control${fieldErrors.description ? ' is-invalid' : ''}`}
+              rows={5}
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+              aria-required="true"
+              aria-invalid={Boolean(fieldErrors.description)}
+              aria-describedby={fieldErrors.description ? 'ticket-description-error' : undefined}
+            />
+            {fieldErrors.description && (
+              <div id="ticket-description-error" className="invalid-feedback d-block">
+                {fieldErrors.description}
+              </div>
+            )}
+          </div>
 
-        <div className="mb-4">
-          <label htmlFor="ticket-description" className="form-label fw-semibold">
-            Description <span className="text-danger">*</span>
-          </label>
-          <textarea
-            id="ticket-description"
-            className={`form-control${fieldErrors.description ? ' is-invalid' : ''}`}
-            rows={5}
-            value={description}
-            onChange={(event) => setDescription(event.target.value)}
-          />
-          {fieldErrors.description && <div className="invalid-feedback d-block">{fieldErrors.description}</div>}
-        </div>
-
-        <button type="submit" className="btn btn-primary px-4 py-2 fw-semibold" disabled={isSubmitting}>
-          {isSubmitting ? 'Submitting…' : 'Submit'}
-        </button>
+          <button type="submit" className="btn btn-primary px-4 py-2 fw-semibold" disabled={isSubmitting}>
+            {isSubmitting ? 'Submitting…' : 'Submit'}
+          </button>
+        </fieldset>
       </div>
     </form>
   )
