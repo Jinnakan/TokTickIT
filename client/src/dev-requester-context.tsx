@@ -29,18 +29,24 @@ export function DevRequesterProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const controller = new AbortController()
+    let ignore = false
     setStatus('loading')
 
     fetchActiveDevRequesters(controller.signal)
       .then((loaded) => {
+        if (ignore) return
         setRequesters(loaded)
         setStatus('ready')
       })
       .catch(() => {
+        if (ignore) return
         setStatus('error')
       })
 
-    return () => controller.abort()
+    return () => {
+      ignore = true
+      controller.abort()
+    }
   }, [reloadToken])
 
   const selectedRequester = useMemo(
