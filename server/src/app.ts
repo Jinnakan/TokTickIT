@@ -1,5 +1,6 @@
 import express from 'express'
 import { prisma } from './prisma.js'
+import { ticketsRouter } from './tickets.js'
 
 export const app = express()
 
@@ -15,11 +16,26 @@ app.get('/api/health', (_request, response) => {
 app.get('/api/categories', async (_request, response, next) => {
   try {
     const categories = await prisma.category.findMany({
+      where: { isActive: true },
       select: { id: true, name: true },
       orderBy: { id: 'asc' },
     })
 
     response.status(200).json(categories)
+  } catch (error) {
+    next(error)
+  }
+})
+
+app.get('/api/related-systems', async (_request, response, next) => {
+  try {
+    const relatedSystems = await prisma.relatedSystem.findMany({
+      where: { isActive: true },
+      select: { id: true, name: true },
+      orderBy: { id: 'asc' },
+    })
+
+    response.status(200).json(relatedSystems)
   } catch (error) {
     next(error)
   }
@@ -38,3 +54,5 @@ app.get('/api/dev-requesters', async (_request, response, next) => {
     next(error)
   }
 })
+
+app.use('/api/tickets', ticketsRouter)

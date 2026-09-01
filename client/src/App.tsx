@@ -1,4 +1,5 @@
 import { AppShell } from './components/AppShell.js'
+import { CreateTicketForm } from './components/CreateTicketForm.js'
 import { DevRequesterSelection } from './components/DevRequesterSelection.js'
 import { DevRequesterProvider, useDevRequester } from './dev-requester-context.js'
 
@@ -11,10 +12,7 @@ function AppContent() {
 
   return (
     <AppShell>
-      <p className="text-body-secondary">
-        Signed in as <strong>{selectedRequester.name}</strong>. Ticket screens are added in
-        later Lab 2 issues.
-      </p>
+      <CreateTicketForm requesterId={selectedRequester.id} />
     </AppShell>
   )
 }
