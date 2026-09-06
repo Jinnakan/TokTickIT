@@ -47,7 +47,9 @@ deferred to a later sprint.
   any time via a Change Requester action, reloading Requester-scoped data.
 - **FR-03** The system shall let the selected Requester create a Ticket by
   supplying Category, Related System, Requested Priority, Summary, and
-  Description, and optionally attaching files.
+  Description. Attachments are not part of the creation step in this
+  sprint; a Requester attaches files afterward from Ticket Detail (see
+  FR-07 and §11).
 - **FR-04** The system shall generate a unique, backend-assigned Ticket
   Number and return it on successful creation.
 - **FR-05** The system shall let the selected Requester retrieve a paginated,
@@ -89,7 +91,7 @@ deferred to a later sprint.
 | BR-18 | A Ticket may have at most 5 **active** Attachments; soft-removed Attachments do not count toward this limit. |
 | BR-19 | Attachment removal is soft: the row is flagged removed with a timestamp and a required reason (3–200 characters); files are never hard-deleted in Lab 2. |
 | BR-20 | A removed Attachment's metadata (filename, size, uploaded date, removed date, removed reason) remains visible on the Ticket, but the file itself cannot be downloaded or previewed. |
-| BR-21 | If Ticket creation succeeds but one or more attachment uploads fail, the Ticket is still created and returned with its Ticket Number; failed attachments are not retried automatically and must be added again from Ticket Detail (compensating action, not a rolled-back transaction). |
+| BR-21 | *Superseded by the §11 decision to move all attachment upload to Ticket Detail — retained here, struck through in spirit, so the numbering doesn't shift and the earlier design intent is traceable.* Originally: if Ticket creation succeeds but one or more attachment uploads fail, the Ticket is still created and no attachments are retried automatically. |
 | BR-22 | Every Requester-scoped API request must include the selected Development Requester's id via the `X-Dev-Requester-Id` header; a missing, unknown, or inactive id is rejected before any ownership check runs. |
 | BR-23 | In Lab 3, the Development Requester selector and the `X-Dev-Requester-Id` header are replaced by real authenticated sessions; the Ticket/Attachment ownership model (`requesterId` foreign key) does not need to change, only how the current requester is established.|
 
@@ -146,7 +148,7 @@ Full request/response shapes, statuses, and error cases are in
 | AC-04 | Given the Create Ticket form is submitted without a Summary, when validation runs, then a field-level message appears next to Summary and no API call is made. |
 | AC-05 | Given the Create Ticket form is submitted with a Summary shorter than 5 characters or longer than 150, then a field-level length message appears and no API call is made. |
 | AC-06 | Given a Category id that is inactive or does not exist, when Ticket creation is attempted, then the API returns 400 with a field-level error and no Ticket is created. |
-| AC-07 | Given a valid Ticket is created with two valid attachments and one oversized attachment, when submission completes, then the Ticket and the two valid Attachments are saved, and the UI reports the failed attachment by name with a retry path from Ticket Detail. |
+| AC-07 | *Withdrawn — described a create-time attachment upload flow that §11 later decided against; superseded by AC-08/AC-09 which cover the same failure modes (limit, disallowed type) on Ticket Detail's own upload.* |
 | AC-08 | Given a Ticket has 5 active Attachments, when a 6th Attachment is added, then the API rejects the upload with 400 and no Attachment is created. |
 | AC-09 | Given an Attachment of a disallowed type (e.g. `.exe`) is selected, when upload is attempted, then the client blocks submission and shows a type error without calling the API. |
 | AC-10 | Given a Requester searches My Tickets by partial Ticket Number, when the query matches zero Tickets, then a no-results state is shown (distinct from the empty-list state for a Requester with zero Tickets total). |
@@ -182,7 +184,7 @@ Full request/response shapes, statuses, and error cases are in
 
 - **Requester context transport**: the selected Development Requester id is sent as an `X-Dev-Requester-Id` request header (not a query parameter) on every Requester-scoped endpoint, so the pattern mirrors how an `Authorization` header will work once Lab 3 introduces real auth (BR-22, BR-23).
 - **Attachment storage**: files are stored on the server's local filesystem under a per-ticket directory with a generated (non-guessable) filename; only metadata is stored in Postgres. This is sufficient for course scope; object storage is out of scope.
-- **Attachment upload timing**: attachments are uploaded in a second step after the Ticket itself is created (ticket creation and each attachment upload are separate API calls), which is what makes the compensating-action behavior in BR-21 possible instead of requiring a multi-file atomic transaction.
+- **Attachment upload timing (revised)**: the sprint originally planned attachment upload as a second step immediately following ticket creation, in the same Create Ticket screen flow (the now-superseded BR-21/AC-07). During implementation this was deliberately narrowed: Create Ticket (Issue 4/PR) ships with no attachment step at all, and attachment upload/download/removal is built entirely in Ticket Detail (Issue 6/PR) instead. Reasoning: it kept each PR reviewable as one coherent vertical slice rather than splitting attachment-handling code across two issues, and nothing in the stakeholder request requires attachments to be selectable in the *same* screen as creation, only that a Requester can attach evidence to their ticket. FR-03/FR-07 and this document's data model/API contract reflect the as-built behavior; BR-21 and AC-07 are marked withdrawn above rather than silently deleted, so the earlier plan stays traceable.
 - **Cross-requester access status code**: requesting a Ticket or Attachment that doesn't exist returns `404 Not Found`; requesting one that exists but belongs to a different Requester returns `403 Forbidden`. This is easier to debug during development than a uniform 404, at the cost of confirming an id exists to a Requester who can't access it — acceptable for this course's threat model.
 - **Missing/invalid Requester context status code**: a missing, unknown, or inactive `X-Dev-Requester-Id` returns `400 Bad Request` (not `401`), since BR-03 explicitly treats the selector as a non-authentication testing mechanism.
 - **No default Requested Priority**: the field starts unselected so a Requester makes an explicit choice, matching the required-field/asterisk rule in `ui-spec.md`.

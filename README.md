@@ -76,6 +76,14 @@ cd client && npx tsc -b --noEmit && npm test && npm run build
 cd server && npm run db:check
 ```
 
+End-to-end (from the repo root; starts both dev servers itself via
+Playwright's `webServer` config if they aren't already running — Postgres
+must already be up and seeded):
+
+```bash
+npx playwright test
+```
+
 `db:check` confirms that the PostgreSQL database in `server/.env` is
 reachable. Server tests are integration tests against the real database
 configured above (not mocked) and run with Vitest's file-level parallelism

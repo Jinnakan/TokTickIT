@@ -16,6 +16,11 @@ dist/
 build/
 coverage/
 
+# Playwright E2E artifacts
+/test-results/
+/playwright-report/
+/playwright/.cache/
+
 # Uploaded attachment files (metadata lives in Postgres, not git)
 server/uploads/
 
