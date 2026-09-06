@@ -8,6 +8,12 @@ Claude Code session throughout implementation (see `ai-use.md`).
 All pull requests below target `lab2-staging`, except PR #19 which targets
 `main` (Issue 1 — the specification predates `lab2-staging`'s creation).
 
+**Known process gap:** the labsheet (§10.1) calls for one final release Pull
+Request from `lab2-staging` to `main` after integration testing. That step
+was not done as a separate reviewed PR — `main` and `lab2-staging` were
+brought in sync directly instead. Noted here rather than glossed over,
+since GitHub's PR history for this repo has no such PR to point to.
+
 ## Pull Requests Reviewed
 
 | PR | Title | Branch | Reviewer(s) | Outcome |
@@ -16,8 +22,9 @@ All pull requests below target `lab2-staging`, except PR #19 which targets
 | [#19](https://github.com/Jinnakan/TokTickIT/pull/19) | Sprint specification & test plan | `feature/5-lab2-specification` | Bank848 | Approved, merged |
 | [#20](https://github.com/Jinnakan/TokTickIT/pull/20) | Development Requester context | `feature/7-dev-requester-context` | Bank848 | Approved, merged |
 | [#21](https://github.com/Jinnakan/TokTickIT/pull/21) | Create Ticket (API + UI) | `feature/8-create-ticket` | N0M3KM | Changes requested → addressed → approved, merged |
-| [#22](https://github.com/Jinnakan/TokTickIT/pull/22) | My Tickets (list API + UI) | `feature/9-my-tickets` | N0M3KM | Changes requested → addressed → approved, merged |
+| [#22](https://github.com/Jinnakan/TokTickIT/pull/22) | My Tickets (list API + UI) | `feature/9-my-tickets` | N0M3KM | Changes requested → addressed → "LGTM :)" comment → merged |
 | [#23](https://github.com/Jinnakan/TokTickIT/pull/23) | Ticket Detail + attachment lifecycle | `feature/10-ticket-detail-attachments` | N0M3KM | Approved, merged |
+| [#24](https://github.com/Jinnakan/TokTickIT/pull/24) | Release readiness | `feature/11-lab2-release-docs` | N0M3KM | Approved, merged |
 
 ## Comments Given and Received, With Responses
 
@@ -74,7 +81,8 @@ the browser (`:disabled` matching on a field mid-submit) since the
 `fieldset`-inherited disable doesn't show up on a child's raw `.disabled`
 IDL property per spec, only on its actual interactive behavior.
 
-**Follow-up (N0M3KM):** the cross-package relative import this fix
+**Follow-up (raised in review discussion, not a separate formal GitHub
+review on this PR):** the cross-package relative import this fix
 introduced (`../../../server/src/ticket-rules.js` from client code) was
 flagged as a real risk — it works only because that file happens to have
 no server-only dependencies today, and nothing stops that from changing
@@ -99,7 +107,18 @@ gaps). Addressed identically once the shared-package and ARIA fixes from
 **Received (N0M3KM):** "The code is clean. Everything seems to be
 functioning correctly. Nice job :)" — no changes requested.
 
+### PR #24 — Release readiness
+
+**Received (N0M3KM):** "The pull request successfully aligns with the
+overarching issue criteria and repository standards... Overall, the
+contribution is well-formed, easy to review at a high level, and ready to
+be merged." — no changes requested.
+
 ## Approvals
 
-All six PRs above carry at least one explicit approval before merge.
-None were merged without review.
+Six of the seven PRs above carry an explicit GitHub "Approved" review
+before merge (#18, #19, #20, #21, #23, #24). PR #22 is the one exception:
+after N0M3KM's Changes Requested review was addressed, the follow-up was a
+plain "LGTM :)" issue comment rather than a second formal Approve — noted
+here rather than rounded up to "approved" for accuracy. No PR was merged
+without at least one round of review.

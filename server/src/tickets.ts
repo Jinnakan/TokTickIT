@@ -28,7 +28,7 @@ type CreateTicketBody = {
   description?: unknown
 }
 
-function generateTicketNumber(id: number, createdAt: Date): string {
+export function generateTicketNumber(id: number, createdAt: Date): string {
   const year = createdAt.getUTCFullYear()
   const paddedId = String(id).padStart(6, '0')
   return `TKT-${year}-${paddedId}`

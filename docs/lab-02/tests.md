@@ -14,6 +14,12 @@ the original plan became `CreateTicketForm.test.tsx`).
 
 ## 2. Planned Tests
 
+### Unit
+
+| Test ID | Requirement/AC | What It Tests | Expected Result | Automated Test File | Final |
+|---|---|---|---|---|---|
+| UNIT-01 | — | `generateTicketNumber(id, createdAt)` in isolation, no database | Returns `TKT-YYYY-NNNNNN`, zero-pads short ids, doesn't truncate ids ≥ 6 digits, uses `createdAt`'s UTC year | `server/tests/lab-02/ticket-number.unit.test.ts` | Pass |
+
 ### API
 
 | Test ID | Requirement/AC | What It Tests | Expected Result | Automated Test File | Final |
@@ -87,22 +93,27 @@ the original plan became `CreateTicketForm.test.tsx`).
 | VIS-02 | AC-17 | My Tickets at 375 / 768 / 1280px | Table→card transition at <768px; filters/pagination remain usable | Manual browser verification | Pass |
 | VIS-03 | AC-17 | Ticket Detail at 375 / 768 / 1280px | Field grid and Attachments section remain usable at all sizes | Manual browser verification | Pass |
 
-`VIS-01`–`VIS-03` are **not** automated Playwright specs — no E2E tooling
-was added to this project (see §7). They were verified manually via the
-Claude Code browser tool at each breakpoint during Issue 7, screenshotted,
-and checked against the `ui-spec.md` §10 checklist below.
+`VIS-01`–`VIS-03` are manual, not automated Playwright specs — they were
+verified via the browser tool at each breakpoint during Issue 7,
+screenshotted, and checked against the `ui-spec.md` §10 checklist below.
+
+### E2E
+
+| Test ID | Requirement/AC | What It Tests | Expected Result | Automated Test File | Final |
+|---|---|---|---|---|---|
+| E2E-01 | AC-01, AC-05 | Complete flow: select Requester → create Ticket → find it in My Tickets → open Ticket Detail | Confirmation shows the official, server-assigned Ticket Number; the same Ticket is then found by search and its Detail screen shows the submitted fields read-only | `e2e/lab-02/requester-ticket-flow.spec.ts` | Pass |
 
 ## 3. Acceptance-Criterion Traceability
 
 | AC | Covered by |
 |---|---|
-| AC-01 | API-01, API-16, UI-10 |
+| AC-01 | API-01, API-16, UI-10, E2E-01 |
 | AC-02 | UI-03 |
 | AC-03 | API-06, API-14, API-21, API-26, API-31 |
 | AC-04 | API-02, UI-08 |
-| AC-05 | API-03 |
+| AC-05 | API-03, E2E-01 |
 | AC-06 | API-04, UI-11 |
-| AC-07 | *Not covered — attachment-at-creation (BR-21 partial-failure flow) is out of Lab 2 scope by explicit decision; see §7.* |
+| AC-07 | *Withdrawn — described a create-time attachment flow superseded by the §11 decision to move all attachment handling to Ticket Detail; see `specification.md` §11 and §7 below.* |
 | AC-08 | API-22, API-23 |
 | AC-09 | API-17, API-18, UI-21 |
 | AC-10 | API-07, UI-12 |
@@ -142,39 +153,47 @@ Client (from `client/`):
 npm test
 ```
 
-There is no E2E/Playwright command — that layer was not implemented (§7).
+E2E (from the repo root, requires `docker compose up -d` and the seed
+already applied; starts both dev servers itself via Playwright's
+`webServer` config if they aren't already running):
+
+```bash
+npx playwright test
+```
 
 ## 6. Final Results
 
 Run from the final `main` branch:
 
-- **Server:** 8 test files, 45 tests, all passing. Run twice back-to-back with no flakiness (Vitest `fileParallelism: false` — these are integration tests against one shared Postgres instance, and running test files in parallel, Vitest's default, was racing them against each other; fixed during Issue 6).
+- **Server:** 9 test files, 49 tests, all passing (45 integration + 4 unit). Run twice back-to-back with no flakiness (Vitest `fileParallelism: false` — the integration tests share one Postgres instance, and running test files in parallel, Vitest's default, was racing them against each other; fixed during Issue 6).
 - **Client:** 9 test files, 26 tests, all passing.
-- **Total: 71 automated tests, 71 passing.**
+- **E2E:** 1 spec, 1 test, passing (`npx playwright test`, against the real dev servers and database).
+- **Total: 76 automated tests, 76 passing.**
 
 ## 7. Known Limitations or Deferred Tests
 
-- **No E2E/Playwright automation.** `e2e/lab-02/` was planned but never set
-  up. Responsive/visual verification (VIS-01–03) was done manually instead
-  of via automated screenshot specs. The full user flow (select Requester →
-  create Ticket → find in My Tickets → open Detail → manage attachments)
-  was exercised manually against the real API during each Issue's
-  verification pass, not via an automated E2E spec.
-- **AC-07 (partial attachment-upload failure during Ticket creation) is not
-  implemented or tested.** Attachment upload was scoped to Ticket creation
-  and to Ticket Detail separately during planning; the team explicitly
-  decided during Issue 4 to ship Ticket creation *without* attachment
-  upload, and to cover all attachment upload/download/removal exclusively
-  through Ticket Detail (Issue 6). `specification.md` FR-03's "optionally
-  attaching files" at creation time is therefore not satisfied — a
-  Requester attaches files after creating the Ticket, from Ticket Detail,
-  not during the Create Ticket flow itself.
-- **No standalone unit tests for ticket-number formatting or attachment
-  path-safety.** These are covered by integration tests instead (API-01
-  asserts the returned `ticketNumber` matches the expected format; the
-  attachments API tests exercise the storage path end-to-end), but there
-  is no isolated unit test for `generateTicketNumber` or
-  `buildStoragePath`'s path-containment guard in isolation.
+- **E2E covers only the golden path, added after the fact.** `e2e/lab-02/requester-ticket-flow.spec.ts`
+  (Issue 12) covers select Requester → create Ticket → find in My Tickets →
+  open Ticket Detail (E2E-01). It does not cover attachment upload/download/
+  removal, invalid-input paths, or cross-Requester access denial end to end —
+  those remain covered at the API/UI-component level (see the traceability
+  table above) plus manual verification, not a second E2E spec. Responsive/
+  visual verification (VIS-01–03) is still manual, not automated screenshot
+  specs.
+- **AC-07 (withdrawn) and BR-21 (superseded): create-time attachment upload
+  was never built.** Attachment upload was originally planned as a second
+  step immediately after Ticket creation. During implementation this was
+  deliberately narrowed: Create Ticket ships with no attachment step, and
+  all attachment upload/download/removal is built into Ticket Detail
+  instead (Issue 6). `specification.md` FR-03 and §11 document this as the
+  as-built decision, not a gap; AC-08/AC-09 cover the same failure modes
+  (limit reached, disallowed type) on Ticket Detail's own upload, and are
+  fully tested (API-17, API-18, API-22, API-23, UI-21).
+- **No standalone unit test for attachment path-safety.**
+  `buildStoragePath`'s path-containment guard is exercised end-to-end
+  through the attachments API integration tests (uploads always land
+  under `UPLOADS_ROOT`), but not in an isolated, no-database unit test the
+  way `generateTicketNumber` now is (`UNIT-01`).
 - **`GET /api/categories` / `GET /api/related-systems` active-only
   filtering (BR-08) has no negative-case test.** All seeded Categories and
   Related Systems are active, so no test proves an *inactive* one is
