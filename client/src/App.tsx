@@ -5,6 +5,7 @@ import { ComingSoon } from './components/ComingSoon.js'
 import { CreateTicketForm } from './components/CreateTicketForm.js'
 import { Login } from './components/Login.js'
 import { MyTicketsList } from './components/MyTicketsList.js'
+import { StaffTicketQueue } from './components/StaffTicketQueue.js'
 import { TicketDetail } from './components/TicketDetail.js'
 import { CurrentUserProvider, useCurrentUser } from './current-user-context.js'
 import { getNavItemsForRole } from './nav/role-navigation-factory.js'
@@ -22,8 +23,12 @@ function AuthenticatedApp() {
   }
 
   function renderContent() {
-    if (currentUser!.role !== 'REQUESTER') {
-      return <ComingSoon feature={activeKey === 'ticket-queue' ? 'Ticket Queue' : 'User Management'} />
+    if (currentUser!.role === 'IT_STAFF') {
+      return <StaffTicketQueue />
+    }
+
+    if (currentUser!.role === 'ADMINISTRATOR') {
+      return <ComingSoon feature="User Management" />
     }
 
     if (openTicketId !== null) {

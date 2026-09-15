@@ -5,6 +5,7 @@ import { prisma } from './prisma.js'
 import { requireSession, requirePasswordAlreadyChanged } from './auth/require-session.js'
 import { requireRole } from './authorization/require-role.js'
 import { resolveOwnedTicket, respondOwnershipFailure } from './ticket-ownership.js'
+import { TicketQueryBuilder } from './staff/ticket-query-builder.js'
 import {
   DEFAULT_PAGE,
   DEFAULT_PAGE_SIZE,
@@ -112,6 +113,34 @@ function parseTicketListQuery(query: Record<string, unknown>): { query: TicketLi
   }
 }
 
+type StaffTicketListQuery = TicketListQuery & {
+  itPriority?: Priority
+  ticketOwnerId?: number
+  unassignedOnly: boolean
+}
+
+function parseStaffTicketListQuery(
+  query: Record<string, unknown>,
+): { query: StaffTicketListQuery; errors: FieldErrors } {
+  const base = parseTicketListQuery(query)
+
+  const itPriority = parseOptionalEnum(query.itPriority, PRIORITIES)
+  if (itPriority === null) base.errors.itPriority = 'itPriority is invalid.'
+
+  const ticketOwnerId = parseOptionalInteger(query.ticketOwnerId)
+  if (ticketOwnerId === null) base.errors.ticketOwnerId = 'ticketOwnerId must be an integer.'
+
+  return {
+    errors: base.errors,
+    query: {
+      ...base.query,
+      itPriority: itPriority ?? undefined,
+      ticketOwnerId: ticketOwnerId ?? undefined,
+      unassignedOnly: query.unassignedOnly === 'true',
+    },
+  }
+}
+
 ticketsRouter.post('/', ...requireRequester, async (request, response, next) => {
   try {
     const body = request.body as CreateTicketBody
@@ -177,31 +206,89 @@ ticketsRouter.post('/', ...requireRequester, async (request, response, next) => 
   }
 })
 
-ticketsRouter.get('/', ...requireRequester, async (request, response, next) => {
+// REQUESTER keeps Lab 2's own-tickets-only behavior unchanged. IT_STAFF and
+// ADMINISTRATOR get the unscoped Queue variant (api-spec.md §4), built with
+// TicketQueryBuilder so its allowlisted setters are the only way a filter/
+// sort value reaches Prisma (BR-L3-11).
+ticketsRouter.get('/', ...requireAnyAuthenticatedRole, async (request, response, next) => {
   try {
-    const { query, errors } = parseTicketListQuery(request.query as Record<string, unknown>)
+    const role = response.locals.userRole as string
+
+    if (role === 'REQUESTER') {
+      const { query, errors } = parseTicketListQuery(request.query as Record<string, unknown>)
+
+      if (Object.keys(errors).length > 0) {
+        response.status(400).json({ error: 'VALIDATION_FAILED', fields: errors })
+        return
+      }
+
+      const requesterId = response.locals.userId as number
+
+      const where: Prisma.TicketWhereInput = {
+        requesterId,
+        ...(query.categoryId !== undefined ? { categoryId: query.categoryId } : {}),
+        ...(query.requestedPriority !== undefined ? { requestedPriority: query.requestedPriority } : {}),
+        ...(query.currentStatus !== undefined ? { currentStatus: query.currentStatus } : {}),
+        ...(query.search
+          ? {
+              OR: [
+                { ticketNumber: { contains: query.search, mode: 'insensitive' } },
+                { summary: { contains: query.search, mode: 'insensitive' } },
+              ],
+            }
+          : {}),
+      }
+
+      const [tickets, totalItems] = await Promise.all([
+        prisma.ticket.findMany({
+          where,
+          select: {
+            id: true,
+            ticketNumber: true,
+            summary: true,
+            categoryId: true,
+            requestedPriority: true,
+            currentStatus: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+          orderBy: [{ [query.sortBy]: query.sortDir }, { id: 'desc' }],
+          skip: (query.page - 1) * query.pageSize,
+          take: query.pageSize,
+        }),
+        prisma.ticket.count({ where }),
+      ])
+
+      response.status(200).json({
+        data: tickets,
+        meta: {
+          page: query.page,
+          pageSize: query.pageSize,
+          totalItems,
+          totalPages: Math.ceil(totalItems / query.pageSize),
+        },
+      })
+      return
+    }
+
+    const { query, errors } = parseStaffTicketListQuery(request.query as Record<string, unknown>)
 
     if (Object.keys(errors).length > 0) {
       response.status(400).json({ error: 'VALIDATION_FAILED', fields: errors })
       return
     }
 
-    const requesterId = response.locals.userId as number
-
-    const where: Prisma.TicketWhereInput = {
-      requesterId,
-      ...(query.categoryId !== undefined ? { categoryId: query.categoryId } : {}),
-      ...(query.requestedPriority !== undefined ? { requestedPriority: query.requestedPriority } : {}),
-      ...(query.currentStatus !== undefined ? { currentStatus: query.currentStatus } : {}),
-      ...(query.search
-        ? {
-            OR: [
-              { ticketNumber: { contains: query.search, mode: 'insensitive' } },
-              { summary: { contains: query.search, mode: 'insensitive' } },
-            ],
-          }
-        : {}),
-    }
+    const { where, orderBy, skip, take } = new TicketQueryBuilder()
+      .withSearch(query.search || undefined)
+      .withCategory(query.categoryId)
+      .withRequestedPriority(query.requestedPriority)
+      .withItPriority(query.itPriority)
+      .withStatus(query.currentStatus)
+      .withTicketOwner(query.ticketOwnerId)
+      .unassignedOnly(query.unassignedOnly)
+      .sortBy(query.sortBy, query.sortDir)
+      .paginate(query.page, query.pageSize)
+      .build()
 
     const [tickets, totalItems] = await Promise.all([
       prisma.ticket.findMany({
@@ -212,13 +299,17 @@ ticketsRouter.get('/', ...requireRequester, async (request, response, next) => {
           summary: true,
           categoryId: true,
           requestedPriority: true,
+          itPriority: true,
           currentStatus: true,
+          ticketOwnerId: true,
           createdAt: true,
           updatedAt: true,
+          requester: { select: { id: true, name: true } },
+          ticketOwner: { select: { id: true, name: true } },
         },
-        orderBy: [{ [query.sortBy]: query.sortDir }, { id: 'desc' }],
-        skip: (query.page - 1) * query.pageSize,
-        take: query.pageSize,
+        orderBy,
+        skip,
+        take,
       }),
       prisma.ticket.count({ where }),
     ])

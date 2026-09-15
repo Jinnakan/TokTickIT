@@ -50,6 +50,24 @@ export type TicketListQuery = {
   page?: number
 }
 
+export type StaffTicketListItem = TicketListItem & {
+  itPriority: Priority
+  ticketOwnerId: number | null
+  requester: { id: number; name: string }
+  ticketOwner: { id: number; name: string } | null
+}
+
+export type StaffTicketListResponse = {
+  data: StaffTicketListItem[]
+  meta: TicketListMeta
+}
+
+export type StaffTicketListQuery = TicketListQuery & {
+  itPriority?: Priority
+  ticketOwnerId?: number
+  unassignedOnly?: boolean
+}
+
 export type CreateTicketInput = {
   categoryId: number
   relatedSystemId: number
