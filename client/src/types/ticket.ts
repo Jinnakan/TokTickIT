@@ -68,6 +68,14 @@ export type StaffTicketListQuery = TicketListQuery & {
   unassignedOnly?: boolean
 }
 
+export type StaffTicketDetail = Ticket & {
+  itPriority: Priority
+  ticketOwnerId: number | null
+  requester: { id: number; name: string }
+  ticketOwner: { id: number; name: string } | null
+  allowedStatuses: TicketStatus[]
+}
+
 export type CreateTicketInput = {
   categoryId: number
   relatedSystemId: number

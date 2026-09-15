@@ -16,6 +16,7 @@ import type {
   TicketStatus,
 } from '../types/ticket.js'
 import { PriorityBadge, StatusBadge } from './TicketBadges.js'
+import { StaffTicketDetail } from './StaffTicketDetail.js'
 
 type ListStatus = 'loading' | 'ready' | 'error'
 
@@ -35,7 +36,7 @@ function formatDate(iso: string): string {
   })
 }
 
-export function StaffTicketQueue() {
+export function StaffTicketQueue({ currentUserId }: { currentUserId: number }) {
   const [categories, setCategories] = useState<ReferenceItem[]>([])
 
   const [search, setSearch] = useState('')
@@ -118,15 +119,11 @@ export function StaffTicketQueue() {
 
   if (openTicket) {
     return (
-      <div>
-        <button type="button" className="btn btn-link p-0 mb-3" onClick={() => setOpenTicket(null)}>
-          ← Back to Ticket Queue
-        </button>
-        <div className="alert alert-secondary" role="status">
-          <strong>Ticket Detail for {openTicket.ticketNumber}</strong> — claim, priority, status,
-          and comment/note controls are not built yet (coming in a later Lab 3 issue).
-        </div>
-      </div>
+      <StaffTicketDetail
+        ticketId={openTicket.id}
+        currentUserId={currentUserId}
+        onBackToQueue={() => setOpenTicket(null)}
+      />
     )
   }
 

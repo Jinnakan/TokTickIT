@@ -2,13 +2,14 @@ import request from 'supertest'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { app } from '../../src/app.js'
 import { prisma } from '../../src/prisma.js'
-import { loginAsRequester, type AuthenticatedAgent } from '../helpers/session.js'
+import { loginAsItStaff, loginAsRequester, type AuthenticatedAgent } from '../helpers/session.js'
 
-// Comments half only (Issue 17); the Notes half (CN-04, CN-05) lands with
-// Issue 19 when Internal Notes and IT Staff Ticket Detail exist.
+// Comments half from Issue 17; the Notes half (CN-04, CN-05) and IT Staff
+// comment access land here in Issue 19.
 
 let agentA: AuthenticatedAgent
 let agentB: AuthenticatedAgent
+let staffAgent: AuthenticatedAgent
 let categoryId: number
 let relatedSystemId: number
 
@@ -24,14 +25,16 @@ async function createTicketAs(agent: AuthenticatedAgent) {
 }
 
 beforeAll(async () => {
-  const [requesterA, requesterB, category, relatedSystem] = await Promise.all([
+  const [requesterA, requesterB, staff, category, relatedSystem] = await Promise.all([
     loginAsRequester(0),
     loginAsRequester(1),
+    loginAsItStaff(),
     prisma.category.findFirstOrThrow({ where: { isActive: true } }),
     prisma.relatedSystem.findFirstOrThrow({ where: { isActive: true } }),
   ])
   agentA = requesterA.agent
   agentB = requesterB.agent
+  staffAgent = staff.agent
   categoryId = category.id
   relatedSystemId = relatedSystem.id
 })
@@ -152,5 +155,78 @@ describe('GET /api/tickets/:id/comments', () => {
 
     expect(response.status).toBe(200)
     expect(response.body).toEqual([])
+  })
+})
+
+describe('IT Staff comment access on any ticket (Issue 19)', () => {
+  it('lets IT Staff read and post comments on a ticket they do not own', async () => {
+    const ticket = await createTicketAs(agentA)
+
+    const posted = await staffAgent.post(`/api/tickets/${ticket.id}/comments`).send({ body: 'Looking into this.' })
+    expect(posted.status).toBe(201)
+
+    const listed = await staffAgent.get(`/api/tickets/${ticket.id}/comments`)
+    expect(listed.status).toBe(200)
+    expect(listed.body.some((comment: { body: string }) => comment.body === 'Looking into this.')).toBe(true)
+  })
+})
+
+describe('POST /api/tickets/:id/notes (CN-04, FR-L3-08)', () => {
+  it('creates an internal note in InternalNote, not PublicComment', async () => {
+    const ticket = await createTicketAs(agentA)
+
+    const response = await staffAgent.post(`/api/tickets/${ticket.id}/notes`).send({ body: 'Escalating to network team.' })
+
+    expect(response.status).toBe(201)
+    expect(response.body.body).toBe('Escalating to network team.')
+
+    const note = await prisma.internalNote.findUnique({ where: { id: response.body.id } })
+    expect(note).not.toBeNull()
+
+    // PublicComment and InternalNote have independent id sequences, so a
+    // matching id in both tables is expected and not a bug -- the real
+    // check is that this note's body never landed in PublicComment too.
+    const commentsForTicket = await prisma.publicComment.findMany({ where: { ticketId: ticket.id } })
+    expect(commentsForTicket.some((comment) => comment.body === 'Escalating to network team.')).toBe(false)
+  })
+
+  it('rejects a Requester posting a note, even on their own ticket, with 403 not 404 (BR-L3-17)', async () => {
+    const ticket = await createTicketAs(agentA)
+
+    const response = await agentA.post(`/api/tickets/${ticket.id}/notes`).send({ body: 'Should never be allowed.' })
+
+    expect(response.status).toBe(403)
+    expect(response.body.error).toBe('FORBIDDEN')
+  })
+})
+
+describe('GET /api/tickets/:id/notes (CN-05, AC-L3-08, BR-L3-17)', () => {
+  it('rejects a Requester reading notes on their own ticket, leaking no note content', async () => {
+    const ticket = await createTicketAs(agentA)
+    await staffAgent.post(`/api/tickets/${ticket.id}/notes`).send({ body: 'Secret internal detail.' })
+
+    const response = await agentA.get(`/api/tickets/${ticket.id}/notes`)
+
+    expect(response.status).toBe(403)
+    expect(response.body.error).toBe('FORBIDDEN')
+    expect(JSON.stringify(response.body)).not.toContain('Secret internal detail')
+  })
+
+  it('lets IT Staff read notes on any ticket', async () => {
+    const ticket = await createTicketAs(agentA)
+    await staffAgent.post(`/api/tickets/${ticket.id}/notes`).send({ body: 'Visible to staff only.' })
+
+    const response = await staffAgent.get(`/api/tickets/${ticket.id}/notes`)
+
+    expect(response.status).toBe(200)
+    expect(response.body.some((note: { body: string }) => note.body === 'Visible to staff only.')).toBe(true)
+  })
+
+  it('rejects an unauthenticated request', async () => {
+    const ticket = await createTicketAs(agentA)
+
+    const response = await request(app).get(`/api/tickets/${ticket.id}/notes`)
+
+    expect(response.status).toBe(401)
   })
 })

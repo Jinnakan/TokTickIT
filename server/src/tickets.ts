@@ -6,6 +6,7 @@ import { requireSession, requirePasswordAlreadyChanged } from './auth/require-se
 import { requireRole } from './authorization/require-role.js'
 import { resolveOwnedTicket, respondOwnershipFailure } from './ticket-ownership.js'
 import { TicketQueryBuilder } from './staff/ticket-query-builder.js'
+import { getTicketState } from './tickets/ticket-state/ticket-state-factory.js'
 import {
   DEFAULT_PAGE,
   DEFAULT_PAGE_SIZE,
@@ -344,12 +345,21 @@ ticketsRouter.get('/:id', ...requireAnyAuthenticatedRole, async (request, respon
     }
 
     if (role !== 'REQUESTER') {
-      const ticket = await prisma.ticket.findUnique({ where: { id: ticketId } })
+      const ticket = await prisma.ticket.findUnique({
+        where: { id: ticketId },
+        include: {
+          requester: { select: { id: true, name: true } },
+          ticketOwner: { select: { id: true, name: true } },
+        },
+      })
       if (!ticket) {
         response.status(404).json({ error: 'TICKET_NOT_FOUND' })
         return
       }
-      response.status(200).json(ticket)
+      // Sent alongside the ticket so the client never has to reimplement
+      // the state table (getTicketState is the single source of truth the
+      // 409 on PATCH /status also reads from).
+      response.status(200).json({ ...ticket, allowedStatuses: getTicketState(ticket.currentStatus).allowedActions() })
       return
     }
 
