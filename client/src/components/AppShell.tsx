@@ -1,17 +1,18 @@
 import type { ReactNode } from 'react'
-import { useDevRequester } from '../dev-requester-context.js'
-import type { AppView } from '../App.js'
+import { useCurrentUser } from '../current-user-context.js'
+import { getNavItemsForRole } from '../nav/role-navigation-factory.js'
 
 export function AppShell({
-  activeView,
+  activeKey,
   onNavigate,
   children,
 }: {
-  activeView: AppView
-  onNavigate: (view: AppView) => void
+  activeKey: string
+  onNavigate: (key: string) => void
   children: ReactNode
 }) {
-  const { selectedRequester, changeRequester } = useDevRequester()
+  const { currentUser, logout } = useCurrentUser()
+  const navItems = currentUser ? getNavItemsForRole(currentUser.role) : []
 
   return (
     <div className="app-shell">
@@ -22,13 +23,22 @@ export function AppShell({
             TokTickIT
           </span>
           <nav className="d-flex align-items-center gap-3">
-            <NavLink label="My Tickets" active={activeView === 'my-tickets'} onClick={() => onNavigate('my-tickets')} />
-            <NavLink label="Create Ticket" active={activeView === 'create-ticket'} onClick={() => onNavigate('create-ticket')} />
+            {navItems.map((item) => (
+              <NavLink
+                key={item.key}
+                label={item.label}
+                active={activeKey === item.key}
+                onClick={() => onNavigate(item.key)}
+              />
+            ))}
           </nav>
           <div className="d-flex align-items-center gap-3">
-            <span className="text-white">{selectedRequester?.name}</span>
-            <button type="button" className="btn btn-outline-light btn-sm" onClick={changeRequester}>
-              Change Requester
+            <span className="text-white">
+              {currentUser?.name}
+              {currentUser && <span className="text-white-50"> ({roleLabel(currentUser.role)})</span>}
+            </span>
+            <button type="button" className="btn btn-outline-light btn-sm" onClick={() => void logout()}>
+              Logout
             </button>
           </div>
         </div>
@@ -36,6 +46,12 @@ export function AppShell({
       <main className="container py-4">{children}</main>
     </div>
   )
+}
+
+function roleLabel(role: string): string {
+  if (role === 'IT_STAFF') return 'IT Staff'
+  if (role === 'ADMINISTRATOR') return 'Administrator'
+  return 'Requester'
 }
 
 /** Active nav item is visually distinct via underline + weight (ui-spec.md §5.1) rather than a

@@ -29,11 +29,9 @@ function formatDate(iso: string): string {
 }
 
 export function MyTicketsList({
-  requesterId,
   onCreateTicket,
   onOpenTicket,
 }: {
-  requesterId: number
   onCreateTicket: () => void
   onOpenTicket: (ticketId: number) => void
 }) {
@@ -72,7 +70,6 @@ export function MyTicketsList({
         sortDir,
         page,
       },
-      requesterId,
       controller.signal,
     )
       .then((result) => {
@@ -90,7 +87,7 @@ export function MyTicketsList({
       ignore = true
       controller.abort()
     }
-  }, [search, categoryId, requestedPriority, currentStatus, sortBy, sortDir, page, requesterId])
+  }, [search, categoryId, requestedPriority, currentStatus, sortBy, sortDir, page])
 
   function handleSearchChange(value: string) {
     setSearch(value)

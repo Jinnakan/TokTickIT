@@ -2,11 +2,7 @@ import request from 'supertest'
 import { describe, expect, it } from 'vitest'
 import { app } from '../../src/app.js'
 import { prisma } from '../../src/prisma.js'
-
-async function activeRequesterId(): Promise<number> {
-  const requester = await prisma.user.findFirstOrThrow({ where: { role: 'REQUESTER', isActive: true } })
-  return requester.id
-}
+import { loginAsRequester } from '../helpers/session.js'
 
 async function activeCategoryId(): Promise<number> {
   const category = await prisma.category.findFirstOrThrow({ where: { isActive: true } })
@@ -30,80 +26,65 @@ async function validBody() {
 
 describe('POST /api/tickets', () => {
   it('creates a ticket and returns a unique Ticket Number (AC-01)', async () => {
-    const requesterId = await activeRequesterId()
+    const { agent, userId } = await loginAsRequester()
     const body = await validBody()
 
-    const response = await request(app)
-      .post('/api/tickets')
-      .set('X-Dev-Requester-Id', String(requesterId))
-      .send(body)
+    const response = await agent.post('/api/tickets').send(body)
 
     expect(response.status).toBe(201)
     expect(response.body.ticketNumber).toMatch(/^TKT-\d{4}-\d{6}$/)
     expect(response.body.currentStatus).toBe('NEW')
-    expect(response.body.requesterId).toBe(requesterId)
+    expect(response.body.requesterId).toBe(userId)
   })
 
-  it('rejects a request with no Development Requester context', async () => {
+  it('rejects a request with no session', async () => {
     const body = await validBody()
 
     const response = await request(app).post('/api/tickets').send(body)
 
-    expect(response.status).toBe(400)
-    expect(response.body.error).toBe('DEV_REQUESTER_REQUIRED')
+    expect(response.status).toBe(401)
+    expect(response.body.error).toBe('UNAUTHENTICATED')
   })
 
   it('rejects a missing summary with a field-level message and creates no row (AC-04)', async () => {
-    const requesterId = await activeRequesterId()
+    const { agent, userId } = await loginAsRequester()
     const body = await validBody()
     // Scoped to this requester, not a global count -- other test files create
     // tickets concurrently against the same database, so an unscoped count
     // races and flakes.
-    const beforeCount = await prisma.ticket.count({ where: { requesterId } })
+    const beforeCount = await prisma.ticket.count({ where: { requesterId: userId } })
 
-    const response = await request(app)
-      .post('/api/tickets')
-      .set('X-Dev-Requester-Id', String(requesterId))
-      .send({ ...body, summary: '' })
+    const response = await agent.post('/api/tickets').send({ ...body, summary: '' })
 
     expect(response.status).toBe(400)
     expect(response.body.error).toBe('VALIDATION_FAILED')
     expect(response.body.fields.summary).toBeDefined()
-    expect(await prisma.ticket.count({ where: { requesterId } })).toBe(beforeCount)
+    expect(await prisma.ticket.count({ where: { requesterId: userId } })).toBe(beforeCount)
   })
 
   it('rejects a summary shorter than 5 or longer than 150 characters (AC-05)', async () => {
-    const requesterId = await activeRequesterId()
+    const { agent } = await loginAsRequester()
     const body = await validBody()
 
-    const tooShort = await request(app)
-      .post('/api/tickets')
-      .set('X-Dev-Requester-Id', String(requesterId))
-      .send({ ...body, summary: 'Hi' })
+    const tooShort = await agent.post('/api/tickets').send({ ...body, summary: 'Hi' })
     expect(tooShort.status).toBe(400)
     expect(tooShort.body.fields.summary).toBeDefined()
 
-    const tooLong = await request(app)
-      .post('/api/tickets')
-      .set('X-Dev-Requester-Id', String(requesterId))
-      .send({ ...body, summary: 'x'.repeat(151) })
+    const tooLong = await agent.post('/api/tickets').send({ ...body, summary: 'x'.repeat(151) })
     expect(tooLong.status).toBe(400)
     expect(tooLong.body.fields.summary).toBeDefined()
   })
 
   it('rejects an inactive or unknown Category and creates no row (AC-06)', async () => {
-    const requesterId = await activeRequesterId()
+    const { agent, userId } = await loginAsRequester()
     const body = await validBody()
-    const beforeCount = await prisma.ticket.count({ where: { requesterId } })
+    const beforeCount = await prisma.ticket.count({ where: { requesterId: userId } })
 
-    const response = await request(app)
-      .post('/api/tickets')
-      .set('X-Dev-Requester-Id', String(requesterId))
-      .send({ ...body, categoryId: 999999 })
+    const response = await agent.post('/api/tickets').send({ ...body, categoryId: 999999 })
 
     expect(response.status).toBe(400)
     expect(response.body.error).toBe('VALIDATION_FAILED')
     expect(response.body.fields.categoryId).toBeDefined()
-    expect(await prisma.ticket.count({ where: { requesterId } })).toBe(beforeCount)
+    expect(await prisma.ticket.count({ where: { requesterId: userId } })).toBe(beforeCount)
   })
 })

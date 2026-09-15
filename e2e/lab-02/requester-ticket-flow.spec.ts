@@ -11,10 +11,11 @@ test.describe('Requester Ticket flow', () => {
 
     await page.goto('/')
 
-    // --- Development Requester Selection ---
+    // --- Login (replaces the Lab 2 Dev Requester Selector, removed in Issue 16) ---
     await expect(page.getByRole('heading', { name: 'TokTickIT' })).toBeVisible()
-    await page.getByLabel('Development Requester').selectOption({ label: 'Jennifer Anderson' })
-    await page.getByRole('button', { name: 'Continue' }).click()
+    await page.getByLabel('Email *').fill('jennifer.anderson@toktickit.test')
+    await page.getByLabel('Password *').fill('DevPass123!')
+    await page.getByRole('button', { name: 'Login' }).click()
 
     // --- Create Ticket ---
     // Two "Create Ticket" buttons exist on this screen (the header nav item

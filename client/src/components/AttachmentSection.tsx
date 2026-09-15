@@ -27,7 +27,7 @@ function formatDate(iso: string): string {
   })
 }
 
-export function AttachmentSection({ ticketId, requesterId }: { ticketId: number; requesterId: number }) {
+export function AttachmentSection({ ticketId }: { ticketId: number }) {
   const [status, setStatus] = useState<Status>('loading')
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const [uploadError, setUploadError] = useState('')
@@ -42,7 +42,7 @@ export function AttachmentSection({ ticketId, requesterId }: { ticketId: number;
   async function reload() {
     setStatus('loading')
     try {
-      const loaded = await fetchAttachments(ticketId, requesterId)
+      const loaded = await fetchAttachments(ticketId)
       setAttachments(loaded)
       setStatus('ready')
     } catch {
@@ -54,7 +54,7 @@ export function AttachmentSection({ ticketId, requesterId }: { ticketId: number;
     let ignore = false
     setStatus('loading')
 
-    fetchAttachments(ticketId, requesterId)
+    fetchAttachments(ticketId)
       .then((loaded) => {
         if (ignore) return
         setAttachments(loaded)
@@ -68,7 +68,7 @@ export function AttachmentSection({ ticketId, requesterId }: { ticketId: number;
     return () => {
       ignore = true
     }
-  }, [ticketId, requesterId])
+  }, [ticketId])
 
   async function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
@@ -88,7 +88,7 @@ export function AttachmentSection({ ticketId, requesterId }: { ticketId: number;
 
     setIsUploading(true)
     try {
-      await uploadAttachment(ticketId, file, requesterId)
+      await uploadAttachment(ticketId, file)
       await reload()
     } catch (error) {
       setUploadError(error instanceof Error ? error.message : 'Unable to upload the file.')
@@ -117,7 +117,7 @@ export function AttachmentSection({ ticketId, requesterId }: { ticketId: number;
     }
 
     try {
-      await removeAttachment(pendingRemovalId, removalReason.trim(), requesterId)
+      await removeAttachment(pendingRemovalId, removalReason.trim())
       setPendingRemovalId(null)
       setRemovalReason('')
       await reload()
@@ -128,7 +128,7 @@ export function AttachmentSection({ ticketId, requesterId }: { ticketId: number;
 
   async function handleDownload(attachment: Attachment) {
     try {
-      await downloadAttachment(attachment.id, attachment.originalFilename, requesterId)
+      await downloadAttachment(attachment.id, attachment.originalFilename)
     } catch {
       setUploadError('Unable to download this attachment.')
     }
