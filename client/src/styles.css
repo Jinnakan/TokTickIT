@@ -1,10 +1,65 @@
+/*
+ * Zen Green theme (labsheet §7 / docs/lab-02/ui-spec.md §1).
+ * Bootstrap ships precompiled CSS (not Sass), so retheming happens by
+ * overriding Bootstrap's own CSS custom properties at :root. Bootstrap's
+ * compiled rules that reference the root vars (`.alert-*`, `.bg-*-subtle`,
+ * `.text-*-emphasis`, focus rings, link color) pick these up automatically.
+ * `.btn-*` classes bake their colors in as literal hex at compile time
+ * instead of referencing the root vars, so those need direct overrides
+ * below rather than relying on cascade.
+ */
+:root {
+  /* Zen Green tokens, exact values from the required token table */
+  --zg-primary: #006b3c;
+  --zg-secondary: #0b7a46;
+  --zg-pale-green: #eaf6ef;
+  --zg-page-bg: #f5f7f6;
+  --zg-text: #1b2b24;
+  --zg-field-readonly-bg: #eef2f0;
+  --zg-error: #8a1f11;
+  --zg-error-bg: #fbe9e7;
+  --zg-warning-text: #7a5901;
+  --zg-warning-bg: #fdf3d9;
+
+  /* Primary green: app header, primary actions, strong emphasis */
+  --bs-primary: var(--zg-primary);
+  --bs-primary-rgb: 0, 107, 60;
+  --bs-primary-bg-subtle: var(--zg-pale-green);
+  --bs-primary-text-emphasis: var(--zg-primary);
+
+  /* Secondary green: active tabs, focus accents, links, hover states */
+  --bs-link-color: var(--zg-secondary);
+  --bs-link-color-rgb: 11, 122, 70;
+  --bs-link-hover-color: var(--zg-primary);
+  --bs-focus-ring-color: rgba(11, 122, 70, 0.25);
+
+  /* Success: pale-green confirmation, and the LOW priority / NEW status badges */
+  --bs-success: var(--zg-secondary);
+  --bs-success-rgb: 11, 122, 70;
+  --bs-success-bg-subtle: var(--zg-pale-green);
+  --bs-success-text-emphasis: var(--zg-secondary);
+
+  /* Error: dark red text/border, and the HIGH priority badge */
+  --bs-danger: var(--zg-error);
+  --bs-danger-rgb: 138, 31, 17;
+  --bs-danger-bg-subtle: var(--zg-error-bg);
+  --bs-danger-text-emphasis: var(--zg-error);
+
+  /* Warning: amber callout, and the MEDIUM priority badge */
+  --bs-warning: var(--zg-warning-text);
+  --bs-warning-rgb: 122, 89, 1;
+  --bs-warning-bg-subtle: var(--zg-warning-bg);
+  --bs-warning-text-emphasis: var(--zg-warning-text);
+
+  --bs-body-bg: var(--zg-page-bg);
+  --bs-body-color: var(--zg-text);
+}
+
 body {
   min-width: 320px;
   margin: 0;
-  color: #1f2937;
-  background:
-    radial-gradient(circle at top right, rgb(13 110 253 / 12%), transparent 35rem),
-    #f8fafc;
+  color: var(--zg-text);
+  background: var(--zg-page-bg);
 }
 
 #root {
@@ -36,7 +91,7 @@ body {
   place-items: center;
   color: #fff;
   font-weight: 700;
-  background: #0d6efd;
+  background: var(--zg-primary);
   border-radius: 0.75rem;
 }
 
@@ -53,6 +108,59 @@ body {
 
 .system-result li + li {
   margin-top: 0.35rem;
+}
+
+/* Read-only field styling (ui-spec.md §3): visibly distinct from an editable input. */
+.field-readonly {
+  background-color: var(--zg-field-readonly-bg);
+  border: 1px solid #d7ded9;
+}
+
+/*
+ * .btn-* classes bake in literal hex colors at Bootstrap's compile time
+ * rather than referencing --bs-primary/--bs-danger, so overriding the root
+ * vars above doesn't reach them -- these need direct, explicit overrides.
+ */
+.btn-primary {
+  --bs-btn-bg: var(--zg-primary);
+  --bs-btn-border-color: var(--zg-primary);
+  --bs-btn-hover-bg: #005530;
+  --bs-btn-hover-border-color: #005530;
+  --bs-btn-active-bg: #004526;
+  --bs-btn-active-border-color: #004526;
+  --bs-btn-disabled-bg: var(--zg-primary);
+  --bs-btn-disabled-border-color: var(--zg-primary);
+}
+
+.btn-outline-primary {
+  --bs-btn-color: var(--zg-primary);
+  --bs-btn-border-color: var(--zg-primary);
+  --bs-btn-hover-bg: var(--zg-primary);
+  --bs-btn-hover-border-color: var(--zg-primary);
+  --bs-btn-active-bg: var(--zg-primary);
+  --bs-btn-active-border-color: var(--zg-primary);
+}
+
+.btn-danger,
+.btn-outline-danger {
+  --bs-btn-color: #fff;
+  --bs-btn-bg: var(--zg-error);
+  --bs-btn-border-color: var(--zg-error);
+  --bs-btn-hover-bg: #6e190d;
+  --bs-btn-hover-border-color: #6e190d;
+}
+
+.btn-outline-danger {
+  --bs-btn-color: var(--zg-error);
+  --bs-btn-bg: transparent;
+  --bs-btn-hover-color: #fff;
+}
+
+/* Keyboard-focus rings (ui-spec.md §3/§9): secondary green, not Bootstrap's default blue. */
+.form-control:focus,
+.form-select:focus {
+  border-color: var(--zg-secondary);
+  box-shadow: 0 0 0 0.25rem rgba(11, 122, 70, 0.25);
 }
 
 @media (max-width: 576px) {

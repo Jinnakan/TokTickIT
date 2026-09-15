@@ -1,109 +1,68 @@
 import { useState } from 'react'
+import { AppShell } from './components/AppShell.js'
+import { CreateTicketForm } from './components/CreateTicketForm.js'
+import { DevRequesterSelection } from './components/DevRequesterSelection.js'
+import { MyTicketsList } from './components/MyTicketsList.js'
+import { TicketDetail } from './components/TicketDetail.js'
+import { DevRequesterProvider, useDevRequester } from './dev-requester-context.js'
 
-type Category = {
-  id: number
-  name: string
-}
+export type AppView = 'my-tickets' | 'create-ticket'
 
-export function App() {
-  const [isLoading, setIsLoading] = useState(false)
-  const [isOnline, setIsOnline] = useState<boolean | null>(null)
-  const [categories, setCategories] = useState<Category[]>([])
-  const [error, setError] = useState('')
+function AppContent() {
+  const { selectedRequester } = useDevRequester()
+  const [activeView, setActiveView] = useState<AppView>('my-tickets')
+  const [openTicketId, setOpenTicketId] = useState<number | null>(null)
 
-  async function checkSystem() {
-    setIsLoading(true)
-    setIsOnline(null)
-    setCategories([])
-    setError('')
-    const controller = new AbortController()
-    const timeoutId = window.setTimeout(() => controller.abort(), 8000)
+  if (!selectedRequester) {
+    return <DevRequesterSelection />
+  }
 
-    try {
-      const [healthResponse, categoriesResponse] = await Promise.all([
-        fetch('/api/health', { signal: controller.signal }),
-        fetch('/api/categories', { signal: controller.signal }),
-      ])
+  function navigate(view: AppView) {
+    setOpenTicketId(null)
+    setActiveView(view)
+  }
 
-      if (!healthResponse.ok || !categoriesResponse.ok) {
-        throw new Error('The TokTickIT API is unavailable.')
-      }
-
-      const health = await healthResponse.json() as { status: string }
-      const loadedCategories = await categoriesResponse.json() as Category[]
-
-      if (health.status !== 'ok') {
-        throw new Error('The TokTickIT API reported an unhealthy status.')
-      }
-
-      setIsOnline(true)
-      setCategories(loadedCategories)
-    } catch {
-      setIsOnline(false)
-      setError('Unable to connect to TokTickIT API. Start the backend and check the database connection.')
-    } finally {
-      window.clearTimeout(timeoutId)
-      setIsLoading(false)
+  function renderContent() {
+    if (openTicketId !== null) {
+      return (
+        <TicketDetail
+          ticketId={openTicketId}
+          requesterId={selectedRequester!.id}
+          onBackToMyTickets={() => setOpenTicketId(null)}
+        />
+      )
     }
+
+    if (activeView === 'my-tickets') {
+      return (
+        <MyTicketsList
+          requesterId={selectedRequester!.id}
+          onCreateTicket={() => navigate('create-ticket')}
+          onOpenTicket={setOpenTicketId}
+        />
+      )
+    }
+
+    return (
+      <CreateTicketForm
+        requesterId={selectedRequester!.id}
+        requesterName={selectedRequester!.name}
+        onViewMyTickets={() => navigate('my-tickets')}
+      />
+    )
   }
 
   return (
-    <main className="app-shell d-flex align-items-center py-5">
-      <section className="container" aria-labelledby="app-title">
-        <div className="service-card mx-auto shadow-sm">
-          <div className="service-card__header">
-            <span className="brand-mark" aria-hidden="true">T</span>
-            <div>
-              <h1 id="app-title" className="h2 mb-1 fw-bold">TokTickIT</h1>
-              <p className="mb-0 text-secondary">IT Service Desk</p>
-            </div>
-          </div>
+    <AppShell activeView={activeView} onNavigate={navigate}>
+      {renderContent()}
+    </AppShell>
+  )
+}
 
-          <hr className="my-4" />
-
-          <p className="mb-4 text-body-secondary">
-            Check the availability of the TokTickIT service before submitting a request.
-          </p>
-
-          <button
-            type="button"
-            className="btn btn-primary px-4 py-2 fw-semibold"
-            onClick={checkSystem}
-            disabled={isLoading}
-          >
-            {isLoading ? 'Checking…' : 'Check System'}
-          </button>
-
-          {isLoading && (
-            <p className="status-message text-body-secondary mb-0 mt-4" role="status">
-              <span aria-hidden="true">⌛</span> Loading system information…
-            </p>
-          )}
-
-          {isOnline === true && (
-            <div className="system-result mt-4">
-              <p className="mb-4">
-                <strong>System Status:</strong>{' '}
-                <span className="badge text-bg-success">Online</span>
-              </p>
-              <h2 className="h5 mb-3">Supported Request Categories</h2>
-              <ol className="mb-0 ps-4">
-                {categories.map((category) => (
-                  <li key={category.id}>{category.name}</li>
-                ))}
-              </ol>
-            </div>
-          )}
-
-          {isOnline === false && (
-            <div className="alert alert-danger mt-4 mb-0" role="alert">
-              <strong>System Status: Offline</strong>
-              <br />
-              {error}
-            </div>
-          )}
-        </div>
-      </section>
-    </main>
+export function App() {
+  return (
+    <DevRequesterProvider>
+      <AppContent />
+    </DevRequesterProvider>
   )
 }
