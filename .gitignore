@@ -31,3 +31,6 @@ server/uploads/
 # Editor settings
 .vscode/
 .idea/
+
+# Scratch working notes, not part of any submission
+/temp.md
