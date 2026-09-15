@@ -166,14 +166,17 @@ and text (never color alone):
 
 ## 10. Visual Checklist (used for §8.8 UI Style Checking evidence)
 
-- [ ] No clipped labels at any breakpoint
-- [ ] No overlapping controls/messages at any breakpoint
-- [ ] No unintended horizontal scroll at any breakpoint
-- [ ] Editable vs. read-only fields are visually distinguishable at a glance
-- [ ] Required-field asterisks present and validation messages still shown even when the asterisk is visible
-- [ ] Button hierarchy (primary/secondary/tertiary/destructive) visually consistent across all three screens
-- [ ] Badge colors consistent between My Tickets and Ticket Detail
-- [ ] Loading/empty/no-results/failure states each visually distinct from one another
+- [x] No clipped labels at any breakpoint
+- [x] No overlapping controls/messages at any breakpoint
+- [x] No unintended horizontal scroll at any breakpoint
+- [x] Editable vs. read-only fields are visually distinguishable at a glance
+- [x] Required-field asterisks present and validation messages still shown even when the asterisk is visible
+- [x] Button hierarchy (primary/secondary/tertiary/destructive) visually consistent across all three screens
+- [x] Badge colors consistent between My Tickets and Ticket Detail
+- [x] Loading/empty/no-results/failure states each visually distinct from one another
+
+Verified manually against the running app during Issue 7 (see `tests.md`
+§4 for the same checklist with notes on what was fixed to pass it).
 
 ## 11. Screenshot Paths (for submission evidence)
 

@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { App } from '../../src/App.js'
+import { SystemStatusCheck } from '../../src/components/SystemStatusCheck.js'
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -24,7 +24,7 @@ describe('UI-02: loading state changes to category list', () => {
       })
     vi.stubGlobal('fetch', fetchMock)
 
-    render(<App />)
+    render(<SystemStatusCheck />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Check System' }))
 
