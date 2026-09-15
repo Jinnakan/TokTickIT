@@ -78,13 +78,13 @@ backfilled after the fact; Lab 3 does not repeat that).
 
 | Test ID | Requirement/AC | What It Tests | Expected Result | Automated Test File | Final |
 |---|---|---|---|---|---|
-| USER-01 | FR-L3-13 | `GET /api/users` with `search`/`role`/`isActive` filters | Correct subset returned, paginated | `server/tests/lab-03/users-admin.api.test.ts` | Planned |
-| USER-02 | AC-L3-14, BR-L3-19 | `POST /api/users` success | 201; `initialPassword` present in this response; a second `GET` for the same user never includes a password field | `server/tests/lab-03/users-admin.api.test.ts` | Planned |
-| USER-03 | — | `POST /api/users` with a duplicate email | 400 `EMAIL_TAKEN`; no row created | `server/tests/lab-03/users-admin.api.test.ts` | Planned |
-| USER-04 | FR-L3-16, BR-L3-19 | `POST /api/users/:id/reset-password` | 200; new `initialPassword` returned once; old password no longer authenticates; `mustChangePassword` set true | `server/tests/lab-03/users-admin.api.test.ts` | Planned |
-| USER-05 | AC-L3-15, BR-L3-18, FR-L3-17 | `POST /api/users/:id/deactivate` for a user with an active session | 200; `isActive: false`; that user's session row(s) deleted in the same transaction; a subsequent authenticated request with their old cookie returns 401 | `server/tests/lab-03/users-admin.api.test.ts` | Planned |
-| USER-06 | — | `POST /api/users/:id/deactivate` called twice | Idempotent; second call still 200, no error | `server/tests/lab-03/users-admin.api.test.ts` | Planned |
-| USER-07 | BR-L3-01 | `PATCH /api/users/:id` attempting to set a role to something other than the three valid enum values | 400; role remains a single value, never an array or multi-value field | `server/tests/lab-03/users-admin.api.test.ts` | Planned |
+| USER-01 | FR-L3-13 | `GET /api/users` with `search`/`role`/`isActive` filters | Correct subset returned, paginated | `server/tests/lab-03/users-admin.api.test.ts` | Pass |
+| USER-02 | AC-L3-14, BR-L3-19 | `POST /api/users` success | 201; `initialPassword` present in this response; a second `GET` for the same user never includes a password field | `server/tests/lab-03/users-admin.api.test.ts` | Pass |
+| USER-03 | — | `POST /api/users` with a duplicate email | 400 `EMAIL_TAKEN`; no row created | `server/tests/lab-03/users-admin.api.test.ts` | Pass |
+| USER-04 | FR-L3-16, BR-L3-19 | `POST /api/users/:id/reset-password` | 200; new `initialPassword` returned once; old password no longer authenticates; `mustChangePassword` set true | `server/tests/lab-03/users-admin.api.test.ts` | Pass |
+| USER-05 | AC-L3-15, BR-L3-18, FR-L3-17 | `POST /api/users/:id/deactivate` for a user with an active session | 200; `isActive: false`; that user's session row(s) deleted in the same transaction; a subsequent authenticated request with their old cookie returns 401 | `server/tests/lab-03/users-admin.api.test.ts` | Pass |
+| USER-06 | — | `POST /api/users/:id/deactivate` called twice | Idempotent; second call still 200, no error | `server/tests/lab-03/users-admin.api.test.ts` | Pass |
+| USER-07 | BR-L3-01 | `PATCH /api/users/:id` attempting to set a role to something other than the three valid enum values | 400; role remains a single value, never an array or multi-value field | `server/tests/lab-03/users-admin.api.test.ts` | Pass |
 
 ### Migration (Issue 14)
 
@@ -115,9 +115,9 @@ backfilled after the fact; Lab 3 does not repeat that).
 | UI-L3-07 | AC-L3-12 | Staff Ticket Detail status control | Only shows transitions valid from the current state (matches `api-spec.md` §4 table) | `client/tests/lab-03/StaffTicketDetail.test.tsx` | Pass |
 | UI-L3-08 | — | Staff Ticket Detail Internal Notes panel vs. Public Comments panel | Distinct visual treatment (different container class/background), both render independently | `client/tests/lab-03/StaffTicketDetail.test.tsx` | Pass |
 | UI-L3-09 | AC-L3-13 | Comment containing HTML-like text rendered in the panel | Displayed as literal text, not executed/injected as markup | `client/tests/lab-03/StaffTicketDetail.test.tsx` | Pass |
-| UI-L3-10 | AC-L3-14 | User Management Create User success | Initial password shown once in the confirmation panel | `client/tests/lab-03/UserManagement.test.tsx` | Planned |
-| UI-L3-11 | — | User Management Deactivate action | Requires confirmation before firing; confirmation text mentions ending active sessions | `client/tests/lab-03/UserManagement.test.tsx` | Planned |
-| UI-L3-12 | — | User Management filters | Search/Role/Active filters re-request the list with correct params | `client/tests/lab-03/UserManagement.test.tsx` | Planned |
+| UI-L3-10 | AC-L3-14 | User Management Create User success | Initial password shown once in the confirmation panel | `client/tests/lab-03/UserManagement.test.tsx` | Pass |
+| UI-L3-11 | — | User Management Deactivate action | Requires confirmation before firing; confirmation text mentions ending active sessions | `client/tests/lab-03/UserManagement.test.tsx` | Pass |
+| UI-L3-12 | — | User Management filters | Search/Role/Active filters re-request the list with correct params | `client/tests/lab-03/UserManagement.test.tsx` | Pass |
 
 ### Responsive / Visual
 
@@ -126,7 +126,7 @@ backfilled after the fact; Lab 3 does not repeat that).
 | VIS-L3-01 | AC-L3-18 | Login/Change Password at 375/768/1280px | No clipping/overlap/horizontal scroll | Manual browser verification | Pass |
 | VIS-L3-02 | AC-L3-18 | Ticket Queue at 375/768/1280px | Table→card transition, filters remain usable | Manual browser verification | Pass |
 | VIS-L3-03 | AC-L3-18 | Staff Ticket Detail at 375/768/1280px | Internal Notes panel stays visually distinct at every width, Comments/Notes remain usable | Manual browser verification | Pass |
-| VIS-L3-04 | AC-L3-18 | User Management at 375/768/1280px | List/card transition, Create/Edit forms usable at all widths | Manual browser verification | Planned |
+| VIS-L3-04 | AC-L3-18 | User Management at 375/768/1280px | List/card transition, Create/Edit forms usable at all widths | Manual browser verification | Pass |
 
 ### E2E (built incrementally, per temp.md gotcha #4)
 
@@ -134,7 +134,7 @@ backfilled after the fact; Lab 3 does not repeat that).
 |---|---|---|---|---|---|
 | E2E-L3-01 | AC-L3-01, AC-L3-03 | Login → forced Change Password → land on role home screen | Mandatory password change is enforced end to end before any other action succeeds | `e2e/lab-03/authentication.spec.ts` | Pass |
 | E2E-L3-02 | AC-L3-09, AC-L3-10, AC-L3-12 | Login as IT Staff → open Queue → claim a ticket → change its status → post a comment and an internal note | Full staff workflow completes and each change is reflected back in the Queue | `e2e/lab-03/staff-ticket-flow.spec.ts` | Pass |
-| E2E-L3-03 | AC-L3-14, AC-L3-15 | Login as Administrator → create a user → deactivate a user with an active session in another browser context | Created user's password shown once; deactivated user's session immediately rejected | `e2e/lab-03/user-administration.spec.ts` | Planned |
+| E2E-L3-03 | AC-L3-14, AC-L3-15 | Login as Administrator → create a user → deactivate a user with an active session in another browser context | Created user's password shown once; deactivated user's session immediately rejected | `e2e/lab-03/user-administration.spec.ts` | Pass |
 
 ## 3. Acceptance-Criterion Traceability
 
