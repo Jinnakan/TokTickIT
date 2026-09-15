@@ -90,8 +90,8 @@ backfilled after the fact; Lab 3 does not repeat that).
 
 | Test ID | Requirement/AC | What It Tests | Expected Result | Automated Test File | Final |
 |---|---|---|---|---|---|
-| MIG-01 | AC-L3-17 | DevRequester → User migration run against seeded Lab 2 data | Every pre-existing Ticket's requester resolves correctly to the migrated User row | `server/tests/lab-03/data-model.migration.test.ts` | Planned |
-| MIG-02 | — | Seed script run twice | Idempotent; seed minimums (≥4 active+1 inactive Requester, ≥3 active+1 inactive IT Staff, ≥1 Administrator) hold after either run, no duplicate rows | `server/tests/lab-03/data-model.migration.test.ts` | Planned |
+| MIG-01 | AC-L3-17 | DevRequester → User migration run against seeded Lab 2 data | Every pre-existing Ticket's requester resolves correctly to the migrated User row | `server/tests/lab-03/data-model.migration.test.ts` | Pass |
+| MIG-02 | — | Seed script run twice | Idempotent; seed minimums (≥4 active+1 inactive Requester, ≥3 active+1 inactive IT Staff, ≥1 Administrator) hold after either run, no duplicate rows | `server/tests/lab-03/data-model.migration.test.ts` | Pass |
 
 ### Security Sweep (Issue 21)
 

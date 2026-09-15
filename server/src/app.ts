@@ -44,8 +44,8 @@ app.get('/api/related-systems', async (_request, response, next) => {
 
 app.get('/api/dev-requesters', async (_request, response, next) => {
   try {
-    const requesters = await prisma.devRequester.findMany({
-      where: { isActive: true },
+    const requesters = await prisma.user.findMany({
+      where: { role: 'REQUESTER', isActive: true },
       select: { id: true, name: true, email: true },
       orderBy: { id: 'asc' },
     })
