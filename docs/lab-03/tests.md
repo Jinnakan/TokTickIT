@@ -43,11 +43,11 @@ backfilled after the fact; Lab 3 does not repeat that).
 
 | Test ID | Requirement/AC | What It Tests | Expected Result | Automated Test File | Final |
 |---|---|---|---|---|---|
-| QUEUE-01 | AC-L3-09 | `GET /api/tickets` as IT Staff, tickets from multiple requesters seeded | All requesters' tickets appear (not scoped to one) | `server/tests/lab-03/staff-queue.api.test.ts` | Planned |
-| QUEUE-02 | — | `?unassignedOnly=true` | Only tickets with `ticketOwnerId: null` returned | `server/tests/lab-03/staff-queue.api.test.ts` | Planned |
-| QUEUE-03 | — | `?ticketOwnerId=<id>` | Only tickets claimed by that IT Staff member returned | `server/tests/lab-03/staff-queue.api.test.ts` | Planned |
-| QUEUE-04 | BR-L3-11 | `?sortBy=` a field outside the Builder's allowlist | 400 `VALIDATION_FAILED`, no raw fragment reaches Prisma | `server/tests/lab-03/staff-queue.api.test.ts` | Planned |
-| QUEUE-05 | — | `TicketQueryBuilder` unit-level: chained `.withSearch().withStatus().sortBy().paginate().build()` | Produces the expected Prisma `where`/`orderBy`/`skip`/`take` shape | `server/tests/lab-03/staff-queue.api.test.ts` | Planned |
+| QUEUE-01 | AC-L3-09 | `GET /api/tickets` as IT Staff, tickets from multiple requesters seeded | All requesters' tickets appear (not scoped to one) | `server/tests/lab-03/staff-queue.api.test.ts` | Pass |
+| QUEUE-02 | — | `?unassignedOnly=true` | Only tickets with `ticketOwnerId: null` returned | `server/tests/lab-03/staff-queue.api.test.ts` | Pass |
+| QUEUE-03 | — | `?ticketOwnerId=<id>` | Only tickets claimed by that IT Staff member returned | `server/tests/lab-03/staff-queue.api.test.ts` | Pass |
+| QUEUE-04 | BR-L3-11 | `?sortBy=` a field outside the Builder's allowlist | 400 `VALIDATION_FAILED`, no raw fragment reaches Prisma | `server/tests/lab-03/staff-queue.api.test.ts` | Pass |
+| QUEUE-05 | — | `TicketQueryBuilder` unit-level: chained `.withSearch().withStatus().sortBy().paginate().build()` | Produces the expected Prisma `where`/`orderBy`/`skip`/`take` shape | `server/tests/lab-03/staff-queue.api.test.ts` | Pass |
 
 ### API — Staff Ticket Detail and Status Workflow (Issue 19)
 
@@ -110,8 +110,8 @@ backfilled after the fact; Lab 3 does not repeat that).
 | UI-L3-02 | — | Login success | Redirects to the role-appropriate screen | `client/tests/lab-03/Login.test.tsx` | Pass |
 | UI-L3-03 | AC-L3-03 | `mustChangePassword` true | App redirects to Change Password from any route attempt | `client/tests/lab-03/ChangePassword.test.tsx` | Pass |
 | UI-L3-04 | — | Change Password field mismatch | Field-level validation blocks submit | `client/tests/lab-03/ChangePassword.test.tsx` | Pass |
-| UI-L3-05 | AC-L3-09 | Ticket Queue renders tickets from multiple requesters | Requester column shows varying names, not scoped to one | `client/tests/lab-03/StaffTicketQueue.test.tsx` | Planned |
-| UI-L3-06 | — | Ticket Queue filter controls | Changing a filter re-requests with the correct query params | `client/tests/lab-03/StaffTicketQueue.test.tsx` | Planned |
+| UI-L3-05 | AC-L3-09 | Ticket Queue renders tickets from multiple requesters | Requester column shows varying names, not scoped to one | `client/tests/lab-03/StaffTicketQueue.test.tsx` | Pass |
+| UI-L3-06 | — | Ticket Queue filter controls | Changing a filter re-requests with the correct query params | `client/tests/lab-03/StaffTicketQueue.test.tsx` | Pass |
 | UI-L3-07 | AC-L3-12 | Staff Ticket Detail status control | Only shows transitions valid from the current state (matches `api-spec.md` §4 table) | `client/tests/lab-03/StaffTicketDetail.test.tsx` | Planned |
 | UI-L3-08 | — | Staff Ticket Detail Internal Notes panel vs. Public Comments panel | Distinct visual treatment (different container class/background), both render independently | `client/tests/lab-03/StaffTicketDetail.test.tsx` | Planned |
 | UI-L3-09 | AC-L3-13 | Comment containing HTML-like text rendered in the panel | Displayed as literal text, not executed/injected as markup | `client/tests/lab-03/StaffTicketDetail.test.tsx` | Planned |
@@ -124,7 +124,7 @@ backfilled after the fact; Lab 3 does not repeat that).
 | Test ID | Requirement/AC | What It Tests | Expected Result | Method | Final |
 |---|---|---|---|---|---|
 | VIS-L3-01 | AC-L3-18 | Login/Change Password at 375/768/1280px | No clipping/overlap/horizontal scroll | Manual browser verification | Pass |
-| VIS-L3-02 | AC-L3-18 | Ticket Queue at 375/768/1280px | Table→card transition, filters remain usable | Manual browser verification | Planned |
+| VIS-L3-02 | AC-L3-18 | Ticket Queue at 375/768/1280px | Table→card transition, filters remain usable | Manual browser verification | Pass |
 | VIS-L3-03 | AC-L3-18 | Staff Ticket Detail at 375/768/1280px | Internal Notes panel stays visually distinct at every width, Comments/Notes remain usable | Manual browser verification | Planned |
 | VIS-L3-04 | AC-L3-18 | User Management at 375/768/1280px | List/card transition, Create/Edit forms usable at all widths | Manual browser verification | Planned |
 
@@ -164,7 +164,7 @@ backfilled after the fact; Lab 3 does not repeat that).
 Tracks `ui-spec.md` §9, updated as each screen ships (not backfilled):
 
 - [ ] Login / Change Password — pending Issue 15
-- [ ] Ticket Queue — pending Issue 18
+- [x] Ticket Queue — verified desktop/tablet/mobile in Issue 18
 - [ ] IT Staff Ticket Detail (incl. Internal Notes distinctness) — pending Issue 19
 - [ ] User Management — pending Issue 20
 

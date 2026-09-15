@@ -12,11 +12,30 @@ export const PRIORITY_LABELS: Record<Priority, string> = {
   HIGH: 'High',
 }
 
-export const TICKET_STATUSES = ['NEW'] as const
+// Grown from Lab 2's NEW-only value to the full Lab 3 state machine
+// (specification.md BR-L3-13) so the IT Staff Queue can filter/sort by
+// any status, not just NEW.
+export const TICKET_STATUSES = [
+  'NEW',
+  'OPEN',
+  'IN_PROGRESS',
+  'WAITING_FOR_REQUESTER',
+  'RESOLVED',
+  'CLOSED',
+  'REOPENED',
+  'CANCELLED',
+] as const
 export type TicketStatusValue = (typeof TICKET_STATUSES)[number]
 
 export const STATUS_LABELS: Record<TicketStatusValue, string> = {
   NEW: 'New',
+  OPEN: 'Open',
+  IN_PROGRESS: 'In Progress',
+  WAITING_FOR_REQUESTER: 'Waiting for Requester',
+  RESOLVED: 'Resolved',
+  CLOSED: 'Closed',
+  REOPENED: 'Reopened',
+  CANCELLED: 'Cancelled',
 }
 
 export const TICKET_SORT_FIELDS = ['createdAt', 'ticketNumber', 'summary'] as const
