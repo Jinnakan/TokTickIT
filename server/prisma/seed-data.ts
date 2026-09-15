@@ -52,6 +52,12 @@ export const activeAdministrators = [
   { name: 'Morgan Kim', email: 'morgan.kim@toktickit.test' },
 ]
 
+// Dedicated account for exercising the mandatory first-login password
+// change (AC-L3-03) in e2e/lab-03/authentication.spec.ts and manual
+// verification -- always re-seeded with mustChangePassword: true, unlike
+// every other seeded account above.
+export const pendingPasswordChangeUser = { name: 'New Hire', email: 'new.hire@toktickit.test' }
+
 async function seedUser(
   prisma: PrismaClient,
   user: { name: string; email: string },
@@ -100,6 +106,12 @@ export async function runSeed(prisma: PrismaClient) {
   for (const admin of activeAdministrators) {
     await seedUser(prisma, admin, Role.ADMINISTRATOR, true, passwordHash)
   }
+
+  await prisma.user.upsert({
+    where: { email: pendingPasswordChangeUser.email },
+    update: { name: pendingPasswordChangeUser.name, role: Role.REQUESTER, isActive: true, passwordHash, mustChangePassword: true },
+    create: { ...pendingPasswordChangeUser, role: Role.REQUESTER, isActive: true, passwordHash, mustChangePassword: true },
+  })
 
   return {
     categoryCount: categoryNames.length,
