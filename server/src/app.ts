@@ -7,6 +7,10 @@ import { authRouter } from './auth/auth-router.js'
 import { commentsRouter } from './comments.js'
 import { notesRouter } from './notes.js'
 import { staffTicketActionsRouter } from './staff/staff-ticket-actions.js'
+import { usersRouter } from './users/users-router.js'
+import { registerSessionInvalidationListener } from './users/session-invalidation-listener.js'
+
+registerSessionInvalidationListener(prisma)
 
 export const app = express()
 
@@ -55,3 +59,4 @@ app.use('/api/tickets/:ticketId/notes', notesRouter)
 app.use('/api/tickets/:ticketId', staffTicketActionsRouter)
 app.use('/api/attachments', attachmentsRouter)
 app.use('/api/tickets', ticketsRouter)
+app.use('/api/users', usersRouter)

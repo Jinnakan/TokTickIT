@@ -1,12 +1,12 @@
 import { useState } from 'react'
 import { AppShell } from './components/AppShell.js'
 import { ChangePassword } from './components/ChangePassword.js'
-import { ComingSoon } from './components/ComingSoon.js'
 import { CreateTicketForm } from './components/CreateTicketForm.js'
 import { Login } from './components/Login.js'
 import { MyTicketsList } from './components/MyTicketsList.js'
 import { StaffTicketQueue } from './components/StaffTicketQueue.js'
 import { TicketDetail } from './components/TicketDetail.js'
+import { UserManagement } from './components/UserManagement.js'
 import { CurrentUserProvider, useCurrentUser } from './current-user-context.js'
 import { getNavItemsForRole } from './nav/role-navigation-factory.js'
 
@@ -28,7 +28,7 @@ function AuthenticatedApp() {
     }
 
     if (currentUser!.role === 'ADMINISTRATOR') {
-      return <ComingSoon feature="User Management" />
+      return <UserManagement />
     }
 
     if (openTicketId !== null) {
