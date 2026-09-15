@@ -24,7 +24,7 @@ function AuthenticatedApp() {
 
   function renderContent() {
     if (currentUser!.role === 'IT_STAFF') {
-      return <StaffTicketQueue />
+      return <StaffTicketQueue currentUserId={currentUser!.id} />
     }
 
     if (currentUser!.role === 'ADMINISTRATOR') {

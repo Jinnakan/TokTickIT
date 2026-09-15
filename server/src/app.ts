@@ -5,6 +5,8 @@ import { ticketsRouter } from './tickets.js'
 import { attachmentsRouter, ticketAttachmentsRouter } from './attachments.js'
 import { authRouter } from './auth/auth-router.js'
 import { commentsRouter } from './comments.js'
+import { notesRouter } from './notes.js'
+import { staffTicketActionsRouter } from './staff/staff-ticket-actions.js'
 
 export const app = express()
 
@@ -49,5 +51,7 @@ app.get('/api/related-systems', async (_request, response, next) => {
 app.use('/api/auth', authRouter)
 app.use('/api/tickets/:ticketId/attachments', ticketAttachmentsRouter)
 app.use('/api/tickets/:ticketId/comments', commentsRouter)
+app.use('/api/tickets/:ticketId/notes', notesRouter)
+app.use('/api/tickets/:ticketId', staffTicketActionsRouter)
 app.use('/api/attachments', attachmentsRouter)
 app.use('/api/tickets', ticketsRouter)

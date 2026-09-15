@@ -53,14 +53,14 @@ backfilled after the fact; Lab 3 does not repeat that).
 
 | Test ID | Requirement/AC | What It Tests | Expected Result | Automated Test File | Final |
 |---|---|---|---|---|---|
-| STAFF-01 | AC-L3-10 | `POST /api/tickets/:id/claim` on an unassigned ticket | 200; `ticketOwnerId` set to caller | `server/tests/lab-03/staff-ticket-detail.api.test.ts` | Planned |
-| STAFF-02 | — | `POST /api/tickets/:id/claim` on a ticket already claimed by someone else | 409 `ALREADY_CLAIMED` | `server/tests/lab-03/staff-ticket-detail.api.test.ts` | Planned |
-| STAFF-03 | — | `POST /api/tickets/:id/reassign` to an inactive or non-IT-Staff user id | 400 `VALIDATION_FAILED` | `server/tests/lab-03/staff-ticket-detail.api.test.ts` | Planned |
-| STAFF-04 | — | `PATCH /api/tickets/:id/priority` valid enum value | 200; `itPriority` updated, `requestedPriority` unchanged | `server/tests/lab-03/staff-ticket-detail.api.test.ts` | Planned |
-| STAFF-05 | AC-L3-11 | `PATCH /api/tickets/:id/status` `NEW` → `CLOSED` directly | 409 `INVALID_TRANSITION`; status unchanged | `server/tests/lab-03/staff-ticket-detail.api.test.ts` | Planned |
-| STAFF-06 | AC-L3-12 | `PATCH /api/tickets/:id/status` each allowed transition in the BR-L3-13 table | 200 for every listed pair; `currentStatus` updates | `server/tests/lab-03/staff-ticket-detail.api.test.ts` | Planned |
-| STAFF-07 | — | `PATCH /api/tickets/:id/status` from `CANCELLED` (terminal) to anything | 409 `INVALID_TRANSITION` for every target | `server/tests/lab-03/staff-ticket-detail.api.test.ts` | Planned |
-| STAFF-08 | — | Each `TicketState` subclass in isolation: `canTransitionTo()`/`allowedActions()` | Matches the BR-L3-13 table exactly, no database | `server/tests/lab-03/staff-ticket-detail.api.test.ts` | Planned |
+| STAFF-01 | AC-L3-10 | `POST /api/tickets/:id/claim` on an unassigned ticket | 200; `ticketOwnerId` set to caller | `server/tests/lab-03/staff-ticket-detail.api.test.ts` | Pass |
+| STAFF-02 | — | `POST /api/tickets/:id/claim` on a ticket already claimed by someone else | 409 `ALREADY_CLAIMED` | `server/tests/lab-03/staff-ticket-detail.api.test.ts` | Pass |
+| STAFF-03 | — | `POST /api/tickets/:id/reassign` to an inactive or non-IT-Staff user id | 400 `VALIDATION_FAILED` | `server/tests/lab-03/staff-ticket-detail.api.test.ts` | Pass |
+| STAFF-04 | — | `PATCH /api/tickets/:id/priority` valid enum value | 200; `itPriority` updated, `requestedPriority` unchanged | `server/tests/lab-03/staff-ticket-detail.api.test.ts` | Pass |
+| STAFF-05 | AC-L3-11 | `PATCH /api/tickets/:id/status` `NEW` → `CLOSED` directly | 409 `INVALID_TRANSITION`; status unchanged | `server/tests/lab-03/staff-ticket-detail.api.test.ts` | Pass |
+| STAFF-06 | AC-L3-12 | `PATCH /api/tickets/:id/status` each allowed transition in the BR-L3-13 table | 200 for every listed pair; `currentStatus` updates | `server/tests/lab-03/staff-ticket-detail.api.test.ts` | Pass |
+| STAFF-07 | — | `PATCH /api/tickets/:id/status` from `CANCELLED` (terminal) to anything | 409 `INVALID_TRANSITION` for every target | `server/tests/lab-03/staff-ticket-detail.api.test.ts` | Pass |
+| STAFF-08 | — | Each `TicketState` subclass in isolation: `canTransitionTo()`/`allowedActions()` | Matches the BR-L3-13 table exactly, no database | `server/tests/lab-03/staff-ticket-detail.api.test.ts` | Pass |
 
 ### API — Comments and Notes (Issues 17 and 19, shared file)
 
@@ -69,8 +69,8 @@ backfilled after the fact; Lab 3 does not repeat that).
 | CN-01 | FR-L3-07 | Requester posts a comment on their own ticket | 201; comment persisted, author correct | `server/tests/lab-03/comments-notes.api.test.ts` | Pass |
 | CN-02 | AC-L3-07 | Requester posts a comment on a ticket they don't own | 403 `TICKET_FORBIDDEN`; no row created | `server/tests/lab-03/comments-notes.api.test.ts` | Pass |
 | CN-03 | AC-L3-13, BR-L3-12 | Comment body containing `<script>`-like text | Stored verbatim; retrieval returns it as plain text data (no server-side transformation that would imply unsafe client rendering) | `server/tests/lab-03/comments-notes.api.test.ts` | Pass |
-| CN-04 | FR-L3-08 | IT Staff posts an internal note | 201; note persisted in `InternalNote`, not `PublicComment` | `server/tests/lab-03/comments-notes.api.test.ts` | Planned |
-| CN-05 | AC-L3-08, BR-L3-17 | Requester requests `GET /api/tickets/:id/notes` on their own ticket | 403 `FORBIDDEN`, not 404, not note content | `server/tests/lab-03/comments-notes.api.test.ts` | Planned |
+| CN-04 | FR-L3-08 | IT Staff posts an internal note | 201; note persisted in `InternalNote`, not `PublicComment` | `server/tests/lab-03/comments-notes.api.test.ts` | Pass |
+| CN-05 | AC-L3-08, BR-L3-17 | Requester requests `GET /api/tickets/:id/notes` on their own ticket | 403 `FORBIDDEN`, not 404, not note content | `server/tests/lab-03/comments-notes.api.test.ts` | Pass |
 | CN-06 | BR-L3-16 | No edit/delete endpoint exists for either Comments or Notes | Requests to nonexistent edit/delete routes return 404 (route absent, confirming append-only by construction) | `server/tests/lab-03/comments-notes.api.test.ts` | Pass |
 | CN-07 | — | Comments list ordering | Returned oldest-first (`createdAt` asc) | `server/tests/lab-03/comments-notes.api.test.ts` | Pass |
 
@@ -112,9 +112,9 @@ backfilled after the fact; Lab 3 does not repeat that).
 | UI-L3-04 | — | Change Password field mismatch | Field-level validation blocks submit | `client/tests/lab-03/ChangePassword.test.tsx` | Pass |
 | UI-L3-05 | AC-L3-09 | Ticket Queue renders tickets from multiple requesters | Requester column shows varying names, not scoped to one | `client/tests/lab-03/StaffTicketQueue.test.tsx` | Pass |
 | UI-L3-06 | — | Ticket Queue filter controls | Changing a filter re-requests with the correct query params | `client/tests/lab-03/StaffTicketQueue.test.tsx` | Pass |
-| UI-L3-07 | AC-L3-12 | Staff Ticket Detail status control | Only shows transitions valid from the current state (matches `api-spec.md` §4 table) | `client/tests/lab-03/StaffTicketDetail.test.tsx` | Planned |
-| UI-L3-08 | — | Staff Ticket Detail Internal Notes panel vs. Public Comments panel | Distinct visual treatment (different container class/background), both render independently | `client/tests/lab-03/StaffTicketDetail.test.tsx` | Planned |
-| UI-L3-09 | AC-L3-13 | Comment containing HTML-like text rendered in the panel | Displayed as literal text, not executed/injected as markup | `client/tests/lab-03/StaffTicketDetail.test.tsx` | Planned |
+| UI-L3-07 | AC-L3-12 | Staff Ticket Detail status control | Only shows transitions valid from the current state (matches `api-spec.md` §4 table) | `client/tests/lab-03/StaffTicketDetail.test.tsx` | Pass |
+| UI-L3-08 | — | Staff Ticket Detail Internal Notes panel vs. Public Comments panel | Distinct visual treatment (different container class/background), both render independently | `client/tests/lab-03/StaffTicketDetail.test.tsx` | Pass |
+| UI-L3-09 | AC-L3-13 | Comment containing HTML-like text rendered in the panel | Displayed as literal text, not executed/injected as markup | `client/tests/lab-03/StaffTicketDetail.test.tsx` | Pass |
 | UI-L3-10 | AC-L3-14 | User Management Create User success | Initial password shown once in the confirmation panel | `client/tests/lab-03/UserManagement.test.tsx` | Planned |
 | UI-L3-11 | — | User Management Deactivate action | Requires confirmation before firing; confirmation text mentions ending active sessions | `client/tests/lab-03/UserManagement.test.tsx` | Planned |
 | UI-L3-12 | — | User Management filters | Search/Role/Active filters re-request the list with correct params | `client/tests/lab-03/UserManagement.test.tsx` | Planned |
@@ -125,7 +125,7 @@ backfilled after the fact; Lab 3 does not repeat that).
 |---|---|---|---|---|---|
 | VIS-L3-01 | AC-L3-18 | Login/Change Password at 375/768/1280px | No clipping/overlap/horizontal scroll | Manual browser verification | Pass |
 | VIS-L3-02 | AC-L3-18 | Ticket Queue at 375/768/1280px | Table→card transition, filters remain usable | Manual browser verification | Pass |
-| VIS-L3-03 | AC-L3-18 | Staff Ticket Detail at 375/768/1280px | Internal Notes panel stays visually distinct at every width, Comments/Notes remain usable | Manual browser verification | Planned |
+| VIS-L3-03 | AC-L3-18 | Staff Ticket Detail at 375/768/1280px | Internal Notes panel stays visually distinct at every width, Comments/Notes remain usable | Manual browser verification | Pass |
 | VIS-L3-04 | AC-L3-18 | User Management at 375/768/1280px | List/card transition, Create/Edit forms usable at all widths | Manual browser verification | Planned |
 
 ### E2E (built incrementally, per temp.md gotcha #4)
@@ -133,7 +133,7 @@ backfilled after the fact; Lab 3 does not repeat that).
 | Test ID | Requirement/AC | What It Tests | Expected Result | Automated Test File | Final |
 |---|---|---|---|---|---|
 | E2E-L3-01 | AC-L3-01, AC-L3-03 | Login → forced Change Password → land on role home screen | Mandatory password change is enforced end to end before any other action succeeds | `e2e/lab-03/authentication.spec.ts` | Pass |
-| E2E-L3-02 | AC-L3-09, AC-L3-10, AC-L3-12 | Login as IT Staff → open Queue → claim a ticket → change its status → post a comment and an internal note | Full staff workflow completes and each change is reflected back in the Queue | `e2e/lab-03/staff-ticket-flow.spec.ts` | Planned |
+| E2E-L3-02 | AC-L3-09, AC-L3-10, AC-L3-12 | Login as IT Staff → open Queue → claim a ticket → change its status → post a comment and an internal note | Full staff workflow completes and each change is reflected back in the Queue | `e2e/lab-03/staff-ticket-flow.spec.ts` | Pass |
 | E2E-L3-03 | AC-L3-14, AC-L3-15 | Login as Administrator → create a user → deactivate a user with an active session in another browser context | Created user's password shown once; deactivated user's session immediately rejected | `e2e/lab-03/user-administration.spec.ts` | Planned |
 
 ## 3. Acceptance-Criterion Traceability

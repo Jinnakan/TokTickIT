@@ -38,10 +38,20 @@ const twoRequesterTickets = {
   meta: { page: 1, pageSize: 10, totalItems: 2, totalPages: 1 },
 }
 
+const relatedSystems = [{ id: 7, name: 'Corporate Laptop' }]
+
+const ticketOneDetail = {
+  ...twoRequesterTickets.data[0],
+  description: 'The laptop will not power on at all.',
+  allowedStatuses: ['OPEN', 'CANCELLED'],
+}
+
 function stubFetch(overrides: { onTicketsRequest?: (url: string) => void } = {}) {
   vi.stubGlobal('fetch', vi.fn(async (url: string) => {
     if (url === '/api/categories') return { ok: true, json: async () => categories } as Response
-    if (url.startsWith('/api/tickets')) {
+    if (url === '/api/related-systems') return { ok: true, json: async () => relatedSystems } as Response
+    if (url === '/api/tickets/1') return { ok: true, json: async () => ticketOneDetail } as Response
+    if (url.startsWith('/api/tickets?')) {
       overrides.onTicketsRequest?.(url)
       return { ok: true, json: async () => twoRequesterTickets } as Response
     }
@@ -62,7 +72,7 @@ describe('StaffTicketQueue', () => {
   it('renders tickets from multiple requesters, not scoped to one (UI-L3-05, AC-L3-09)', async () => {
     stubFetch()
 
-    render(<StaffTicketQueue />)
+    render(<StaffTicketQueue currentUserId={1} />)
 
     await waitFor(async () => {
       expect((await screen.findAllByText('Jennifer Anderson'))[0]).toBeInTheDocument()
@@ -76,7 +86,7 @@ describe('StaffTicketQueue', () => {
     let lastUrl = ''
     stubFetch({ onTicketsRequest: (url) => { lastUrl = url } })
 
-    render(<StaffTicketQueue />)
+    render(<StaffTicketQueue currentUserId={1} />)
     await screen.findAllByText('Jennifer Anderson')
 
     fireEvent.change(screen.getByLabelText('Filter by current status'), { target: { value: 'OPEN' } })
@@ -90,7 +100,7 @@ describe('StaffTicketQueue', () => {
     let lastUrl = ''
     stubFetch({ onTicketsRequest: (url) => { lastUrl = url } })
 
-    render(<StaffTicketQueue />)
+    render(<StaffTicketQueue currentUserId={1} />)
     await screen.findAllByText('Jennifer Anderson')
 
     fireEvent.click(screen.getByLabelText('Unassigned only'))
@@ -100,15 +110,16 @@ describe('StaffTicketQueue', () => {
     })
   })
 
-  it('shows a Ticket Detail placeholder when a row is clicked', async () => {
+  it('opens the real Staff Ticket Detail screen when a row is clicked', async () => {
     stubFetch()
 
-    render(<StaffTicketQueue />)
+    render(<StaffTicketQueue currentUserId={1} />)
     const [ticketCell] = await screen.findAllByText('TKT-2026-000001')
 
     fireEvent.click(ticketCell)
 
-    expect(await screen.findByText(/Ticket Detail for TKT-2026-000001/)).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: /Ticket TKT-2026-000001/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Claim Ticket' })).toBeInTheDocument()
   })
 
   it('shows the empty state when the queue has no tickets', async () => {
@@ -120,7 +131,7 @@ describe('StaffTicketQueue', () => {
       throw new Error(`Unexpected fetch: ${url}`)
     }))
 
-    render(<StaffTicketQueue />)
+    render(<StaffTicketQueue currentUserId={1} />)
 
     await waitFor(() => {
       expect(screen.getByText('No tickets in the queue yet.')).toBeInTheDocument()

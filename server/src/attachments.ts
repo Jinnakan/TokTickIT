@@ -22,7 +22,15 @@ import { unlink } from 'node:fs/promises'
 export const ticketAttachmentsRouter = Router({ mergeParams: true })
 export const attachmentsRouter = Router()
 
+// Upload/remove stay Requester-only (ui-spec.md §6: "IT Staff cannot
+// remove a Requester's attachment"). List/download additionally allow
+// IT Staff/Admin to view any ticket's attachments, matching Comments.
 const requireRequester = [requireSession, requirePasswordAlreadyChanged, requireRole('REQUESTER')]
+const requireReadAccess = [
+  requireSession,
+  requirePasswordAlreadyChanged,
+  requireRole('REQUESTER', 'IT_STAFF', 'ADMINISTRATOR'),
+]
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_FILE_SIZE_BYTES } })
 
@@ -46,6 +54,30 @@ function toInteger(value: unknown): number | null {
 }
 
 class AttachmentLimitReachedError extends Error {}
+
+/** Requester must own the ticket; IT Staff/Admin can read any ticket's attachments. */
+async function checkTicketReadAccess(
+  ticketId: number,
+  userId: number,
+  role: string,
+  response: Response,
+): Promise<boolean> {
+  if (role !== 'REQUESTER') {
+    const ticket = await prisma.ticket.findUnique({ where: { id: ticketId } })
+    if (!ticket) {
+      response.status(404).json({ error: 'TICKET_NOT_FOUND' })
+      return false
+    }
+    return true
+  }
+
+  const ownership = await resolveOwnedTicket(ticketId, userId)
+  if (ownership.status !== 'ok') {
+    respondOwnershipFailure(response, ownership, { notFound: 'TICKET_NOT_FOUND', forbidden: 'TICKET_FORBIDDEN' })
+    return false
+  }
+  return true
+}
 
 ticketAttachmentsRouter.post('/', ...requireRequester, handleUpload, async (request, response, next) => {
   try {
@@ -121,21 +153,18 @@ ticketAttachmentsRouter.post('/', ...requireRequester, handleUpload, async (requ
   }
 })
 
-ticketAttachmentsRouter.get('/', ...requireRequester, async (request, response, next) => {
+ticketAttachmentsRouter.get('/', ...requireReadAccess, async (request, response, next) => {
   try {
     const ticketId = toInteger(request.params.ticketId)
-    const requesterId = response.locals.userId as number
+    const userId = response.locals.userId as number
+    const role = response.locals.userRole as string
 
     if (ticketId === null) {
       response.status(404).json({ error: 'TICKET_NOT_FOUND' })
       return
     }
 
-    const ownership = await resolveOwnedTicket(ticketId, requesterId)
-    if (ownership.status !== 'ok') {
-      respondOwnershipFailure(response, ownership, { notFound: 'TICKET_NOT_FOUND', forbidden: 'TICKET_FORBIDDEN' })
-      return
-    }
+    if (!(await checkTicketReadAccess(ticketId, userId, role, response))) return
 
     const attachments = await prisma.attachment.findMany({
       where: { ticketId },
@@ -158,26 +187,36 @@ ticketAttachmentsRouter.get('/', ...requireRequester, async (request, response, 
   }
 })
 
-attachmentsRouter.get('/:id/download', ...requireRequester, async (request, response, next) => {
+attachmentsRouter.get('/:id/download', ...requireReadAccess, async (request, response, next) => {
   try {
     const attachmentId = toInteger(request.params.id)
-    const requesterId = response.locals.userId as number
+    const userId = response.locals.userId as number
+    const role = response.locals.userRole as string
 
     if (attachmentId === null) {
       response.status(404).json({ error: 'ATTACHMENT_NOT_FOUND' })
       return
     }
 
-    const ownership = await resolveOwnedAttachment(attachmentId, requesterId)
-    if (ownership.status !== 'ok') {
-      respondOwnershipFailure(response, ownership, {
-        notFound: 'ATTACHMENT_NOT_FOUND',
-        forbidden: 'ATTACHMENT_FORBIDDEN',
-      })
-      return
+    let attachment
+    if (role !== 'REQUESTER') {
+      attachment = await prisma.attachment.findUnique({ where: { id: attachmentId } })
+      if (!attachment) {
+        response.status(404).json({ error: 'ATTACHMENT_NOT_FOUND' })
+        return
+      }
+    } else {
+      const ownership = await resolveOwnedAttachment(attachmentId, userId)
+      if (ownership.status !== 'ok') {
+        respondOwnershipFailure(response, ownership, {
+          notFound: 'ATTACHMENT_NOT_FOUND',
+          forbidden: 'ATTACHMENT_FORBIDDEN',
+        })
+        return
+      }
+      attachment = ownership.value
     }
 
-    const attachment = ownership.value
     if (attachment.isRemoved) {
       response.status(410).json({ error: 'ATTACHMENT_REMOVED' })
       return
