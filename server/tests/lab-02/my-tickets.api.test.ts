@@ -28,8 +28,8 @@ async function createTicket(overrides: Partial<{
 
 beforeAll(async () => {
   const [requesterA, requesterB, category, relatedSystem] = await Promise.all([
-    prisma.devRequester.findFirstOrThrow({ where: { isActive: true }, orderBy: { id: 'asc' } }),
-    prisma.devRequester.findFirstOrThrow({ where: { isActive: true }, orderBy: { id: 'asc' }, skip: 1 }),
+    prisma.user.findFirstOrThrow({ where: { role: 'REQUESTER', isActive: true }, orderBy: { id: 'asc' } }),
+    prisma.user.findFirstOrThrow({ where: { role: 'REQUESTER', isActive: true }, orderBy: { id: 'asc' }, skip: 1 }),
     prisma.category.findFirstOrThrow({ where: { isActive: true } }),
     prisma.relatedSystem.findFirstOrThrow({ where: { isActive: true } }),
   ])

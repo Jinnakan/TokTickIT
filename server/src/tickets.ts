@@ -151,6 +151,7 @@ ticketsRouter.post('/', requireDevRequester, async (request, response, next) => 
           categoryId: categoryId as number,
           relatedSystemId: relatedSystemId as number,
           requestedPriority: requestedPriority as Priority,
+          itPriority: requestedPriority as Priority,
           summary,
           description,
         },

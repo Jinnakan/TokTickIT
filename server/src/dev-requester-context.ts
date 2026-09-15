@@ -15,9 +15,9 @@ export async function requireDevRequester(request: Request, response: Response, 
   }
 
   const requesterId = Number(headerValue)
-  const requester = await prisma.devRequester.findUnique({ where: { id: requesterId } })
+  const requester = await prisma.user.findUnique({ where: { id: requesterId } })
 
-  if (!requester || !requester.isActive) {
+  if (!requester || requester.role !== 'REQUESTER' || !requester.isActive) {
     response.status(400).json({
       error: 'DEV_REQUESTER_INVALID',
       message: 'Selected Development Requester is no longer available.',

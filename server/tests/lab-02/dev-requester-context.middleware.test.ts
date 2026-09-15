@@ -39,7 +39,7 @@ describe('requireDevRequester middleware', () => {
   })
 
   it('rejects an inactive requester id', async () => {
-    const inactive = await prisma.devRequester.findFirstOrThrow({ where: { isActive: false } })
+    const inactive = await prisma.user.findFirstOrThrow({ where: { role: 'REQUESTER', isActive: false } })
 
     const response = await request(buildTestApp())
       .get('/protected')
@@ -50,7 +50,7 @@ describe('requireDevRequester middleware', () => {
   })
 
   it('accepts an active requester id and sets res.locals.devRequesterId', async () => {
-    const active = await prisma.devRequester.findFirstOrThrow({ where: { isActive: true } })
+    const active = await prisma.user.findFirstOrThrow({ where: { role: 'REQUESTER', isActive: true } })
 
     const response = await request(buildTestApp())
       .get('/protected')

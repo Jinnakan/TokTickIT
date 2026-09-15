@@ -4,7 +4,7 @@ import { app } from '../../src/app.js'
 import { prisma } from '../../src/prisma.js'
 
 async function activeRequesterId(): Promise<number> {
-  const requester = await prisma.devRequester.findFirstOrThrow({ where: { isActive: true } })
+  const requester = await prisma.user.findFirstOrThrow({ where: { role: 'REQUESTER', isActive: true } })
   return requester.id
 }
 
