@@ -66,13 +66,13 @@ backfilled after the fact; Lab 3 does not repeat that).
 
 | Test ID | Requirement/AC | What It Tests | Expected Result | Automated Test File | Final |
 |---|---|---|---|---|---|
-| CN-01 | FR-L3-07 | Requester posts a comment on their own ticket | 201; comment persisted, author correct | `server/tests/lab-03/comments-notes.api.test.ts` | Planned |
-| CN-02 | AC-L3-07 | Requester posts a comment on a ticket they don't own | 403 `TICKET_FORBIDDEN`; no row created | `server/tests/lab-03/comments-notes.api.test.ts` | Planned |
-| CN-03 | AC-L3-13, BR-L3-12 | Comment body containing `<script>`-like text | Stored verbatim; retrieval returns it as plain text data (no server-side transformation that would imply unsafe client rendering) | `server/tests/lab-03/comments-notes.api.test.ts` | Planned |
+| CN-01 | FR-L3-07 | Requester posts a comment on their own ticket | 201; comment persisted, author correct | `server/tests/lab-03/comments-notes.api.test.ts` | Pass |
+| CN-02 | AC-L3-07 | Requester posts a comment on a ticket they don't own | 403 `TICKET_FORBIDDEN`; no row created | `server/tests/lab-03/comments-notes.api.test.ts` | Pass |
+| CN-03 | AC-L3-13, BR-L3-12 | Comment body containing `<script>`-like text | Stored verbatim; retrieval returns it as plain text data (no server-side transformation that would imply unsafe client rendering) | `server/tests/lab-03/comments-notes.api.test.ts` | Pass |
 | CN-04 | FR-L3-08 | IT Staff posts an internal note | 201; note persisted in `InternalNote`, not `PublicComment` | `server/tests/lab-03/comments-notes.api.test.ts` | Planned |
 | CN-05 | AC-L3-08, BR-L3-17 | Requester requests `GET /api/tickets/:id/notes` on their own ticket | 403 `FORBIDDEN`, not 404, not note content | `server/tests/lab-03/comments-notes.api.test.ts` | Planned |
-| CN-06 | BR-L3-16 | No edit/delete endpoint exists for either Comments or Notes | Requests to nonexistent edit/delete routes return 404 (route absent, confirming append-only by construction) | `server/tests/lab-03/comments-notes.api.test.ts` | Planned |
-| CN-07 | — | Comments list ordering | Returned oldest-first (`createdAt` asc) | `server/tests/lab-03/comments-notes.api.test.ts` | Planned |
+| CN-06 | BR-L3-16 | No edit/delete endpoint exists for either Comments or Notes | Requests to nonexistent edit/delete routes return 404 (route absent, confirming append-only by construction) | `server/tests/lab-03/comments-notes.api.test.ts` | Pass |
+| CN-07 | — | Comments list ordering | Returned oldest-first (`createdAt` asc) | `server/tests/lab-03/comments-notes.api.test.ts` | Pass |
 
 ### API — Users/Administration (Issue 20)
 

@@ -27,6 +27,7 @@ function stubFetch(overrides: { ticketStatus?: number; ticketBody?: unknown } = 
     if (url === '/api/categories') return { ok: true, json: async () => categories } as Response
     if (url === '/api/related-systems') return { ok: true, json: async () => relatedSystems } as Response
     if (url === '/api/tickets/42/attachments') return { ok: true, json: async () => [] } as Response
+    if (url === '/api/tickets/42/comments') return { ok: true, json: async () => [] } as Response
     throw new Error(`Unexpected fetch: ${url}`)
   }))
 }
@@ -36,7 +37,7 @@ afterEach(() => {
 })
 
 describe('TicketDetail', () => {
-  it('renders ticket fields as read-only with no comment/status controls (AC-12)', async () => {
+  it('renders ticket fields as read-only with no status controls or Internal Notes (AC-12)', async () => {
     stubFetch()
 
     render(<TicketDetail ticketId={42} onBackToMyTickets={() => {}} />)
@@ -45,8 +46,13 @@ describe('TicketDetail', () => {
     expect(screen.getByText('Laptop battery drains quickly')).toBeInTheDocument()
     expect(screen.getByText('Hardware')).toBeInTheDocument()
     expect(screen.getByText('Corporate Laptop')).toBeInTheDocument()
-    expect(screen.queryByRole('textbox', { name: /comment/i })).not.toBeInTheDocument()
+    // Lab 2's Ticket Detail had no comment box at all; Lab 3 (Issue 17)
+    // intentionally adds Public Comments here (ui-spec.md §4.1) -- what
+    // still must never appear for a Requester is status controls or
+    // Internal Notes (IT Staff/Admin only, BR-L3-17).
+    expect(await screen.findByLabelText('Add a comment')).toBeInTheDocument()
     expect(screen.queryByText(/internal note/i)).not.toBeInTheDocument()
+    expect(screen.queryByRole('combobox', { name: /status/i })).not.toBeInTheDocument()
   })
 
   it('shows a not-found state for an unknown ticket', async () => {
