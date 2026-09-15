@@ -7,7 +7,8 @@ import {
   MAX_FILE_SIZE_BYTES,
 } from '@toktickit/shared'
 import { prisma } from './prisma.js'
-import { requireDevRequester } from './dev-requester-context.js'
+import { requireSession, requirePasswordAlreadyChanged } from './auth/require-session.js'
+import { requireRole } from './authorization/require-role.js'
 import { resolveOwnedTicket, resolveOwnedAttachment, respondOwnershipFailure } from './ticket-ownership.js'
 import {
   buildStoragePath,
@@ -20,6 +21,8 @@ import { unlink } from 'node:fs/promises'
 
 export const ticketAttachmentsRouter = Router({ mergeParams: true })
 export const attachmentsRouter = Router()
+
+const requireRequester = [requireSession, requirePasswordAlreadyChanged, requireRole('REQUESTER')]
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_FILE_SIZE_BYTES } })
 
@@ -44,10 +47,10 @@ function toInteger(value: unknown): number | null {
 
 class AttachmentLimitReachedError extends Error {}
 
-ticketAttachmentsRouter.post('/', requireDevRequester, handleUpload, async (request, response, next) => {
+ticketAttachmentsRouter.post('/', ...requireRequester, handleUpload, async (request, response, next) => {
   try {
     const ticketId = toInteger(request.params.ticketId)
-    const requesterId = response.locals.devRequesterId as number
+    const requesterId = response.locals.userId as number
 
     if (ticketId === null) {
       response.status(404).json({ error: 'TICKET_NOT_FOUND' })
@@ -118,10 +121,10 @@ ticketAttachmentsRouter.post('/', requireDevRequester, handleUpload, async (requ
   }
 })
 
-ticketAttachmentsRouter.get('/', requireDevRequester, async (request, response, next) => {
+ticketAttachmentsRouter.get('/', ...requireRequester, async (request, response, next) => {
   try {
     const ticketId = toInteger(request.params.ticketId)
-    const requesterId = response.locals.devRequesterId as number
+    const requesterId = response.locals.userId as number
 
     if (ticketId === null) {
       response.status(404).json({ error: 'TICKET_NOT_FOUND' })
@@ -155,10 +158,10 @@ ticketAttachmentsRouter.get('/', requireDevRequester, async (request, response, 
   }
 })
 
-attachmentsRouter.get('/:id/download', requireDevRequester, async (request, response, next) => {
+attachmentsRouter.get('/:id/download', ...requireRequester, async (request, response, next) => {
   try {
     const attachmentId = toInteger(request.params.id)
-    const requesterId = response.locals.devRequesterId as number
+    const requesterId = response.locals.userId as number
 
     if (attachmentId === null) {
       response.status(404).json({ error: 'ATTACHMENT_NOT_FOUND' })
@@ -193,10 +196,10 @@ attachmentsRouter.get('/:id/download', requireDevRequester, async (request, resp
   }
 })
 
-attachmentsRouter.delete('/:id', requireDevRequester, async (request, response, next) => {
+attachmentsRouter.delete('/:id', ...requireRequester, async (request, response, next) => {
   try {
     const attachmentId = toInteger(request.params.id)
-    const requesterId = response.locals.devRequesterId as number
+    const requesterId = response.locals.userId as number
 
     if (attachmentId === null) {
       response.status(404).json({ error: 'ATTACHMENT_NOT_FOUND' })

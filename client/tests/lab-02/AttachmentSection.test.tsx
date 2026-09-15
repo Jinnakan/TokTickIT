@@ -39,7 +39,7 @@ describe('AttachmentSection', () => {
   it('shows removed-attachment metadata but no download control for it (AC-13)', async () => {
     stubFetch([removedAttachment])
 
-    render(<AttachmentSection ticketId={42} requesterId={1} />)
+    render(<AttachmentSection ticketId={42} />)
 
     expect(await screen.findByText('old-screenshot.png')).toBeInTheDocument()
     expect(screen.getByText(/Uploaded the wrong file/)).toBeInTheDocument()
@@ -50,7 +50,7 @@ describe('AttachmentSection', () => {
   it('blocks removal submission until a reason is provided (AC-14)', async () => {
     stubFetch([activeAttachment])
 
-    render(<AttachmentSection ticketId={42} requesterId={1} />)
+    render(<AttachmentSection ticketId={42} />)
 
     const removeButton = await screen.findByRole('button', { name: 'Remove' })
     fireEvent.click(removeButton)
@@ -63,7 +63,7 @@ describe('AttachmentSection', () => {
 
   it('rejects a disallowed file type client-side without calling the upload API', async () => {
     stubFetch([])
-    render(<AttachmentSection ticketId={42} requesterId={1} />)
+    render(<AttachmentSection ticketId={42} />)
 
     const fileInput = await screen.findByLabelText('Add attachment')
     const badFile = new File(['not an image'], 'malware.exe', { type: 'application/octet-stream' })

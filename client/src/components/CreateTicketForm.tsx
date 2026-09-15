@@ -12,11 +12,9 @@ import type { CreateTicketInput, FieldErrors, Priority, Ticket } from '../types/
 type ReferenceStatus = 'loading' | 'ready' | 'error'
 
 export function CreateTicketForm({
-  requesterId,
   requesterName,
   onViewMyTickets,
 }: {
-  requesterId: number
   requesterName: string
   onViewMyTickets?: () => void
 }) {
@@ -91,7 +89,7 @@ export function CreateTicketForm({
 
     setIsSubmitting(true)
     try {
-      const ticket = await createTicket(input, requesterId)
+      const ticket = await createTicket(input)
       setCreatedTicket(ticket)
     } catch (error) {
       if (error instanceof TicketValidationError) {

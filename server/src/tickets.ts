@@ -2,7 +2,8 @@ import { randomUUID } from 'node:crypto'
 import { Router } from 'express'
 import type { Prisma, Priority, TicketStatus } from '@prisma/client'
 import { prisma } from './prisma.js'
-import { requireDevRequester } from './dev-requester-context.js'
+import { requireSession, requirePasswordAlreadyChanged } from './auth/require-session.js'
+import { requireRole } from './authorization/require-role.js'
 import { resolveOwnedTicket, respondOwnershipFailure } from './ticket-ownership.js'
 import {
   DEFAULT_PAGE,
@@ -19,6 +20,13 @@ import {
 } from '@toktickit/shared'
 
 export const ticketsRouter = Router()
+
+const requireRequester = [requireSession, requirePasswordAlreadyChanged, requireRole('REQUESTER')]
+const requireAnyAuthenticatedRole = [
+  requireSession,
+  requirePasswordAlreadyChanged,
+  requireRole('REQUESTER', 'IT_STAFF', 'ADMINISTRATOR'),
+]
 
 type CreateTicketBody = {
   categoryId?: unknown
@@ -104,7 +112,7 @@ function parseTicketListQuery(query: Record<string, unknown>): { query: TicketLi
   }
 }
 
-ticketsRouter.post('/', requireDevRequester, async (request, response, next) => {
+ticketsRouter.post('/', ...requireRequester, async (request, response, next) => {
   try {
     const body = request.body as CreateTicketBody
 
@@ -141,7 +149,7 @@ ticketsRouter.post('/', requireDevRequester, async (request, response, next) => 
       return
     }
 
-    const requesterId = response.locals.devRequesterId as number
+    const requesterId = response.locals.userId as number
 
     const ticket = await prisma.$transaction(async (tx) => {
       const created = await tx.ticket.create({
@@ -169,7 +177,7 @@ ticketsRouter.post('/', requireDevRequester, async (request, response, next) => 
   }
 })
 
-ticketsRouter.get('/', requireDevRequester, async (request, response, next) => {
+ticketsRouter.get('/', ...requireRequester, async (request, response, next) => {
   try {
     const { query, errors } = parseTicketListQuery(request.query as Record<string, unknown>)
 
@@ -178,7 +186,7 @@ ticketsRouter.get('/', requireDevRequester, async (request, response, next) => {
       return
     }
 
-    const requesterId = response.locals.devRequesterId as number
+    const requesterId = response.locals.userId as number
 
     const where: Prisma.TicketWhereInput = {
       requesterId,
@@ -229,17 +237,32 @@ ticketsRouter.get('/', requireDevRequester, async (request, response, next) => {
   }
 })
 
-ticketsRouter.get('/:id', requireDevRequester, async (request, response, next) => {
+// Role: REQ (own only), IT, ADM (any) -- api-spec.md §4. IT Staff/Admin have
+// no UI to reach this yet (Issues 18/19), but the access rule is cheap and
+// correct to implement alongside the Requester path now rather than redone
+// later.
+ticketsRouter.get('/:id', ...requireAnyAuthenticatedRole, async (request, response, next) => {
   try {
     const ticketId = toInteger(request.params.id)
-    const requesterId = response.locals.devRequesterId as number
+    const userId = response.locals.userId as number
+    const role = response.locals.userRole as string
 
     if (ticketId === null) {
       response.status(404).json({ error: 'TICKET_NOT_FOUND' })
       return
     }
 
-    const result = await resolveOwnedTicket(ticketId, requesterId)
+    if (role !== 'REQUESTER') {
+      const ticket = await prisma.ticket.findUnique({ where: { id: ticketId } })
+      if (!ticket) {
+        response.status(404).json({ error: 'TICKET_NOT_FOUND' })
+        return
+      }
+      response.status(200).json(ticket)
+      return
+    }
+
+    const result = await resolveOwnedTicket(ticketId, userId)
     if (result.status !== 'ok') {
       respondOwnershipFailure(response, result, { notFound: 'TICKET_NOT_FOUND', forbidden: 'TICKET_FORBIDDEN' })
       return

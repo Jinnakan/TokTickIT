@@ -19,11 +19,9 @@ function formatDate(iso: string): string {
 
 export function TicketDetail({
   ticketId,
-  requesterId,
   onBackToMyTickets,
 }: {
   ticketId: number
-  requesterId: number
   onBackToMyTickets: () => void
 }) {
   const [status, setStatus] = useState<Status>('loading')
@@ -36,7 +34,7 @@ export function TicketDetail({
     setStatus('loading')
 
     Promise.all([
-      fetchTicket(ticketId, requesterId),
+      fetchTicket(ticketId),
       fetchActiveCategories(),
       fetchActiveRelatedSystems(),
     ])
@@ -59,7 +57,7 @@ export function TicketDetail({
     return () => {
       ignore = true
     }
-  }, [ticketId, requesterId])
+  }, [ticketId])
 
   if (status === 'loading') {
     return (
@@ -137,7 +135,7 @@ export function TicketDetail({
         </div>
       </div>
 
-      <AttachmentSection ticketId={ticket.id} requesterId={requesterId} />
+      <AttachmentSection ticketId={ticket.id} />
     </div>
   )
 }

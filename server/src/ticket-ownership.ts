@@ -1,11 +1,9 @@
-import type { Response } from 'express'
 import type { Attachment, Ticket } from '@prisma/client'
 import { prisma } from './prisma.js'
+import type { OwnershipResult } from './authorization/ownership.js'
 
-export type OwnershipResult<T> =
-  | { status: 'ok'; value: T }
-  | { status: 'not_found' }
-  | { status: 'forbidden' }
+export type { OwnershipResult } from './authorization/ownership.js'
+export { respondOwnershipFailure } from './authorization/ownership.js'
 
 /**
  * Every Ticket/Attachment lookup in this app goes through one of these two
@@ -31,17 +29,4 @@ export async function resolveOwnedAttachment(
   if (!attachment) return { status: 'not_found' }
   if (attachment.ticket.requesterId !== requesterId) return { status: 'forbidden' }
   return { status: 'ok', value: attachment }
-}
-
-/** Writes the 404/403 response for a non-'ok' OwnershipResult. Never call this with 'ok'. */
-export function respondOwnershipFailure(
-  response: Response,
-  result: { status: 'not_found' } | { status: 'forbidden' },
-  errorCodes: { notFound: string; forbidden: string },
-): void {
-  if (result.status === 'not_found') {
-    response.status(404).json({ error: errorCodes.notFound })
-    return
-  }
-  response.status(403).json({ error: errorCodes.forbidden })
 }

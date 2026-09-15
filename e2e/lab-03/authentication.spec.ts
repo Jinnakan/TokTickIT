@@ -27,11 +27,10 @@ test.describe('Authentication', () => {
     await page.getByLabel('Confirm New Password *').fill(newPassword)
     await page.getByRole('button', { name: 'Save' }).click()
 
-    // Password change succeeded and the app is reachable (the existing Dev
-    // Requester selector still gates the rest of the app in Lab 3 Issue 15
-    // -- Issue 16/17 replace it with the real session-driven shell).
-    await expect(page.getByRole('heading', { name: 'TokTickIT' })).toBeVisible()
-    await expect(page.getByText('Select Development Requester')).toBeVisible()
+    // Password change succeeded and the real session-driven shell is
+    // reachable (Issue 16 removed the Dev Requester selector).
+    await expect(page.getByRole('button', { name: 'My Tickets' })).toBeVisible()
+    await expect(page.getByText('New Hire')).toBeVisible()
   })
 
   test('rejects an invalid password with a generic message and no redirect (AC-L3-02)', async ({ page }) => {

@@ -45,20 +45,6 @@ app.get('/api/related-systems', async (_request, response, next) => {
   }
 })
 
-app.get('/api/dev-requesters', async (_request, response, next) => {
-  try {
-    const requesters = await prisma.user.findMany({
-      where: { role: 'REQUESTER', isActive: true },
-      select: { id: true, name: true, email: true },
-      orderBy: { id: 'asc' },
-    })
-
-    response.status(200).json(requesters)
-  } catch (error) {
-    next(error)
-  }
-})
-
 app.use('/api/auth', authRouter)
 app.use('/api/tickets/:ticketId/attachments', ticketAttachmentsRouter)
 app.use('/api/attachments', attachmentsRouter)

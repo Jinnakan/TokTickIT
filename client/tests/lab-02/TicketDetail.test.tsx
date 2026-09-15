@@ -39,7 +39,7 @@ describe('TicketDetail', () => {
   it('renders ticket fields as read-only with no comment/status controls (AC-12)', async () => {
     stubFetch()
 
-    render(<TicketDetail ticketId={42} requesterId={1} onBackToMyTickets={() => {}} />)
+    render(<TicketDetail ticketId={42} onBackToMyTickets={() => {}} />)
 
     expect(await screen.findByText('TKT-2026-000042')).toBeInTheDocument()
     expect(screen.getByText('Laptop battery drains quickly')).toBeInTheDocument()
@@ -52,7 +52,7 @@ describe('TicketDetail', () => {
   it('shows a not-found state for an unknown ticket', async () => {
     stubFetch({ ticketStatus: 404, ticketBody: { error: 'TICKET_NOT_FOUND' } })
 
-    render(<TicketDetail ticketId={42} requesterId={1} onBackToMyTickets={() => {}} />)
+    render(<TicketDetail ticketId={42} onBackToMyTickets={() => {}} />)
 
     expect(await screen.findByText('Ticket not found.')).toBeInTheDocument()
   })
@@ -60,7 +60,7 @@ describe('TicketDetail', () => {
   it('shows an access-denied state for a ticket owned by a different Requester (AC-03)', async () => {
     stubFetch({ ticketStatus: 403, ticketBody: { error: 'TICKET_FORBIDDEN' } })
 
-    render(<TicketDetail ticketId={42} requesterId={1} onBackToMyTickets={() => {}} />)
+    render(<TicketDetail ticketId={42} onBackToMyTickets={() => {}} />)
 
     expect(await screen.findByText('You do not have access to this ticket.')).toBeInTheDocument()
   })

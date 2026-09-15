@@ -1,68 +1,77 @@
 import { useState } from 'react'
 import { AppShell } from './components/AppShell.js'
+import { ChangePassword } from './components/ChangePassword.js'
+import { ComingSoon } from './components/ComingSoon.js'
 import { CreateTicketForm } from './components/CreateTicketForm.js'
-import { DevRequesterSelection } from './components/DevRequesterSelection.js'
+import { Login } from './components/Login.js'
 import { MyTicketsList } from './components/MyTicketsList.js'
 import { TicketDetail } from './components/TicketDetail.js'
-import { DevRequesterProvider, useDevRequester } from './dev-requester-context.js'
+import { CurrentUserProvider, useCurrentUser } from './current-user-context.js'
+import { getNavItemsForRole } from './nav/role-navigation-factory.js'
 
-export type AppView = 'my-tickets' | 'create-ticket'
-
-function AppContent() {
-  const { selectedRequester } = useDevRequester()
-  const [activeView, setActiveView] = useState<AppView>('my-tickets')
+function AuthenticatedApp() {
+  const { currentUser } = useCurrentUser()
+  const [activeKey, setActiveKey] = useState(() => getNavItemsForRole(currentUser!.role)[0]?.key ?? '')
   const [openTicketId, setOpenTicketId] = useState<number | null>(null)
 
-  if (!selectedRequester) {
-    return <DevRequesterSelection />
-  }
+  if (!currentUser) return null // unreachable -- caller only renders this once currentUser exists
 
-  function navigate(view: AppView) {
+  function navigate(key: string) {
     setOpenTicketId(null)
-    setActiveView(view)
+    setActiveKey(key)
   }
 
   function renderContent() {
+    if (currentUser!.role !== 'REQUESTER') {
+      return <ComingSoon feature={activeKey === 'ticket-queue' ? 'Ticket Queue' : 'User Management'} />
+    }
+
     if (openTicketId !== null) {
-      return (
-        <TicketDetail
-          ticketId={openTicketId}
-          requesterId={selectedRequester!.id}
-          onBackToMyTickets={() => setOpenTicketId(null)}
-        />
-      )
+      return <TicketDetail ticketId={openTicketId} onBackToMyTickets={() => setOpenTicketId(null)} />
     }
 
-    if (activeView === 'my-tickets') {
-      return (
-        <MyTicketsList
-          requesterId={selectedRequester!.id}
-          onCreateTicket={() => navigate('create-ticket')}
-          onOpenTicket={setOpenTicketId}
-        />
-      )
+    if (activeKey === 'create-ticket') {
+      return <CreateTicketForm requesterName={currentUser!.name} onViewMyTickets={() => navigate('my-tickets')} />
     }
 
-    return (
-      <CreateTicketForm
-        requesterId={selectedRequester!.id}
-        requesterName={selectedRequester!.name}
-        onViewMyTickets={() => navigate('my-tickets')}
-      />
-    )
+    return <MyTicketsList onCreateTicket={() => navigate('create-ticket')} onOpenTicket={setOpenTicketId} />
   }
 
   return (
-    <AppShell activeView={activeView} onNavigate={navigate}>
+    <AppShell activeKey={activeKey} onNavigate={navigate}>
       {renderContent()}
     </AppShell>
   )
 }
 
+function AppGate() {
+  const { currentUser, status, refresh } = useCurrentUser()
+
+  if (status === 'loading') {
+    return (
+      <main className="app-shell d-flex align-items-center justify-content-center py-5">
+        <p className="status-message text-body-secondary" role="status">
+          <span aria-hidden="true">⌛</span> Loading…
+        </p>
+      </main>
+    )
+  }
+
+  if (!currentUser) {
+    return <Login onLoggedIn={refresh} />
+  }
+
+  if (currentUser.mustChangePassword) {
+    return <ChangePassword mandatory onChanged={refresh} />
+  }
+
+  return <AuthenticatedApp />
+}
+
 export function App() {
   return (
-    <DevRequesterProvider>
-      <AppContent />
-    </DevRequesterProvider>
+    <CurrentUserProvider>
+      <AppGate />
+    </CurrentUserProvider>
   )
 }

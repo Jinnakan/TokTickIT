@@ -33,11 +33,11 @@ backfilled after the fact; Lab 3 does not repeat that).
 
 | Test ID | Requirement/AC | What It Tests | Expected Result | Automated Test File | Final |
 |---|---|---|---|---|---|
-| AUTHZ-01 | AC-L3-05 | Requester calling an IT-Staff-only endpoint (e.g. `GET /api/tickets` staff variant) | 403 `FORBIDDEN` | `server/tests/lab-03/authorization.api.test.ts` | Planned |
-| AUTHZ-02 | AC-L3-05 | IT Staff calling an Administrator-only endpoint (e.g. `POST /api/users`) | 403 `FORBIDDEN` | `server/tests/lab-03/authorization.api.test.ts` | Planned |
-| AUTHZ-03 | AC-L3-07 | Requester requesting `GET /api/tickets/:id` for a ticket they don't own | 403 `TICKET_FORBIDDEN` | `server/tests/lab-03/authorization.api.test.ts` | Planned |
-| AUTHZ-04 | BR-L3-10 | Every new resource type (User, Session, Comment, Note) exercised through the extended `OwnershipResult<T>` resolver | Resolver returns the correct discriminant (`ok`/`not-found`/`forbidden`) for owned/unowned/unknown ids | `server/tests/lab-03/authorization.api.test.ts` | Planned |
-| AUTHZ-05 | — | IT Staff and Administrator both calling a Requester-scoped-in-Lab-2 endpoint they should still be blocked from acting as (e.g. creating a ticket as a Requester alias) | 403 where role doesn't include Requester actions | `server/tests/lab-03/authorization.api.test.ts` | Planned |
+| AUTHZ-01 | AC-L3-05 | Requester calling an IT-Staff-only endpoint (e.g. `GET /api/tickets` staff variant) | 403 `FORBIDDEN` | `server/tests/lab-03/authorization.api.test.ts` | Pass |
+| AUTHZ-02 | AC-L3-05 | IT Staff calling an Administrator-only endpoint (e.g. `POST /api/users`) | 403 `FORBIDDEN` | `server/tests/lab-03/authorization.api.test.ts` | Pass |
+| AUTHZ-03 | AC-L3-07 | Requester requesting `GET /api/tickets/:id` for a ticket they don't own | 403 `TICKET_FORBIDDEN` | `server/tests/lab-03/authorization.api.test.ts` | Pass |
+| AUTHZ-04 | BR-L3-10 | Every new resource type (User, Session, Comment, Note) exercised through the extended `OwnershipResult<T>` resolver | Resolver returns the correct discriminant (`ok`/`not-found`/`forbidden`) for owned/unowned/unknown ids | `server/tests/lab-03/authorization.api.test.ts` | Pass |
+| AUTHZ-05 | — | IT Staff and Administrator both calling a Requester-scoped-in-Lab-2 endpoint they should still be blocked from acting as (e.g. creating a ticket as a Requester alias) | 403 where role doesn't include Requester actions | `server/tests/lab-03/authorization.api.test.ts` | Pass |
 
 ### API — Staff Queue (Issue 18)
 
@@ -183,6 +183,22 @@ exists and passes.
 
 ## 7. Known Limitations or Deferred Tests (anticipated)
 
+- **AUTHZ-01/02 test `requireRole` against a minimal test-only app, not a
+  real IT-Staff-only/Administrator-only endpoint.** No such endpoint exists
+  yet in Issue 16 (Ticket Queue lands in Issue 18, User Management in Issue
+  20); a small role-gated route mounted in the test file itself proves the
+  middleware works and will be re-exercised for real once those endpoints
+  exist, the same way Issue 15's AUTH-06 tested `requirePasswordAlreadyChanged`
+  before any real route needed it.
+- **AUTHZ-04 tests the generalized `OwnershipResult<T>`/`respondOwnershipFailure`
+  primitive directly, not a concrete User or Session resolver.** No route
+  needs to resolve ownership of a User or Session by id yet (Sessions are
+  only ever read via their own cookie, not a client-supplied id; User
+  ownership checks arrive with Issue 20's admin endpoints). Extending the
+  type into its own shared module in this issue is what makes reusing it
+  for Comments/Notes (Issue 17/19) and Users (Issue 20) require no further
+  refactor — a placeholder resolver with no caller was deliberately not
+  added just to have something resource-specific to test now.
 - E2E again covers golden paths only (per file, one flow each), matching
   Lab 2's documented scope decision — not a gap to fix, a repeated
   trade-off recorded up front this time instead of discovered at the end.

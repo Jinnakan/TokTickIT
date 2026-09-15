@@ -1,5 +1,4 @@
 import type { Attachment } from '../types/attachment.js'
-import { devRequesterHeaders } from './http.js'
 
 export class AttachmentUploadError extends Error {
   code: string
@@ -10,9 +9,9 @@ export class AttachmentUploadError extends Error {
   }
 }
 
-export async function fetchAttachments(ticketId: number, requesterId: number, signal?: AbortSignal): Promise<Attachment[]> {
+export async function fetchAttachments(ticketId: number, signal?: AbortSignal): Promise<Attachment[]> {
   const response = await fetch(`/api/tickets/${ticketId}/attachments`, {
-    headers: devRequesterHeaders(requesterId),
+    credentials: 'include',
     signal,
   })
 
@@ -23,13 +22,13 @@ export async function fetchAttachments(ticketId: number, requesterId: number, si
   return response.json() as Promise<Attachment[]>
 }
 
-export async function uploadAttachment(ticketId: number, file: File, requesterId: number): Promise<Attachment> {
+export async function uploadAttachment(ticketId: number, file: File): Promise<Attachment> {
   const formData = new FormData()
   formData.append('file', file)
 
   const response = await fetch(`/api/tickets/${ticketId}/attachments`, {
     method: 'POST',
-    headers: devRequesterHeaders(requesterId),
+    credentials: 'include',
     body: formData,
   })
 
@@ -41,13 +40,11 @@ export async function uploadAttachment(ticketId: number, file: File, requesterId
   return response.json() as Promise<Attachment>
 }
 
-export async function removeAttachment(attachmentId: number, reason: string, requesterId: number): Promise<Attachment> {
+export async function removeAttachment(attachmentId: number, reason: string): Promise<Attachment> {
   const response = await fetch(`/api/attachments/${attachmentId}`, {
     method: 'DELETE',
-    headers: {
-      'Content-Type': 'application/json',
-      ...devRequesterHeaders(requesterId),
-    },
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
     body: JSON.stringify({ reason }),
   })
 
@@ -59,10 +56,10 @@ export async function removeAttachment(attachmentId: number, reason: string, req
   return response.json() as Promise<Attachment>
 }
 
-/** Fetches the file (with the required header) and triggers a normal browser save. */
-export async function downloadAttachment(attachmentId: number, filename: string, requesterId: number): Promise<void> {
+/** Fetches the file (with the session cookie) and triggers a normal browser save. */
+export async function downloadAttachment(attachmentId: number, filename: string): Promise<void> {
   const response = await fetch(`/api/attachments/${attachmentId}/download`, {
-    headers: devRequesterHeaders(requesterId),
+    credentials: 'include',
   })
 
   if (!response.ok) {
