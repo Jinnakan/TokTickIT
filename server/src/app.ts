@@ -4,6 +4,7 @@ import { prisma } from './prisma.js'
 import { ticketsRouter } from './tickets.js'
 import { attachmentsRouter, ticketAttachmentsRouter } from './attachments.js'
 import { authRouter } from './auth/auth-router.js'
+import { commentsRouter } from './comments.js'
 
 export const app = express()
 
@@ -47,5 +48,6 @@ app.get('/api/related-systems', async (_request, response, next) => {
 
 app.use('/api/auth', authRouter)
 app.use('/api/tickets/:ticketId/attachments', ticketAttachmentsRouter)
+app.use('/api/tickets/:ticketId/comments', commentsRouter)
 app.use('/api/attachments', attachmentsRouter)
 app.use('/api/tickets', ticketsRouter)
