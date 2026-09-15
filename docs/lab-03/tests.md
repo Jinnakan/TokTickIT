@@ -18,16 +18,16 @@ backfilled after the fact; Lab 3 does not repeat that).
 
 | Test ID | Requirement/AC | What It Tests | Expected Result | Automated Test File | Final |
 |---|---|---|---|---|---|
-| AUTH-01 | AC-L3-01 | `POST /api/auth/login` valid credentials | 200; session cookie set; correct user shape returned | `server/tests/lab-03/auth.api.test.ts` | Planned |
-| AUTH-02 | AC-L3-02 | `POST /api/auth/login` wrong password / unknown email / inactive account | 401, identical `INVALID_CREDENTIALS` message in all three cases | `server/tests/lab-03/auth.api.test.ts` | Planned |
-| AUTH-03 | BR-L3-06 | Session id before vs. after a successful login | Session id changes (regenerated, not reused) | `server/tests/lab-03/auth.api.test.ts` | Planned |
-| AUTH-04 | AC-L3-06, BR-L3-08 | Repeated failed logins for one email+IP exceeding the threshold | 429 `TOO_MANY_ATTEMPTS`, even with the correct password, until the window clears | `server/tests/lab-03/auth.api.test.ts` | Planned |
-| AUTH-05 | FR-L3-03 | `POST /api/auth/logout` | 200; the session row no longer exists in the DB; a subsequent authenticated call with the old cookie returns 401 | `server/tests/lab-03/auth.api.test.ts` | Planned |
-| AUTH-06 | AC-L3-03, BR-L3-07 | Any protected endpoint called while `mustChangePassword` is true, other than change-password/logout | 403 `PASSWORD_CHANGE_REQUIRED` | `server/tests/lab-03/auth.api.test.ts` | Planned |
-| AUTH-07 | — | `POST /api/auth/change-password` with a wrong `currentPassword` | 400 `CURRENT_PASSWORD_INVALID`; password unchanged | `server/tests/lab-03/auth.api.test.ts` | Planned |
-| AUTH-08 | — | `POST /api/auth/change-password` success | 200; `mustChangePassword` becomes false; new password authenticates on next login | `server/tests/lab-03/auth.api.test.ts` | Planned |
-| AUTH-09 | AC-L3-04 | Any protected endpoint with no session cookie | 401 `UNAUTHENTICATED` | `server/tests/lab-03/auth.api.test.ts` | Planned |
-| AUTH-10 | AC-L3-16, BR-L3-09 | Mutating request with mismatched/missing `Origin` and `Referer` | 403 `ORIGIN_MISMATCH`; no state change occurs | `server/tests/lab-03/auth.api.test.ts` | Planned |
+| AUTH-01 | AC-L3-01 | `POST /api/auth/login` valid credentials | 200; session cookie set; correct user shape returned | `server/tests/lab-03/auth.api.test.ts` | Pass |
+| AUTH-02 | AC-L3-02 | `POST /api/auth/login` wrong password / unknown email / inactive account | 401, identical `INVALID_CREDENTIALS` message in all three cases | `server/tests/lab-03/auth.api.test.ts` | Pass |
+| AUTH-03 | BR-L3-06 | Session id before vs. after a successful login | Session id changes (regenerated, not reused) | `server/tests/lab-03/auth.api.test.ts` | Pass |
+| AUTH-04 | AC-L3-06, BR-L3-08 | Repeated failed logins for one email+IP exceeding the threshold | 429 `TOO_MANY_ATTEMPTS`, even with the correct password, until the window clears | `server/tests/lab-03/auth.api.test.ts` | Pass |
+| AUTH-05 | FR-L3-03 | `POST /api/auth/logout` | 200; the session row no longer exists in the DB; a subsequent authenticated call with the old cookie returns 401 | `server/tests/lab-03/auth.api.test.ts` | Pass |
+| AUTH-06 | AC-L3-03, BR-L3-07 | Any protected endpoint called while `mustChangePassword` is true, other than change-password/logout | 403 `PASSWORD_CHANGE_REQUIRED` | `server/tests/lab-03/auth.api.test.ts` | Pass |
+| AUTH-07 | — | `POST /api/auth/change-password` with a wrong `currentPassword` | 400 `CURRENT_PASSWORD_INVALID`; password unchanged | `server/tests/lab-03/auth.api.test.ts` | Pass |
+| AUTH-08 | — | `POST /api/auth/change-password` success | 200; `mustChangePassword` becomes false; new password authenticates on next login | `server/tests/lab-03/auth.api.test.ts` | Pass |
+| AUTH-09 | AC-L3-04 | Any protected endpoint with no session cookie | 401 `UNAUTHENTICATED` | `server/tests/lab-03/auth.api.test.ts` | Pass |
+| AUTH-10 | AC-L3-16, BR-L3-09 | Mutating request with mismatched/missing `Origin` and `Referer` | 403 `ORIGIN_MISMATCH`; no state change occurs | `server/tests/lab-03/auth.api.test.ts` | Pass |
 
 ### API — Authorization (Issue 16)
 
@@ -106,10 +106,10 @@ backfilled after the fact; Lab 3 does not repeat that).
 
 | Test ID | Requirement/AC | What It Tests | Expected Result | Automated Test File | Final |
 |---|---|---|---|---|---|
-| UI-L3-01 | AC-L3-02 | Login with invalid credentials | Generic inline error shown; password field cleared, email retained | `client/tests/lab-03/Login.test.tsx` | Planned |
-| UI-L3-02 | — | Login success | Redirects to the role-appropriate screen | `client/tests/lab-03/Login.test.tsx` | Planned |
-| UI-L3-03 | AC-L3-03 | `mustChangePassword` true | App redirects to Change Password from any route attempt | `client/tests/lab-03/ChangePassword.test.tsx` | Planned |
-| UI-L3-04 | — | Change Password field mismatch | Field-level validation blocks submit | `client/tests/lab-03/ChangePassword.test.tsx` | Planned |
+| UI-L3-01 | AC-L3-02 | Login with invalid credentials | Generic inline error shown; password field cleared, email retained | `client/tests/lab-03/Login.test.tsx` | Pass |
+| UI-L3-02 | — | Login success | Redirects to the role-appropriate screen | `client/tests/lab-03/Login.test.tsx` | Pass |
+| UI-L3-03 | AC-L3-03 | `mustChangePassword` true | App redirects to Change Password from any route attempt | `client/tests/lab-03/ChangePassword.test.tsx` | Pass |
+| UI-L3-04 | — | Change Password field mismatch | Field-level validation blocks submit | `client/tests/lab-03/ChangePassword.test.tsx` | Pass |
 | UI-L3-05 | AC-L3-09 | Ticket Queue renders tickets from multiple requesters | Requester column shows varying names, not scoped to one | `client/tests/lab-03/StaffTicketQueue.test.tsx` | Planned |
 | UI-L3-06 | — | Ticket Queue filter controls | Changing a filter re-requests with the correct query params | `client/tests/lab-03/StaffTicketQueue.test.tsx` | Planned |
 | UI-L3-07 | AC-L3-12 | Staff Ticket Detail status control | Only shows transitions valid from the current state (matches `api-spec.md` §4 table) | `client/tests/lab-03/StaffTicketDetail.test.tsx` | Planned |
@@ -123,7 +123,7 @@ backfilled after the fact; Lab 3 does not repeat that).
 
 | Test ID | Requirement/AC | What It Tests | Expected Result | Method | Final |
 |---|---|---|---|---|---|
-| VIS-L3-01 | AC-L3-18 | Login/Change Password at 375/768/1280px | No clipping/overlap/horizontal scroll | Manual browser verification | Planned |
+| VIS-L3-01 | AC-L3-18 | Login/Change Password at 375/768/1280px | No clipping/overlap/horizontal scroll | Manual browser verification | Pass |
 | VIS-L3-02 | AC-L3-18 | Ticket Queue at 375/768/1280px | Table→card transition, filters remain usable | Manual browser verification | Planned |
 | VIS-L3-03 | AC-L3-18 | Staff Ticket Detail at 375/768/1280px | Internal Notes panel stays visually distinct at every width, Comments/Notes remain usable | Manual browser verification | Planned |
 | VIS-L3-04 | AC-L3-18 | User Management at 375/768/1280px | List/card transition, Create/Edit forms usable at all widths | Manual browser verification | Planned |
@@ -132,7 +132,7 @@ backfilled after the fact; Lab 3 does not repeat that).
 
 | Test ID | Requirement/AC | What It Tests | Expected Result | Automated Test File | Final |
 |---|---|---|---|---|---|
-| E2E-L3-01 | AC-L3-01, AC-L3-03 | Login → forced Change Password → land on role home screen | Mandatory password change is enforced end to end before any other action succeeds | `e2e/lab-03/authentication.spec.ts` | Planned |
+| E2E-L3-01 | AC-L3-01, AC-L3-03 | Login → forced Change Password → land on role home screen | Mandatory password change is enforced end to end before any other action succeeds | `e2e/lab-03/authentication.spec.ts` | Pass |
 | E2E-L3-02 | AC-L3-09, AC-L3-10, AC-L3-12 | Login as IT Staff → open Queue → claim a ticket → change its status → post a comment and an internal note | Full staff workflow completes and each change is reflected back in the Queue | `e2e/lab-03/staff-ticket-flow.spec.ts` | Planned |
 | E2E-L3-03 | AC-L3-14, AC-L3-15 | Login as Administrator → create a user → deactivate a user with an active session in another browser context | Created user's password shown once; deactivated user's session immediately rejected | `e2e/lab-03/user-administration.spec.ts` | Planned |
 

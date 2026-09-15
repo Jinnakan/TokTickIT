@@ -1,11 +1,14 @@
 import express from 'express'
+import cookieParser from 'cookie-parser'
 import { prisma } from './prisma.js'
 import { ticketsRouter } from './tickets.js'
 import { attachmentsRouter, ticketAttachmentsRouter } from './attachments.js'
+import { authRouter } from './auth/auth-router.js'
 
 export const app = express()
 
 app.use(express.json())
+app.use(cookieParser())
 
 app.get('/api/health', (_request, response) => {
   response.status(200).json({
@@ -56,6 +59,7 @@ app.get('/api/dev-requesters', async (_request, response, next) => {
   }
 })
 
+app.use('/api/auth', authRouter)
 app.use('/api/tickets/:ticketId/attachments', ticketAttachmentsRouter)
 app.use('/api/attachments', attachmentsRouter)
 app.use('/api/tickets', ticketsRouter)

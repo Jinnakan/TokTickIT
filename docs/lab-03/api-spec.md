@@ -13,9 +13,15 @@ cookie (`toktickit_session`, `httpOnly`, `SameSite=Lax`).
 | Condition | Status | Body |
 |---|---|---|
 | No session cookie, or cookie references an unknown/expired session | 401 | `{ "error": "UNAUTHENTICATED" }` |
-| Valid session, but `mustChangePassword` is true and the endpoint isn't `/api/auth/change-password` or `/api/auth/logout` | 403 | `{ "error": "PASSWORD_CHANGE_REQUIRED" }` |
+| Valid session, but `mustChangePassword` is true and the endpoint isn't `/api/auth/change-password`, `/api/auth/logout`, or `/api/auth/me` | 403 | `{ "error": "PASSWORD_CHANGE_REQUIRED" }` |
 | Valid session, but the user's role is not permitted for this endpoint | 403 | `{ "error": "FORBIDDEN" }` |
 | Mutating request (`POST`/`PUT`/`PATCH`/`DELETE`) with a missing/mismatched `Origin`/`Referer` | 403 | `{ "error": "ORIGIN_MISMATCH" }` |
+
+`/api/auth/me` was added to the password-change-gate exemption during
+Issue 15 implementation (not in the original plan): the client needs it to
+discover `mustChangePassword` after a page refresh, when it no longer has
+the value from the login response in memory. It's a read with no mutation
+risk, so exempting it doesn't weaken BR-L3-07.
 
 Role columns below use `REQ` (Requester), `IT` (IT Staff), `ADM`
 (Administrator). This check runs before any resource-ownership check.
