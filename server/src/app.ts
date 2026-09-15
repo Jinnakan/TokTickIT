@@ -1,4 +1,5 @@
 import express from 'express'
+import helmet from 'helmet'
 import cookieParser from 'cookie-parser'
 import { prisma } from './prisma.js'
 import { ticketsRouter } from './tickets.js'
@@ -14,6 +15,11 @@ registerSessionInvalidationListener(prisma)
 
 export const app = express()
 
+// CSP + other security headers on every response (BR-L3-12, XSS
+// defense-in-depth). This server only ever returns JSON/binary downloads,
+// never HTML/inline scripts, so helmet's strict defaults have nothing to
+// conflict with here.
+app.use(helmet())
 app.use(express.json())
 app.use(cookieParser())
 

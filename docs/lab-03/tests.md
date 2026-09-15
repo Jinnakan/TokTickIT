@@ -97,10 +97,10 @@ backfilled after the fact; Lab 3 does not repeat that).
 
 | Test ID | Requirement/AC | What It Tests | Expected Result | Automated Test File | Final |
 |---|---|---|---|---|---|
-| SEC-01 | BR-L3-20 | Attachment path-containment guard re-run post-migration | Behaves identically to Lab 2's `API-*` attachment tests; no regression from the auth migration | `server/tests/lab-03/security-audit.api.test.ts` | Planned |
-| SEC-02 | BR-L3-21 | Static/guard check: no `child_process`/`exec`/`spawn` import anywhere in `server/src` | Assertion fails loudly if one is ever added, keeping command injection surface at zero | `server/tests/lab-03/security-audit.api.test.ts` | Planned |
-| SEC-03 | — | Consolidated IDOR sweep: every Lab 3 resource type (Ticket, Comment, Note, User, Session) probed cross-role/cross-owner in one file | Every probe returns 403/401 as specified, none leaks data | `server/tests/lab-03/security-audit.api.test.ts` | Planned |
-| SEC-04 | BR-L3-12 | CSP header present on API responses | `Content-Security-Policy` header set via `helmet` | `server/tests/lab-03/security-audit.api.test.ts` | Planned |
+| SEC-01 | BR-L3-20 | Attachment path-containment guard re-run post-migration | Behaves identically to Lab 2's `API-*` attachment tests; no regression from the auth migration | `server/tests/lab-03/security-audit.api.test.ts` | Pass |
+| SEC-02 | BR-L3-21 | Static/guard check: no `child_process`/`exec`/`spawn` import anywhere in `server/src` | Assertion fails loudly if one is ever added, keeping command injection surface at zero | `server/tests/lab-03/security-audit.api.test.ts` | Pass |
+| SEC-03 | — | Consolidated IDOR sweep: every Lab 3 resource type (Ticket, Comment, Note, User, Session) probed cross-role/cross-owner in one file | Every probe returns 403/401 as specified, none leaks data | `server/tests/lab-03/security-audit.api.test.ts` | Pass |
+| SEC-04 | BR-L3-12 | CSP header present on API responses | `Content-Security-Policy` header set via `helmet` | `server/tests/lab-03/security-audit.api.test.ts` | Pass |
 
 ### UI Component
 
