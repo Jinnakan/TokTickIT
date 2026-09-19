@@ -176,10 +176,25 @@ root). No new tooling introduced.
 
 ## 6. Final Results
 
-Not yet run — implementation has not started as of this document's first
-commit (Issue 13). This section is filled in during Issue 21/22 the same
-way `docs/lab-02/tests.md` §6 was, once every planned test file above
-exists and passes.
+Run on `feature/22-Release-readiness-lab3` (based on the Issue 21 merge)
+with the database freshly reset and reseeded, per the documented
+commands in `README.md`:
+
+- **Server:** `npm run typecheck && npm test` from `server/` — typecheck
+  clean, **133/133 tests passing** across 15 files (Lab 1 + Lab 2
+  regression + all Lab 3 suites, including `security-audit.api.test.ts`).
+- **Client:** `npx tsc -b --noEmit && npm test && npm run build` from
+  `client/` — typecheck clean, **53/53 tests passing** across 14 files,
+  production build succeeds (`vite build`, no errors or warnings).
+- **E2E:** `npx playwright test` from the repo root — **5/5 specs
+  passing** (`e2e/lab-02/requester-ticket-flow.spec.ts` plus all four
+  `e2e/lab-03/` specs: authentication, staff-ticket-flow,
+  user-administration).
+- **No skipped, disabled, or commented-out tests** anywhere in the suite.
+
+No regressions were found relative to the per-issue results already
+recorded in §2–5 above — every row that already read `Pass` still passes
+on this final combined run.
 
 ## 7. Known Limitations or Deferred Tests (anticipated)
 
