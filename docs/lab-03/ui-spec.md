@@ -179,22 +179,32 @@ Role badges (User Management, Ticket Queue's Requester/Assigned columns):
 
 ## 9. Visual Checklist (used for §9 grading item — Zen Green + Responsive)
 
-- [ ] No clipped labels at any breakpoint, on every new screen (Login,
+- [x] No clipped labels at any breakpoint, on every new screen (Login,
   Change Password, Ticket Queue, IT Staff Ticket Detail, User Management)
-- [ ] No overlapping controls/messages at any breakpoint
-- [ ] No unintended horizontal scroll at any breakpoint
-- [ ] Internal Notes panel is visually distinguishable from Public
+- [x] No overlapping controls/messages at any breakpoint
+- [x] No unintended horizontal scroll at any breakpoint
+- [x] Internal Notes panel is visually distinguishable from Public
   Comments at a glance, not just by a label
-- [ ] Status badges (8 values) remain legible and distinct from one
+- [x] Status badges (8 values) remain legible and distinct from one
   another, not just distinct from the 3-value Priority badges
-- [ ] Button hierarchy consistent with Lab 2's established styles across
+- [x] Button hierarchy consistent with Lab 2's established styles across
   every new screen
-- [ ] Loading/empty/no-results/failure states each visually distinct, on
+- [x] Loading/empty/no-results/failure states each visually distinct, on
   every new screen
 
 Verified against the running app per-issue (Issues 15/16/18/19/20), not
 backfilled at the end — see `tests.md` §4 for the same checklist with
 notes on when each screen was verified.
+
+Final verification (Issue 22): every screen above was captured at desktop
+(1280px), tablet (768px) and mobile (390px), and each capture was checked by
+script for horizontal overflow and cut-off text (inputs, placeholders,
+selects). The first run found clipped filter labels in the Ticket Queue
+("Search by ticket number or summary…", "All Requested Priorities") and a
+clipped status dropdown in IT Staff Ticket Detail on tablet. Both were fixed
+by letting those controls wrap onto full-width rows, and the rerun found no
+horizontal overflow and no clipped text on any of the 18 screen and size
+combinations.
 
 ## 10. Screenshot Paths (for submission evidence)
 

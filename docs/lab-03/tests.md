@@ -163,10 +163,10 @@ backfilled after the fact; Lab 3 does not repeat that).
 
 Tracks `ui-spec.md` §9, updated as each screen ships (not backfilled):
 
-- [ ] Login / Change Password — pending Issue 15
-- [x] Ticket Queue — verified desktop/tablet/mobile in Issue 18
-- [ ] IT Staff Ticket Detail (incl. Internal Notes distinctness) — pending Issue 19
-- [ ] User Management — pending Issue 20
+- [x] Login / Change Password — verified desktop/tablet/mobile (Issue 15, rechecked in Issue 22)
+- [x] Ticket Queue — verified desktop/tablet/mobile in Issue 18; filter-row clipping found and fixed in Issue 22
+- [x] IT Staff Ticket Detail (incl. Internal Notes distinctness) — verified in Issue 19; status dropdown clipping on tablet found and fixed in Issue 22
+- [x] User Management — verified desktop/tablet/mobile (Issue 20, rechecked in Issue 22)
 
 ## 5. Test Commands
 

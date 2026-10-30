@@ -70,7 +70,7 @@ export function ServiceActionsPanel({
       )}
 
       <div className="row g-3 mb-2">
-        <div className="col-md-4">
+        <div className="col-12 col-sm-6 col-lg-4">
           <div className="form-label fw-semibold mb-1">Assigned To</div>
           {ticket.ticketOwner ? (
             <p className="mb-0">{ticket.ticketOwner.name}{isOwnedByMe ? ' (you)' : ''}</p>
@@ -81,7 +81,7 @@ export function ServiceActionsPanel({
           )}
         </div>
 
-        <div className="col-md-4">
+        <div className="col-12 col-sm-6 col-lg-4">
           <label htmlFor="it-priority-select" className="form-label fw-semibold">IT Priority</label>
           <select
             id="it-priority-select"
@@ -96,7 +96,7 @@ export function ServiceActionsPanel({
           </select>
         </div>
 
-        <div className="col-md-4">
+        <div className="col-12 col-sm-6 col-lg-4">
           <label htmlFor="status-select" className="form-label fw-semibold">Current Status</label>
           <select
             id="status-select"

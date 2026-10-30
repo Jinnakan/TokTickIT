@@ -140,7 +140,7 @@ export function StaffTicketQueue({ currentUserId }: { currentUserId: number }) {
       </div>
 
       <div className="row g-2 mb-3">
-        <div className="col-md-3">
+        <div className="col-12 col-lg-5">
           <input
             type="search"
             className="form-control"
@@ -150,7 +150,7 @@ export function StaffTicketQueue({ currentUserId }: { currentUserId: number }) {
             aria-label="Search tickets"
           />
         </div>
-        <div className="col-md-2">
+        <div className="col-12 col-sm-6 col-lg-3">
           <select
             className="form-select"
             value={categoryId}
@@ -163,7 +163,7 @@ export function StaffTicketQueue({ currentUserId }: { currentUserId: number }) {
             ))}
           </select>
         </div>
-        <div className="col-md-2">
+        <div className="col-12 col-sm-6 col-lg-4">
           <select
             className="form-select"
             value={requestedPriority}
@@ -176,7 +176,7 @@ export function StaffTicketQueue({ currentUserId }: { currentUserId: number }) {
             ))}
           </select>
         </div>
-        <div className="col-md-2">
+        <div className="col-12 col-sm-6 col-lg-4">
           <select
             className="form-select"
             value={itPriority}
@@ -189,7 +189,7 @@ export function StaffTicketQueue({ currentUserId }: { currentUserId: number }) {
             ))}
           </select>
         </div>
-        <div className="col-md-3">
+        <div className="col-12 col-sm-6 col-lg-4">
           <select
             className="form-select"
             value={currentStatus}

@@ -8,5 +8,9 @@ export default defineConfig({
     // default) lets them race each other's inserts/counts. Sequential file
     // execution trades some wall-clock time for a suite that isn't flaky.
     fileParallelism: false,
+    // bcryptjs is pure JS; under machine load a setup step that creates a
+    // few users can pass Vitest's 5s default and fail the run spuriously.
+    testTimeout: 20_000,
+    hookTimeout: 30_000,
   },
 })

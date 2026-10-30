@@ -54,6 +54,16 @@ visible to Requesters; Administrators manage user accounts. See
    with a pending forced password change, to exercise every login-path
    edge case).
 
+Optional demo data (24 realistic tickets across Requesters, statuses,
+priorities and owners, with example Public Comments and Internal Notes),
+for reviewing the Ticket Queue with realistic content. Safe to re-run:
+
+```bash
+npm run prisma:seed:demo
+```
+
+The automated test suites pass with or without the demo data.
+
 ## Logging in
 
 All seeded accounts share the password `DevPass123!` (dev/course use
