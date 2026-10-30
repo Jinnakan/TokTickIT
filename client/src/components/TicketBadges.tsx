@@ -27,3 +27,8 @@ export function PriorityBadge({ priority }: { priority: Priority }) {
 export function StatusBadge({ status }: { status: TicketStatus }) {
   return <span className={`badge rounded-pill ${STATUS_BADGE_CLASS[status]}`}>{STATUS_LABELS[status]}</span>
 }
+
+// Text label always present, so the signal never depends on color (ui-spec.md §7).
+export function RequesterResolvedBadge() {
+  return <span className="badge rounded-pill border border-success text-success-emphasis">Requester reports resolved</span>
+}

@@ -15,7 +15,7 @@ import type {
   TicketSortField,
   TicketStatus,
 } from '../types/ticket.js'
-import { PriorityBadge, StatusBadge } from './TicketBadges.js'
+import { PriorityBadge, RequesterResolvedBadge, StatusBadge } from './TicketBadges.js'
 import { StaffTicketDetail } from './StaffTicketDetail.js'
 
 type ListStatus = 'loading' | 'ready' | 'error'
@@ -286,7 +286,14 @@ export function StaffTicketQueue({ currentUserId }: { currentUserId: number }) {
                     </td>
                     <td className="d-none d-lg-table-cell"><PriorityBadge priority={ticket.requestedPriority} /></td>
                     <td><PriorityBadge priority={ticket.itPriority} /></td>
-                    <td><StatusBadge status={ticket.currentStatus} /></td>
+                    <td>
+                      <StatusBadge status={ticket.currentStatus} />
+                      {ticket.requesterResolvedAt && (
+                        <div className="mt-1">
+                          <RequesterResolvedBadge />
+                        </div>
+                      )}
+                    </td>
                     <td className="d-none d-lg-table-cell">{ticket.ticketOwner?.name ?? 'Unassigned'}</td>
                   </tr>
                 ))}
@@ -315,6 +322,11 @@ export function StaffTicketQueue({ currentUserId }: { currentUserId: number }) {
                     <strong>{ticket.ticketNumber}</strong>
                     <StatusBadge status={ticket.currentStatus} />
                   </div>
+                  {ticket.requesterResolvedAt && (
+                    <div className="mb-1">
+                      <RequesterResolvedBadge />
+                    </div>
+                  )}
                   <p className="mb-1">{ticket.summary}</p>
                   <div className="d-flex justify-content-between align-items-center mb-1">
                     <PriorityBadge priority={ticket.itPriority} />

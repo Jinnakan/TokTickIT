@@ -19,9 +19,22 @@ export class UserActionError extends Error {
   }
 }
 
+// One specific sentence per server error code, so no failure falls back to a
+// bare "Request failed." when the cause is known (FR-L4-17).
+const ERROR_MESSAGES: Record<string, string> = {
+  EMAIL_TAKEN: 'That email address is already in use.',
+  SELF_DEACTIVATION: 'You cannot deactivate your own account.',
+  LAST_ADMINISTRATOR: 'At least one active Administrator must remain.',
+  USER_NOT_FOUND: 'That user no longer exists. Reload the list.',
+}
+
 async function readError(response: Response): Promise<UserActionError> {
   const body = (await response.json().catch(() => ({}))) as { error?: string; fields?: Record<string, string>; message?: string }
-  return new UserActionError(body.error ?? 'UNKNOWN_ERROR', body.message ?? 'Request failed.', body.fields ?? {})
+  const code = body.error ?? 'UNKNOWN_ERROR'
+  const fields = body.fields ?? {}
+  const fieldMessage = Object.values(fields).join(' ')
+  const message = ERROR_MESSAGES[code] ?? (code === 'VALIDATION_FAILED' && fieldMessage ? fieldMessage : body.message) ?? 'Request failed.'
+  return new UserActionError(code, message, fields)
 }
 
 export async function fetchUsers(
@@ -52,7 +65,7 @@ export async function createUser(input: { name: string; email: string; role: Rol
 
 export async function updateUser(
   userId: number,
-  input: Partial<{ name: string; role: RoleValue; isActive: boolean }>,
+  input: Partial<{ name: string; email: string; role: RoleValue; isActive: boolean }>,
 ): Promise<AdminUser> {
   const response = await fetch(`/api/users/${userId}`, {
     method: 'PATCH',
@@ -80,4 +93,12 @@ export async function activateUser(userId: number): Promise<{ id: number; isActi
   const response = await fetch(`/api/users/${userId}/activate`, { method: 'POST', credentials: 'include' })
   if (!response.ok) throw await readError(response)
   return response.json() as Promise<{ id: number; isActive: boolean }>
+}
+
+export type AssignableUser = { id: number; name: string; role: RoleValue }
+
+export async function fetchAssignableUsers(signal?: AbortSignal): Promise<AssignableUser[]> {
+  const response = await fetch('/api/users/assignable', { credentials: 'include', signal })
+  if (!response.ok) throw await readError(response)
+  return response.json() as Promise<AssignableUser[]>
 }

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { fetchActiveCategories, fetchActiveRelatedSystems, type ReferenceItem } from '../api/referenceData.js'
 import { fetchStaffTicketDetail } from '../api/staffTicketDetail.js'
 import type { StaffTicketDetail as StaffTicketDetailType } from '../types/ticket.js'
-import { PriorityBadge, StatusBadge } from './TicketBadges.js'
+import { PriorityBadge, RequesterResolvedBadge, StatusBadge } from './TicketBadges.js'
 import { AttachmentSection } from './AttachmentSection.js'
 import { CommentsPanel } from './CommentsPanel.js'
 import { NotesPanel } from './NotesPanel.js'
@@ -92,7 +92,10 @@ export function StaffTicketDetail({
 
       <div className="card shadow-sm">
         <div className="card-body">
-          <h1 className="h4 fw-bold mb-4">Ticket {ticket.ticketNumber}</h1>
+          <div className="d-flex flex-wrap align-items-center gap-2 mb-4">
+            <h1 className="h4 fw-bold mb-0">Ticket {ticket.ticketNumber}</h1>
+            {ticket.requesterResolvedAt && <RequesterResolvedBadge />}
+          </div>
 
           <div className="row g-3 mb-3">
             <ReadOnlyField label="Ticket Number" value={ticket.ticketNumber} />
@@ -128,7 +131,7 @@ export function StaffTicketDetail({
       </div>
 
       <ServiceActionsPanel ticket={ticket} currentUserId={currentUserId} mediator={mediator} />
-      <AttachmentSection ticketId={ticket.id} />
+      <AttachmentSection ticketId={ticket.id} canEdit={false} />
       <CommentsPanel ticketId={ticket.id} />
       <NotesPanel ticketId={ticket.id} />
     </div>

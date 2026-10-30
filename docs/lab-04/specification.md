@@ -163,10 +163,16 @@ Additive only. No existing table loses a column or row.
   `RESOLVED` or `CLOSED` are not re-checked against the gate. A legacy open
   Ticket needs at least one completed Action before it can be resolved.
   Dashboards count legacy Tickets exactly like new ones.
-- **Rollback and recovery:** the migration only adds tables, columns, and
-  indexes, so it is reversible. A `rollback.sql` file beside the migration
-  drops the new objects, is not run automatically, and is exercised by the
-  migration test against a copy of the data before and after.
+- **Migrations are additive and split by Issue:** Issue 24 adds
+  `Ticket.requesterResolvedAt`; Issue 25 adds `ActionTaken`, `Ticket.version`,
+  and the indexes; Issue 27 adds `TicketStatusHistory` and its baseline rows.
+  The preserved-data, backfill, and rollback rules in this section describe
+  the cumulative result, and the migration test checks that result.
+- **Rollback and recovery:** every migration only adds tables, columns, and
+  indexes, so each is reversible. A `rollback.sql` file beside each migration
+  drops that migration's new objects, is not run automatically, and is
+  exercised by the migration test against a copy of the data before and
+  after.
 - **Seed (idempotent):** extends the opt-in demo seed (`prisma:seed:demo`)
   with Tickets that have zero, one, and several Actions across every status
   and priority, owned and unowned, and a Requester with no Tickets so the
@@ -201,8 +207,9 @@ Full shapes, statuses, and errors are in `api-spec.md`. Added or changed:
   `PATCH /api/tickets/:ticketId/actions/:actionId`
 - `GET /api/tickets/:id/history`
 - `PATCH /api/tickets/:id/status`, `PATCH /api/tickets/:id/priority`,
-  `POST /api/tickets/:id/reassign`, `POST /api/tickets/:id/claim` (now
-  version-aware)
+  `POST /api/tickets/:id/reassign`, `POST /api/tickets/:id/claim` (version-aware
+  from Issue 27; before that they behave as in Lab 3, except reassign accepts
+  Administrators as owners from Issue 24)
 - `POST /api/tickets/:id/appears-resolved`
 - `GET /api/tickets/:id` (adds `version`, `requesterResolvedAt`,
   `actionsSummary`, and for staff `resolution`)

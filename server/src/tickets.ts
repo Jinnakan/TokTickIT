@@ -303,6 +303,7 @@ ticketsRouter.get('/', ...requireAnyAuthenticatedRole, async (request, response,
           itPriority: true,
           currentStatus: true,
           ticketOwnerId: true,
+          requesterResolvedAt: true,
           createdAt: true,
           updatedAt: true,
           requester: { select: { id: true, name: true } },
@@ -370,6 +371,49 @@ ticketsRouter.get('/:id', ...requireAnyAuthenticatedRole, async (request, respon
     }
 
     response.status(200).json(result.value)
+  } catch (error) {
+    next(error)
+  }
+})
+
+const APPEARS_RESOLVED_STATUSES: readonly TicketStatus[] = ['OPEN', 'IN_PROGRESS', 'WAITING_FOR_REQUESTER']
+
+// Advisory only (BR-L4-11): records that the Requester believes the problem is
+// fixed. It never touches currentStatus; only IT Staff change status.
+ticketsRouter.post('/:id/appears-resolved', ...requireRequester, async (request, response, next) => {
+  try {
+    const ticketId = toInteger(request.params.id)
+    const userId = response.locals.userId as number
+
+    if (ticketId === null) {
+      response.status(404).json({ error: 'TICKET_NOT_FOUND' })
+      return
+    }
+
+    const result = await resolveOwnedTicket(ticketId, userId)
+    if (result.status !== 'ok') {
+      respondOwnershipFailure(response, result, { notFound: 'TICKET_NOT_FOUND', forbidden: 'TICKET_FORBIDDEN' })
+      return
+    }
+
+    const ticket = result.value
+    if (!APPEARS_RESOLVED_STATUSES.includes(ticket.currentStatus)) {
+      response.status(409).json({ error: 'NOT_APPLICABLE', currentStatus: ticket.currentStatus })
+      return
+    }
+
+    // Only the first indication writes; a repeat keeps the original timestamp.
+    await prisma.ticket.updateMany({
+      where: { id: ticketId, requesterResolvedAt: null },
+      data: { requesterResolvedAt: new Date() },
+    })
+    const updated = await prisma.ticket.findUniqueOrThrow({ where: { id: ticketId } })
+
+    response.status(200).json({
+      id: updated.id,
+      requesterResolvedAt: updated.requesterResolvedAt,
+      currentStatus: updated.currentStatus,
+    })
   } catch (error) {
     next(error)
   }

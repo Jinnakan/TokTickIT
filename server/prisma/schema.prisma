@@ -80,26 +80,27 @@ enum TicketStatus {
 }
 
 model Ticket {
-  id                Int             @id @default(autoincrement())
-  ticketNumber      String          @unique
-  requesterId       Int
-  requester         User            @relation("TicketRequester", fields: [requesterId], references: [id])
-  ticketOwnerId     Int?
-  ticketOwner       User?           @relation("TicketOwner", fields: [ticketOwnerId], references: [id])
-  categoryId        Int
-  category          Category        @relation(fields: [categoryId], references: [id])
-  relatedSystemId   Int
-  relatedSystem     RelatedSystem   @relation(fields: [relatedSystemId], references: [id])
-  summary           String
-  description       String
-  requestedPriority Priority
-  itPriority        Priority
-  currentStatus     TicketStatus    @default(NEW)
-  createdAt         DateTime        @default(now())
-  updatedAt         DateTime        @updatedAt
-  attachments       Attachment[]
-  comments          PublicComment[]
-  notes             InternalNote[]
+  id                  Int             @id @default(autoincrement())
+  ticketNumber        String          @unique
+  requesterId         Int
+  requester           User            @relation("TicketRequester", fields: [requesterId], references: [id])
+  ticketOwnerId       Int?
+  ticketOwner         User?           @relation("TicketOwner", fields: [ticketOwnerId], references: [id])
+  categoryId          Int
+  category            Category        @relation(fields: [categoryId], references: [id])
+  relatedSystemId     Int
+  relatedSystem       RelatedSystem   @relation(fields: [relatedSystemId], references: [id])
+  summary             String
+  description         String
+  requestedPriority   Priority
+  itPriority          Priority
+  currentStatus       TicketStatus    @default(NEW)
+  requesterResolvedAt DateTime?
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+  attachments         Attachment[]
+  comments            PublicComment[]
+  notes               InternalNote[]
 
   @@index([requesterId])
   @@index([ticketOwnerId])

@@ -27,7 +27,9 @@ function formatDate(iso: string): string {
   })
 }
 
-export function AttachmentSection({ ticketId }: { ticketId: number }) {
+// canEdit is explicit, not defaulted: the server only lets the owning Requester
+// upload or remove, so any other viewer must opt out of seeing those controls.
+export function AttachmentSection({ ticketId, canEdit }: { ticketId: number; canEdit: boolean }) {
   const [status, setStatus] = useState<Status>('loading')
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const [uploadError, setUploadError] = useState('')
@@ -180,13 +182,15 @@ export function AttachmentSection({ ticketId }: { ticketId: number }) {
                       >
                         Download
                       </button>
-                      <button
-                        type="button"
-                        className="btn btn-outline-danger btn-sm"
-                        onClick={() => startRemoval(attachment.id)}
-                      >
-                        Remove
-                      </button>
+                      {canEdit && (
+                        <button
+                          type="button"
+                          className="btn btn-outline-danger btn-sm"
+                          onClick={() => startRemoval(attachment.id)}
+                        >
+                          Remove
+                        </button>
+                      )}
                     </div>
                   )}
                   {attachment.isRemoved && (
@@ -226,38 +230,42 @@ export function AttachmentSection({ ticketId }: { ticketId: number }) {
               </div>
             )}
 
-            {uploadError && (
-              <div className="alert alert-danger" role="alert">
-                {uploadError}
-              </div>
-            )}
-
-            {activeCount >= MAX_ACTIVE_ATTACHMENTS ? (
-              <p className="text-body-secondary small mb-0">
-                Maximum of {MAX_ACTIVE_ATTACHMENTS} active attachments reached. Remove one to add another.
-              </p>
-            ) : (
+            {canEdit && (
               <>
-                <label htmlFor="attachment-file-input" className="form-label fw-semibold">
-                  Add attachment
-                </label>
-                <input
-                  id="attachment-file-input"
-                  ref={fileInputRef}
-                  type="file"
-                  className="form-control"
-                  accept={ALLOWED_EXTENSIONS.join(',')}
-                  onChange={handleFileChange}
-                  disabled={isUploading}
-                />
-                <p className="form-text">
-                  Allowed types: JPG, PNG, WEBP, PDF. Maximum {MAX_FILE_SIZE_BYTES / (1024 * 1024)} MB, up to{' '}
-                  {MAX_ACTIVE_ATTACHMENTS} active attachments.
-                </p>
-                {isUploading && (
-                  <p className="status-message text-body-secondary" role="status">
-                    <span aria-hidden="true">⌛</span> Uploading…
+                {uploadError && (
+                  <div className="alert alert-danger" role="alert">
+                    {uploadError}
+                  </div>
+                )}
+
+                {activeCount >= MAX_ACTIVE_ATTACHMENTS ? (
+                  <p className="text-body-secondary small mb-0">
+                    Maximum of {MAX_ACTIVE_ATTACHMENTS} active attachments reached. Remove one to add another.
                   </p>
+                ) : (
+                  <>
+                    <label htmlFor="attachment-file-input" className="form-label fw-semibold">
+                      Add attachment
+                    </label>
+                    <input
+                      id="attachment-file-input"
+                      ref={fileInputRef}
+                      type="file"
+                      className="form-control"
+                      accept={ALLOWED_EXTENSIONS.join(',')}
+                      onChange={handleFileChange}
+                      disabled={isUploading}
+                    />
+                    <p className="form-text">
+                      Allowed types: JPG, PNG, WEBP, PDF. Maximum {MAX_FILE_SIZE_BYTES / (1024 * 1024)} MB, up to{' '}
+                      {MAX_ACTIVE_ATTACHMENTS} active attachments.
+                    </p>
+                    {isUploading && (
+                      <p className="status-message text-body-secondary" role="status">
+                        <span aria-hidden="true">⌛</span> Uploading…
+                      </p>
+                    )}
+                  </>
                 )}
               </>
             )}

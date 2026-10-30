@@ -17,6 +17,7 @@ export type Ticket = {
   relatedSystemId: number
   requestedPriority: Priority
   currentStatus: TicketStatus
+  requesterResolvedAt?: string | null
   summary: string
   description: string
   createdAt: string
@@ -51,6 +52,7 @@ export type TicketListQuery = {
 }
 
 export type StaffTicketListItem = TicketListItem & {
+  requesterResolvedAt?: string | null
   itPriority: Priority
   ticketOwnerId: number | null
   requester: { id: number; name: string }

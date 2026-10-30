@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { fetchActiveCategories, fetchActiveRelatedSystems, type ReferenceItem } from '../api/referenceData.js'
-import { fetchTicket, TicketAccessError } from '../api/tickets.js'
-import type { Ticket } from '../types/ticket.js'
+import { fetchTicket, markAppearsResolved, TicketAccessError } from '../api/tickets.js'
+import type { Ticket, TicketStatus } from '../types/ticket.js'
 import { PriorityBadge, StatusBadge } from './TicketBadges.js'
 import { AttachmentSection } from './AttachmentSection.js'
 import { CommentsPanel } from './CommentsPanel.js'
@@ -18,6 +18,9 @@ function formatDate(iso: string): string {
   })
 }
 
+// Mirrors the server rule (BR-L4-11); the server remains the authority.
+const APPEARS_RESOLVED_STATUSES: readonly TicketStatus[] = ['OPEN', 'IN_PROGRESS', 'WAITING_FOR_REQUESTER']
+
 export function TicketDetail({
   ticketId,
   onBackToMyTickets,
@@ -29,6 +32,9 @@ export function TicketDetail({
   const [ticket, setTicket] = useState<Ticket | null>(null)
   const [categories, setCategories] = useState<ReferenceItem[]>([])
   const [relatedSystems, setRelatedSystems] = useState<ReferenceItem[]>([])
+  const [isMarking, setIsMarking] = useState(false)
+  const [markError, setMarkError] = useState('')
+  const markInFlight = useRef(false)
 
   useEffect(() => {
     let ignore = false
@@ -59,6 +65,22 @@ export function TicketDetail({
       ignore = true
     }
   }, [ticketId])
+
+  async function handleMarkResolved() {
+    if (!ticket || markInFlight.current) return
+    markInFlight.current = true
+    setIsMarking(true)
+    setMarkError('')
+    try {
+      const result = await markAppearsResolved(ticket.id)
+      setTicket({ ...ticket, requesterResolvedAt: result.requesterResolvedAt })
+    } catch (error) {
+      setMarkError(error instanceof Error ? error.message : 'Unable to record this right now. Please try again.')
+    } finally {
+      markInFlight.current = false
+      setIsMarking(false)
+    }
+  }
 
   if (status === 'loading') {
     return (
@@ -136,7 +158,32 @@ export function TicketDetail({
         </div>
       </div>
 
-      <AttachmentSection ticketId={ticket.id} />
+      {ticket.requesterResolvedAt ? (
+        <p className="mt-3 mb-0 text-body-secondary" role="status">
+          You told us this appears resolved on {formatDate(ticket.requesterResolvedAt)}. Our IT team will review it and
+          update the ticket.
+        </p>
+      ) : (
+        APPEARS_RESOLVED_STATUSES.includes(ticket.currentStatus) && (
+          <div className="mt-3">
+            {markError && (
+              <div className="alert alert-danger" role="alert">
+                {markError}
+              </div>
+            )}
+            <button
+              type="button"
+              className="btn btn-outline-primary"
+              onClick={() => void handleMarkResolved()}
+              disabled={isMarking}
+            >
+              Problem appears resolved
+            </button>
+          </div>
+        )
+      )}
+
+      <AttachmentSection ticketId={ticket.id} canEdit={true} />
       <CommentsPanel ticketId={ticket.id} />
     </div>
   )

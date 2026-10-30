@@ -59,10 +59,10 @@ File: `server/tests/lab-04/ticket-workflow.api.test.ts`
 | WF-02 | AC-L4-13 | Every disallowed pair, including from Cancelled | 409 `INVALID_TRANSITION` with `allowed` | Planned |
 | WF-03 | AC-L4-12, BR-L4-10 | Resolve with no completed Action; with a Planned Action; with an open follow-up | 409 `RESOLUTION_BLOCKED` listing each blocker | Planned |
 | WF-04 | AC-L4-12 | Resolve after a completed Action, none planned, follow-up done | 200 | Planned |
-| WF-05 | AC-L4-14 | Requester calls status, priority, reassign, claim | 403 each | Planned |
-| WF-06 | AC-L4-15, BR-L4-11 | Requester marks appears-resolved on own active Ticket | 200; `requesterResolvedAt` set; `currentStatus` unchanged | Planned |
-| WF-07 | AC-L4-15 | Appears-resolved on another's Ticket, on New, on Closed, by staff | 403, 409 `NOT_APPLICABLE`, 409, 403 | Planned |
-| WF-08 | AC-L4-16 | Move to Reopened after an indication | `requesterResolvedAt` cleared | Planned |
+| WF-05 | AC-L4-14 | Requester calls status, priority, reassign, claim | 403 each | Pass |
+| WF-06 | AC-L4-15, BR-L4-11 | Requester marks appears-resolved on own active Ticket | 200; `requesterResolvedAt` set; `currentStatus` unchanged | Pass |
+| WF-07 | AC-L4-15 | Appears-resolved on another's Ticket, on New, on Closed, by staff | 403, 409 `NOT_APPLICABLE`, 409, 403 | Pass |
+| WF-08 | AC-L4-16 | Move to Reopened after an indication | `requesterResolvedAt` cleared | Pass |
 | WF-09 | AC-L4-17, BR-L4-18 | Several transitions then read history | One row each, ordered, with actor | Planned |
 | WF-10 | AC-L4-17 | `POST`, `PATCH`, `DELETE` on history | 404 or 405; table unchanged | Planned |
 | WF-11 | AC-L4-18, BR-L4-12 | Cancel a Ticket with Planned Actions | All Planned become Cancelled in one transaction | Planned |
@@ -72,7 +72,7 @@ File: `server/tests/lab-04/ticket-workflow.api.test.ts`
 | WF-15 | AC-L4-23 | `statusGroup` and `requesterReportedResolved` on `GET /api/tickets`; unknown value | Correct filtering for both roles; 400 | Planned |
 | WF-16 | BR-L4-10 | `ResolutionGate` unit, no database | Blocker list correct for each combination | Planned |
 | WF-17 | BR-L4-09 | Transition matrix unit over the State classes | Matches the table exactly | Planned |
-| WF-18 | AC-L4-15, AC-L4-25 | Staff queue and detail data expose the reported-resolved flag | Flag present for staff, absent for other Requesters | Planned |
+| WF-18 | AC-L4-15, AC-L4-25 | Staff queue and detail data expose the reported-resolved flag | Flag present for staff, absent for other Requesters | Pass |
 
 ### API: Requester Dashboard (Issue 28)
 
@@ -112,11 +112,11 @@ File: `server/tests/lab-04/carry-overs.api.test.ts`
 
 | Test ID | Requirement/AC | What It Tests | Expected Result | Final |
 |---|---|---|---|---|
-| CO-01 | AC-L4-25, FR-L4-15 | `GET /api/users/assignable` by role | IT and Administrator 200 (active IT Staff and Administrators, minimal fields); Requester 403 | Planned |
-| CO-02 | FR-L4-15 | Reassign to an Administrator; to an inactive user | 200; 400 | Planned |
-| CO-03 | AC-L4-25, FR-L4-16 | Administrator edits email; duplicate; bad format | 200; 400 `EMAIL_TAKEN`; 400 | Planned |
-| CO-04 | AC-L4-25 | Attachment upload and remove as IT Staff; list and download | 403, 403; 200, 200 | Planned |
-| CO-05 | FR-L4-17 | Self-deactivation and last-Administrator codes | 409 `SELF_DEACTIVATION`, 409 `LAST_ADMINISTRATOR` | Planned |
+| CO-01 | AC-L4-25, FR-L4-15 | `GET /api/users/assignable` by role | IT and Administrator 200 (active IT Staff and Administrators, minimal fields); Requester 403 | Pass |
+| CO-02 | FR-L4-15 | Reassign to an Administrator; to an inactive user | 200; 400 | Pass |
+| CO-03 | AC-L4-25, FR-L4-16 | Administrator edits email; duplicate; bad format | 200; 400 `EMAIL_TAKEN`; 400 | Pass |
+| CO-04 | AC-L4-25 | Attachment upload and remove as IT Staff; list and download | 403, 403; 200, 200 | Pass |
+| CO-05 | FR-L4-17 | Self-deactivation and last-Administrator codes | 409 `SELF_DEACTIVATION`, 409 `LAST_ADMINISTRATOR` | Pass |
 
 ### Migration, Seed, and Regression
 
@@ -127,7 +127,7 @@ File: `server/tests/lab-04/migration.test.ts`
 | MIG-01 | AC-L4-24 | Row counts and key fields of Users, Tickets, Comments, Notes, Attachments | Unchanged after migration | Planned |
 | MIG-02 | AC-L4-24, §7 | Baseline history | Exactly one row per legacy Ticket with the documented values | Planned |
 | MIG-03 | AC-L4-24 | Legacy defaults | `version` 1, no indication, zero Actions | Planned |
-| MIG-04 | §7 | `rollback.sql` on a copy | New objects dropped, Lab 3 data intact | Planned |
+| MIG-04 | §7 | Each migration's `rollback.sql` on a copy | That migration's objects dropped, earlier data intact | Planned |
 | MIG-05 | §7 | Demo seed run twice | Same row counts; zero, one, and many Actions present | Planned |
 | REG-01 | AC-L4-28 | All Lab 1 to Lab 3 server suites | Pass | Planned |
 | REG-02 | AC-L4-28 | All Lab 1 to Lab 3 client suites | Pass | Planned |
@@ -167,9 +167,9 @@ File: `server/tests/lab-04/security.api.test.ts`
 | UI4-16 | FR-L4-06 | Status control | Only permitted next statuses offered | `TicketWorkflow.test.tsx` | Planned |
 | UI4-17 | AC-L4-12 | Resolve blocked | Blocker lines shown from `resolution` and from a 409 | `TicketWorkflow.test.tsx` | Planned |
 | UI4-18 | AC-L4-18 | Cancel | Confirmation mentions planned actions | `TicketWorkflow.test.tsx` | Planned |
-| UI4-19 | AC-L4-15 | Requester button and text; staff badge | Button then text; badge for staff only | `TicketWorkflow.test.tsx` | Planned |
+| UI4-19 | AC-L4-15 | Requester button and text; staff badge | Button then text; badge for staff only | `TicketWorkflow.test.tsx` | Pass |
 | UI4-20 | AC-L4-17 | History list | Ordered rows; legacy row text | `TicketWorkflow.test.tsx` | Planned |
-| UI4-21 | AC-L4-25 | Reassign control, email field, specific messages, attachment controls | Present for staff and admin as specified; Add and Remove absent for staff | `CarryOvers.test.tsx` | Planned |
+| UI4-21 | AC-L4-25 | Reassign control, email field, specific messages, attachment controls | Present for staff and admin as specified; Add and Remove absent for staff | `CarryOvers.test.tsx` | Pass |
 
 ### UI Style, Responsive, and Accessibility
 
@@ -232,7 +232,7 @@ and rechecked in Issue 29, not backfilled at the end.
 - [ ] Staff Dashboard (Issue 28)
 - [ ] Actions Taken, all modes (Issue 26)
 - [ ] Ticket workflow controls and history (Issue 27)
-- [ ] Lab 3 carry-over screens (Issue 24)
+- [x] Lab 3 carry-over screens (Issue 24): reassign selector, Requester button and text, staff badge, email field, specific messages, attachment controls checked in the browser at desktop width; tablet and mobile are rechecked in Issue 29
 - [ ] Full-application pass at three widths (Issue 29)
 
 ## 5. Test Commands
@@ -255,3 +255,8 @@ in the same way as Lab 3.
 - Accessibility is checked with keyboard walk-throughs and accessible-name
   assertions; no screen-reader testing is done.
 - The demo seed is exercised by MIG-05 only; other tests build their own data.
+- Found while verifying Issue 24 and deferred to Issue 29: a logged-out
+  visit to the app logs one browser console error, because the session probe
+  `GET /api/auth/me` answers 401 before login. It is expected behavior, but
+  the handout asks for a console free of errors, so the probe needs a quieter
+  logged-out answer.

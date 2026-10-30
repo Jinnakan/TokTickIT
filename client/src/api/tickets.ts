@@ -79,3 +79,13 @@ export async function fetchTicket(ticketId: number, signal?: AbortSignal): Promi
 
   return response.json() as Promise<Ticket>
 }
+
+export async function markAppearsResolved(ticketId: number): Promise<{ requesterResolvedAt: string }> {
+  const response = await fetch(`/api/tickets/${ticketId}/appears-resolved`, { method: 'POST', credentials: 'include' })
+
+  if (!response.ok) {
+    throw new Error('Unable to record this right now. Please try again.')
+  }
+
+  return response.json() as Promise<{ requesterResolvedAt: string }>
+}
