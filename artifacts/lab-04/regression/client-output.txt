@@ -1,0 +1,145 @@
+commit faf933f plus uncommitted changes on feature/30-Release-readiness-lab4, 2026-10-31T14:33:00Z
+
+ RUN  v4.1.12 /Users/jinnakanchaviengpob/Desktop/3rd Year/CPE_334/ToKTickIT/client
+
+ ✓ tests/lab-02/CreateTicketForm.test.tsx > CreateTicketForm > shows a field-level message and does not call the API when Summary is blank (AC-04) 99ms
+ ✓ tests/lab-04/RequesterDashboard.test.tsx > Requester dashboard (UI4-01 to UI4-04) > UI4-01 shows the welcome line, four cards with counts, and both lists 124ms
+ ✓ tests/lab-04/RequesterDashboard.test.tsx > Requester dashboard (UI4-01 to UI4-04) > UI4-02 shows 0 on the cards and the empty messages, with the cards still links 11ms
+ ✓ tests/lab-04/RequesterDashboard.test.tsx > Requester dashboard (UI4-01 to UI4-04) > UI4-03 a card opens the filtered list and a row opens the Ticket 30ms
+ ✓ tests/lab-04/RequesterDashboard.test.tsx > Requester dashboard (UI4-01 to UI4-04) > UI4-04 shows Loading, then a safe failure whose Retry loads the data 34ms
+ ✓ tests/lab-04/RequesterDashboard.test.tsx > Requester dashboard (UI4-01 to UI4-04) > Refresh refetches, announces the update politely, and is disabled while loading 39ms
+ ✓ tests/lab-03/StaffTicketDetail.test.tsx > StaffTicketDetail > status select only offers the allowed transitions from the current state (UI-L3-07, AC-L3-12) 91ms
+ ✓ tests/lab-02/CreateTicketForm.test.tsx > CreateTicketForm > shows the busy state while the request is in flight 49ms
+ ✓ tests/lab-02/CreateTicketForm.test.tsx > CreateTicketForm > shows the success state with the returned Ticket Number (AC-01) 60ms
+ ✓ tests/lab-02/CreateTicketForm.test.tsx > CreateTicketForm > surfaces server-side field errors returned after submission (AC-06) 72ms
+ ✓ tests/lab-04/Navigation.test.tsx > Navigation items per role (UI4-24, BR-L4-23) > lists the right items with Dashboard first 2ms
+ ✓ tests/lab-04/Navigation.test.tsx > navReducer (UI4-24) > lands every role on the Dashboard with no filters and no open Ticket 0ms
+ ✓ tests/lab-04/Navigation.test.tsx > navReducer (UI4-24) > goto sets the place and filters and gives the screen a new identity 0ms
+ ✓ tests/lab-04/Navigation.test.tsx > navReducer (UI4-24) > opening a Ticket keeps the place, and closing returns to it with a refresh 1ms
+ ✓ tests/lab-04/Navigation.test.tsx > navReducer (UI4-24) > navigating while a Ticket is open closes it 0ms
+ ✓ tests/lab-04/ActionsTaken.test.tsx > Actions list (UI4-08, FR-L4-01) > shows a count in the heading and the cards in order 157ms
+ ✓ tests/lab-04/ActionsTaken.test.tsx > Actions list (UI4-08, FR-L4-01) > shows the empty message and still offers Add action to staff 27ms
+ ✓ tests/lab-04/ActionsTaken.test.tsx > Actions list (UI4-08, FR-L4-01) > shows a safe failure with a working Retry 21ms
+ ✓ tests/lab-04/ActionsTaken.test.tsx > Create form > UI4-09 reveals the follow-up note and blocks a save without one 53ms
+ ✓ tests/lab-04/ActionsTaken.test.tsx > Create form > sends a trimmed body with a requestId and the current user as assignee, then lists the new card and announces it 42ms
+ ✓ tests/lab-04/ActionsTaken.test.tsx > Create form > UI4-15 lists only the backend assignable users and defaults to the current user 23ms
+ ✓ tests/lab-04/Navigation.test.tsx > App landing and navigation (UI4-24, AC-L4-30) > lands each role on its Dashboard with the right nav and marks the active item 163ms
+ ✓ tests/lab-04/Navigation.test.tsx > App landing and navigation (UI4-24, AC-L4-30) > gives the Administrator the Ticket Queue and User Management beside the Dashboard 39ms
+ ✓ tests/lab-04/TicketWorkflow.test.tsx > Status control (UI4-17, FR-L4-06) > offers only the next statuses the API sends 220ms
+ ✓ tests/lab-04/TicketWorkflow.test.tsx > Status control (UI4-17, FR-L4-06) > sends the status with expectedVersion for an ordinary move 23ms
+ ✓ tests/lab-04/TicketWorkflow.test.tsx > Blockers (UI4-18, AC-L4-12) > lists a plain-text line per blocker from the resolution block while Resolved is offered 18ms
+ ✓ tests/lab-04/TicketWorkflow.test.tsx > Blockers (UI4-18, AC-L4-12) > shows the lines from the 409 when Resolved is chosen anyway 34ms
+ ✓ tests/lab-04/ActionsTaken.test.tsx > Create form > UI4-10 keeps every entered value and shows the safe message when the save fails 30ms
+ ✓ tests/lab-04/ActionsTaken.test.tsx > Create form > UI4-11 sends one request for rapid repeated Save clicks 13ms
+ ✓ tests/lab-04/ActionsTaken.test.tsx > Card buttons by status (UI4-16, FR-L4-04) > offers Start, Complete, Edit and Cancel action on a Planned card, and Start sends the right PATCH 15ms
+ ✓ tests/lab-04/ActionsTaken.test.tsx > Card buttons by status (UI4-16, FR-L4-04) > asks before cancelling and sends CANCELLED only after confirmation 21ms
+ ✓ tests/lab-04/ActionsTaken.test.tsx > Card buttons by status (UI4-16, FR-L4-04) > Complete opens the edit form with Completed preselected and Result focused 35ms
+ ✓ tests/lab-04/ActionsTaken.test.tsx > Card buttons by status (UI4-16, FR-L4-04) > Mark follow-up done sends followUpDone true for an open follow-up 11ms
+ ✓ tests/lab-04/CarryOvers.test.tsx > Reassign control (UI4-23, FR-L4-15) > lists assignable users except the current owner and reassigns on click 259ms
+ ✓ tests/lab-04/CarryOvers.test.tsx > Reassign control (UI4-23, FR-L4-15) > shows a safe message when the staff list cannot load and keeps the rest of the screen 19ms
+ ✓ tests/lab-04/CarryOvers.test.tsx > Attachment controls by role (UI4-23, AC-L4-27) > shows Download but no Add or Remove to IT Staff 57ms
+ ✓ tests/lab-03/StaffTicketDetail.test.tsx > StaffTicketDetail > renders Internal Notes and Public Comments as visually distinct, independent panels (UI-L3-08) 179ms
+ ✓ tests/lab-03/StaffTicketDetail.test.tsx > StaffTicketDetail > renders an XSS payload in a note as literal text, not executed markup (UI-L3-09, AC-L3-13) 31ms
+ ✓ tests/lab-03/StaffTicketDetail.test.tsx > StaffTicketDetail > shows a Claim button when unassigned and hides it once claimed 21ms
+ ✓ tests/lab-03/StaffTicketDetail.test.tsx > StaffTicketDetail > shows the assignee name instead of a Claim button once a ticket is claimed 23ms
+ ✓ tests/lab-03/StaffTicketDetail.test.tsx > StaffTicketDetail > calls the claim endpoint and refreshes the ticket when Claim Ticket is clicked 45ms
+ ✓ tests/lab-04/Navigation.test.tsx > App landing and navigation (UI4-24, AC-L4-30) > a staff card opens the queue with the filter applied and shown 147ms
+ ✓ tests/lab-04/TicketWorkflow.test.tsx > Cancel confirmation (UI4-19, AC-L4-19) > asks first, names the open actions, and sends only after confirmation 66ms
+ ✓ tests/lab-04/TicketWorkflow.test.tsx > Requester indication (UI4-20, AC-L4-16) > shows the button, then the confirmation text, and never offers a status control 35ms
+ ✓ tests/lab-04/TicketWorkflow.test.tsx > Requester indication (UI4-20, AC-L4-16) > hides the button when the status does not apply, and shows the text when already used 25ms
+ ✓ tests/lab-04/ActionsTaken.test.tsx > Locks (UI4-12, AC-L4-09) > shows a Cancelled card with no Edit and no buttons 6ms
+ ✓ tests/lab-04/ActionsTaken.test.tsx > Locks (UI4-12, AC-L4-09) > opens a Completed action with the locked fields read-only and follow-up still editable 38ms
+ ✓ tests/lab-04/ActionsTaken.test.tsx > Locks (UI4-12, AC-L4-09) > replaces Add action with a sentence on a Closed ticket and shows no card buttons 3ms
+ ✓ tests/lab-04/ActionsTaken.test.tsx > Requester view (UI4-13, AC-L4-05) > shows the cards with no Add, Edit, buttons, or assignee control, and never loads the staff list 6ms
+ ✓ tests/lab-04/ActionsTaken.test.tsx > Forbidden write > shows the specific message in the form when the server answers 403 FORBIDDEN 34ms
+ ✓ tests/lab-04/CarryOvers.test.tsx > Attachment controls by role (UI4-23, AC-L4-27) > keeps Add and Remove for the Requester who owns the ticket 21ms
+ ✓ tests/lab-04/CarryOvers.test.tsx > User management carry-overs (UI4-23, FR-L4-16, FR-L4-17) > makes Email editable and sends the changed email in the update 83ms
+ ✓ tests/lab-04/Navigation.test.tsx > App landing and navigation (UI4-24, AC-L4-30) > a dashboard row opens the Ticket and Back returns to the Dashboard 64ms
+ ✓ tests/lab-04/Navigation.test.tsx > App landing and navigation (UI4-24, AC-L4-30) > Back from a Ticket restores the queue with the typed search and the drill-down filter 111ms
+ ✓ tests/lab-04/ActionsTaken.test.tsx > Stale update (UI4-14, AC-L4-08) > shows the conflict message with Reload, keeps the typed text, and re-saves against the fresh version 61ms
+ ✓ tests/lab-04/ActionsTaken.test.tsx > Badges and field styling (ST4-01, ST4-02, AC-L4-29) > ST4-01 every Action status badge carries its text, with a distinct class each 11ms
+ ✓ tests/lab-04/ActionsTaken.test.tsx > Badges and field styling (ST4-01, ST4-02, AC-L4-29) > ST4-02 read-only fields look different from editable ones 14ms
+ ✓ tests/lab-04/TicketWorkflow.test.tsx > Requester indication (UI4-20, AC-L4-16) > shows staff the Requester reports resolved badge in the Ticket Detail header 11ms
+ ✓ tests/lab-04/TicketWorkflow.test.tsx > Requester indication (UI4-20, AC-L4-16) > shows no badge when nothing was reported 7ms
+ ✓ tests/lab-04/TicketWorkflow.test.tsx > History (UI4-21, AC-L4-18) > is collapsed and lists the rows oldest first 19ms
+ ✓ tests/lab-04/TicketWorkflow.test.tsx > Stale update (UI4-22, AC-L4-08) > shows the message with Reload and refetches without overwriting anything 39ms
+ ✓ tests/lab-04/CarryOvers.test.tsx > User management carry-overs (UI4-23, FR-L4-16, FR-L4-17) > does not send the email when it was not changed 50ms
+ ✓ tests/lab-04/CarryOvers.test.tsx > User management carry-overs (UI4-23, FR-L4-16, FR-L4-17) > names the problem when the email is already in use 71ms
+ ✓ tests/lab-04/TicketWorkflow.test.tsx > Stale update (UI4-22, AC-L4-08) > refreshes without the Loading ticket flash after a successful change 69ms
+ ✓ tests/lab-04/TicketWorkflow.test.tsx > Queue indication (UI4-20, FR-L4-11) > shows the badge only on the row whose Requester reported it resolved 24ms
+ ✓ tests/lab-04/TicketWorkflow.test.tsx > Reported-resolved badge is words with an outline, not a color alone (ST4-01) > carries its text and a border so it reads without color 14ms
+ ✓ tests/lab-04/CarryOvers.test.tsx > User management carry-overs (UI4-23, FR-L4-16, FR-L4-17) > names the problem when an Administrator deactivates their own account 37ms
+ ✓ tests/lab-04/CarryOvers.test.tsx > User management carry-overs (UI4-23, FR-L4-16, FR-L4-17) > names the problem when the last active Administrator would be removed 39ms
+ ✓ tests/lab-03/UserManagement.test.tsx > UserManagement > shows the generated initial password once after creating a user (UI-L3-10, AC-L3-14) 151ms
+ ✓ tests/lab-04/StaffDashboard.test.tsx > Staff dashboard (UI4-05 to UI4-07) > UI4-05 renders cards, breakdowns and lists, and each link opens the right drill-down 188ms
+ ✓ tests/lab-04/StaffDashboard.test.tsx > Staff dashboard (UI4-05 to UI4-07) > shows My open actions as a card that is not a link 54ms
+ ✓ tests/lab-03/UserManagement.test.tsx > UserManagement > requires confirmation before deactivating, and the confirmation mentions ending sessions (UI-L3-11) 100ms
+ ✓ tests/lab-03/UserManagement.test.tsx > UserManagement > re-requests with the correct query params when a filter changes (UI-L3-12) 29ms
+ ✓ tests/lab-03/UserManagement.test.tsx > UserManagement > shows the empty state when no users match 10ms
+ ✓ tests/lab-04/StaffDashboard.test.tsx > Staff dashboard (UI4-05 to UI4-07) > UI4-06 shows the users strip only to an Administrator 24ms
+ ✓ tests/lab-04/StaffDashboard.test.tsx > Staff dashboard (UI4-05 to UI4-07) > UI4-06 omits the users strip for IT Staff 27ms
+ ✓ tests/lab-04/StaffDashboard.test.tsx > Staff dashboard (UI4-05 to UI4-07) > UI4-07 shows zeros and the empty messages 50ms
+ ✓ tests/lab-04/StaffDashboard.test.tsx > Accessible names and non-color state (A11Y4-02, ST4-01, AC-L4-29) > every card and breakdown link names its label and its count 32ms
+ ✓ tests/lab-04/StaffDashboard.test.tsx > Accessible names and non-color state (A11Y4-02, ST4-01, AC-L4-29) > shows each status as words, not only as a color 20ms
+ ✓ tests/lab-04/DoubleSubmit.test.tsx > Repeated submits send one request (FR-L4-18, AC-L4-28) > Login 53ms
+ ✓ tests/lab-04/DoubleSubmit.test.tsx > Repeated submits send one request (FR-L4-18, AC-L4-28) > Change Password 15ms
+ ✓ tests/lab-03/AppShell.test.tsx > App auth gate and role-based shell (Issue 16) > shows Login when there is no session 120ms
+ ✓ tests/lab-03/AppShell.test.tsx > App auth gate and role-based shell (Issue 16) > shows the role-appropriate nav and current user for a Requester session 38ms
+ ✓ tests/lab-03/AppShell.test.tsx > App auth gate and role-based shell (Issue 16) > shows ChangePassword instead of the shell when mustChangePassword is true 27ms
+ ✓ tests/lab-03/AppShell.test.tsx > App auth gate and role-based shell (Issue 16) > Logout returns to the Login screen 23ms
+ ✓ tests/lab-04/DoubleSubmit.test.tsx > Repeated submits send one request (FR-L4-18, AC-L4-28) > Public Comment 42ms
+ ✓ tests/lab-04/DoubleSubmit.test.tsx > Repeated submits send one request (FR-L4-18, AC-L4-28) > Internal Note 15ms
+ ✓ tests/lab-04/DoubleSubmit.test.tsx > Repeated submits send one request (FR-L4-18, AC-L4-28) > Create Ticket 18ms
+ ✓ tests/lab-04/DoubleSubmit.test.tsx > Repeated submits send one request (FR-L4-18, AC-L4-28) > Problem appears resolved 132ms
+ ✓ tests/lab-03/Login.test.tsx > Login > shows the generic invalid-credentials message and clears the password (AC-L3-02) 205ms
+ ✓ tests/lab-03/Login.test.tsx > Login > calls onLoggedIn with the returned user on success 24ms
+ ✓ tests/lab-03/Login.test.tsx > Login > shows the busy state and disables the form while submitting 62ms
+ ✓ tests/lab-03/Login.test.tsx > Login > shows a lockout message distinct from invalid credentials (AC-L3-06) 49ms
+ ✓ tests/lab-03/Login.test.tsx > Login > toggles password visibility 20ms
+ ✓ tests/lab-02/MyTicketsList.test.tsx > MyTicketsList > shows the true-empty state when the Requester has zero tickets total (AC-10) 175ms
+ ✓ tests/lab-02/MyTicketsList.test.tsx > MyTicketsList > shows a distinct no-results state when a search matches nothing (AC-10) 49ms
+ ✓ tests/lab-03/StaffTicketQueue.test.tsx > StaffTicketQueue > renders tickets from multiple requesters, not scoped to one (UI-L3-05, AC-L3-09) 118ms
+ ✓ tests/lab-03/StaffTicketQueue.test.tsx > StaffTicketQueue > re-requests with the correct query params when a filter changes (UI-L3-06) 40ms
+ ✓ tests/lab-03/StaffTicketQueue.test.tsx > StaffTicketQueue > re-requests with unassignedOnly=true when the toggle is checked 32ms
+ ✓ tests/lab-03/StaffTicketQueue.test.tsx > StaffTicketQueue > asks the app to open the Ticket when a row is clicked (the detail screen is rendered by App) 21ms
+ ✓ tests/lab-03/StaffTicketQueue.test.tsx > StaffTicketQueue > shows the empty state when the queue has no tickets 10ms
+ ✓ tests/lab-02/MyTicketsList.test.tsx > MyTicketsList > renders returned tickets with badges in the desktop table 55ms
+ ✓ tests/lab-02/MyTicketsList.test.tsx > MyTicketsList > calls onOpenTicket with the ticket id when a row is clicked 13ms
+ ✓ tests/lab-02/MyTicketsList.test.tsx > MyTicketsList > shows a failure state with no stale data on API failure (AC-18) 13ms
+ ✓ tests/lab-02/MyTicketsList.test.tsx > MyTicketsList > paginates using Previous/Next based on meta (AC-11) 52ms
+ ✓ tests/lab-03/ChangePassword.test.tsx > ChangePassword > blocks submission client-side when the new/confirm passwords mismatch 88ms
+ ✓ tests/lab-03/CommentsPanel.test.tsx > CommentsPanel > shows the empty state when there are no comments 22ms
+ ✓ tests/lab-03/CommentsPanel.test.tsx > CommentsPanel > lists existing comments with author and body 24ms
+ ✓ tests/lab-03/CommentsPanel.test.tsx > CommentsPanel > shows a safe failure state on load error 51ms
+ ✓ tests/lab-02/AttachmentSection.test.tsx > AttachmentSection > shows removed-attachment metadata but no download control for it (AC-13) 46ms
+ ✓ tests/lab-03/ChangePassword.test.tsx > ChangePassword > shows a field-level error for a wrong current password 25ms
+ ✓ tests/lab-03/ChangePassword.test.tsx > ChangePassword > calls onChanged after a successful change 12ms
+ ✓ tests/lab-03/ChangePassword.test.tsx > ChangePassword > shows the mandatory explanation and hides Cancel when mandatory 7ms
+ ✓ tests/lab-03/ChangePassword.test.tsx > ChangePassword > shows Cancel and calls onCancel when not mandatory 10ms
+ ✓ tests/lab-03/CommentsPanel.test.tsx > CommentsPanel > posts a new comment and appends it to the list 43ms
+ ✓ tests/lab-03/CommentsPanel.test.tsx > CommentsPanel > disables Post while the draft is empty 4ms
+ ✓ tests/lab-02/AttachmentSection.test.tsx > AttachmentSection > blocks removal submission until a reason is provided (AC-14) 88ms
+ ✓ tests/lab-02/AttachmentSection.test.tsx > AttachmentSection > rejects a disallowed file type client-side without calling the upload API 10ms
+ ✓ tests/lab-04/action-form.test.ts > initialValues > defaults a new action to Planned, now (local, minutes), and the current user 1ms
+ ✓ tests/lab-04/action-form.test.ts > initialValues > fills an edit from the action and honours a preset status 0ms
+ ✓ tests/lab-04/action-form.test.ts > statusOptions and lockedFields (BR-L4-05) > offers Planned, In Progress, Completed on create 0ms
+ ✓ tests/lab-04/action-form.test.ts > statusOptions and lockedFields (BR-L4-05) > offers the current status plus allowed moves on edit 0ms
+ ✓ tests/lab-04/action-form.test.ts > statusOptions and lockedFields (BR-L4-05) > locks everything except follow-up and attachment notes on a Completed action 0ms
+ ✓ tests/lab-04/action-form.test.ts > buildPayload > builds a create body with a trimmed text, ISO time, numeric assignee and the requestId 0ms
+ ✓ tests/lab-04/action-form.test.ts > buildPayload > omits assigneeId when none is chosen 0ms
+ ✓ tests/lab-04/action-form.test.ts > buildPayload > sends version and only changed or editable fields on edit 0ms
+ ✓ tests/lab-04/action-form.test.ts > buildPayload > sends only follow-up fields and attachment notes for a Completed action 0ms
+ ✓ tests/lab-04/action-form.test.ts > validateValues (uses the shared rules) > returns the shared messages and the follow-up pairing rule 0ms
+ ✓ tests/lab-04/action-form.test.ts > validateValues (uses the shared rules) > requires a result when Completed 0ms
+ ✓ tests/lab-04/action-form.test.ts > validateValues (uses the shared rules) > requires an action date 0ms
+ ✓ tests/lab-04/action-form.test.ts > validateValues (uses the shared rules) > passes a valid create 0ms
+ ✓ tests/lab-04/action-form.test.ts > newRequestId > makes a safe, unique id 0ms
+ ✓ tests/lab-02/TicketDetail.test.tsx > TicketDetail > renders ticket fields as read-only with no status controls or Internal Notes (AC-12) 49ms
+ ✓ tests/lab-02/TicketDetail.test.tsx > TicketDetail > shows a not-found state for an unknown ticket 3ms
+ ✓ tests/lab-02/TicketDetail.test.tsx > TicketDetail > shows an access-denied state for a ticket owned by a different Requester (AC-03) 3ms
+
+ Test Files  19 passed (19)
+      Tests  135 passed (135)
+   Start at  21:33:01
+   Duration  3.36s (transform 1.39s, setup 2.22s, import 2.18s, tests 5.92s, environment 10.04s)
+

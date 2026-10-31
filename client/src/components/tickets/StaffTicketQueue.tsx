@@ -350,10 +350,12 @@ export function StaffTicketQueue({
                 }}
               >
                 <div className="card-body">
-                  <div className="d-flex justify-content-between">
+                  <div className="d-flex flex-wrap justify-content-between align-items-center gap-2">
                     <strong>{ticket.ticketNumber}</strong>
-                    <StatusBadge status={ticket.currentStatus} />
-                    {ticket.requesterResolvedAt && <RequesterReportedBadge />}
+                    <div className="d-flex flex-wrap gap-1">
+                      <StatusBadge status={ticket.currentStatus} />
+                      {ticket.requesterResolvedAt && <RequesterReportedBadge />}
+                    </div>
                   </div>
                   <p className="mb-1">{ticket.summary}</p>
                   <div className="d-flex justify-content-between align-items-center mb-1">

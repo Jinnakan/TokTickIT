@@ -12,7 +12,10 @@
     "build": "npm run build -w server && npm run build -w client",
     "check": "npm run typecheck && npm test && npm run build",
     "test:e2e": "playwright test",
-    "test:repeat": "bash scripts/repeat-server-tests.sh"
+    "test:repeat": "bash scripts/repeat-server-tests.sh",
+    "verify:release": "bash scripts/verify-release.sh",
+    "screenshots": "playwright test --config=playwright.capture.config.ts",
+    "evidence": "bash scripts/collect-evidence.sh"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.10.2",

@@ -1,0 +1,13 @@
+Pull requests, oldest merge first (generated 2026-10-31T14:32:20Z)
+
+#54 MERGED base=main head=feature/23-Sprint-4-engineering-contract created=2026-10-30T12:32:48Z merged=2026-10-30T13:16:15Z | docs: Sprint 4 engineering contract
+#55 MERGED base=lab4-staging head=feature/24-Lab3-carry-overs created=2026-10-30T13:34:48Z merged=2026-10-30T13:45:51Z | feat: Lab 3 carry-overs (appears resolved, reassign, email edit, mess……ages)
+#56 CLOSED base=main head=feature/25-Actions-Taken-foundation created=2026-10-31T05:16:21Z merged=- | Feature/25 actions taken foundation
+#57 CLOSED base=lab4-staging head=feature/25-Actions-Taken-foundation created=2026-10-31T05:18:02Z merged=- | Feature/25 actions taken foundation
+#58 MERGED base=lab4-staging head=feature/23-Sprint-4-engineering-contract created=2026-10-31T10:03:34Z merged=2026-10-31T10:21:39Z | docs: Sprint 4 engineering contract
+#59 MERGED base=lab4-staging head=feature/24-Lab3-carry-overs created=2026-10-31T10:03:48Z merged=2026-10-31T10:22:12Z | Feature/24 lab3 carry overs
+#60 MERGED base=lab4-staging head=feature/25-Actions-Taken-foundation created=2026-10-31T10:32:38Z merged=2026-10-31T10:45:30Z | Actions-Taken-foundation
+#61 MERGED base=lab4-staging head=feature/26-Actions-Taken-UI created=2026-10-31T10:55:12Z merged=2026-10-31T12:01:41Z | Actions-Taken-UI
+#62 MERGED base=lab4-staging head=feature/27-Ticket-workflow-resolution-gate created=2026-10-31T12:11:22Z merged=2026-10-31T12:19:22Z | Ticket-workflow-resolution-gate
+#63 MERGED base=lab4-staging head=feature/28-Role-dashboards created=2026-10-31T12:38:13Z merged=2026-10-31T12:41:32Z | Role-dashboards
+#64 MERGED base=lab4-staging head=feature/29-Final-hardening created=2026-10-31T13:48:07Z merged=2026-10-31T13:54:07Z | Final-hardening
