@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { fetchActiveCategories, type ReferenceItem } from '../api/referenceData.js'
 import { fetchStaffTicketQueue } from '../api/staffTickets.js'
 import {
@@ -16,7 +16,7 @@ import type {
   TicketStatus,
 } from '../types/ticket.js'
 import { PriorityBadge, RequesterReportedBadge, StatusBadge } from './TicketBadges.js'
-import { StaffTicketDetail } from './StaffTicketDetail.js'
+import { describeFilters, type ListFilters } from '../nav/app-navigation.js'
 
 type ListStatus = 'loading' | 'ready' | 'error'
 
@@ -36,26 +36,64 @@ function formatDate(iso: string): string {
   })
 }
 
-export function StaffTicketQueue({ currentUserId }: { currentUserId: number }) {
+export type QueueSnapshot = {
+  search: string
+  categoryId: string
+  requestedPriority: Priority | ''
+  itPriority: Priority | ''
+  currentStatus: TicketStatus | ''
+  unassignedOnly: boolean
+  statusGroup: string
+  ownerId: string
+  reportedResolved: boolean
+  sortBy: TicketSortField
+  sortDir: SortDirection
+  page: number
+}
+
+export function StaffTicketQueue({
+  currentUserId,
+  onOpenTicket,
+  initialFilters = {},
+  refreshKey = 0,
+  snapshot,
+  onSnapshot,
+}: {
+  currentUserId: number
+  onOpenTicket: (ticketId: number) => void
+  initialFilters?: ListFilters
+  refreshKey?: number
+  /** What the screen looked like when a Ticket was opened, so Back restores filters, page and search. */
+  snapshot?: QueueSnapshot
+  onSnapshot?: (snapshot: QueueSnapshot) => void
+}) {
   const [categories, setCategories] = useState<ReferenceItem[]>([])
 
-  const [search, setSearch] = useState('')
-  const [categoryId, setCategoryId] = useState('')
-  const [requestedPriority, setRequestedPriority] = useState<Priority | ''>('')
-  const [itPriority, setItPriority] = useState<Priority | ''>('')
-  const [currentStatus, setCurrentStatus] = useState<TicketStatus | ''>('')
-  const [unassignedOnly, setUnassignedOnly] = useState(false)
-  const [sortBy, setSortBy] = useState<TicketSortField>('createdAt')
-  const [sortDir, setSortDir] = useState<SortDirection>('desc')
-  const [page, setPage] = useState(1)
+  const [search, setSearch] = useState(snapshot?.search ?? '')
+  const [categoryId, setCategoryId] = useState(snapshot?.categoryId ?? '')
+  const [requestedPriority, setRequestedPriority] = useState<Priority | ''>(snapshot?.requestedPriority ?? '')
+  const [itPriority, setItPriority] = useState<Priority | ''>(snapshot?.itPriority ?? (initialFilters.itPriority as Priority | undefined) ?? '')
+  const [currentStatus, setCurrentStatus] = useState<TicketStatus | ''>(snapshot?.currentStatus ?? (initialFilters.currentStatus as TicketStatus | undefined) ?? '')
+  const [unassignedOnly, setUnassignedOnly] = useState(snapshot?.unassignedOnly ?? initialFilters.unassignedOnly === 'true')
+  // Drill-down filters from a dashboard have no control of their own; "Showing:" names them and Clear Filters drops them.
+  const [statusGroup, setStatusGroup] = useState(snapshot?.statusGroup ?? initialFilters.statusGroup ?? '')
+  const [ownerId, setOwnerId] = useState(snapshot?.ownerId ?? initialFilters.ticketOwnerId ?? '')
+  const [reportedResolved, setReportedResolved] = useState(snapshot?.reportedResolved ?? initialFilters.requesterReportedResolved === 'true')
+  const lastRefresh = useRef(refreshKey)
+  const [sortBy, setSortBy] = useState<TicketSortField>(snapshot?.sortBy ?? 'createdAt')
+  const [sortDir, setSortDir] = useState<SortDirection>(snapshot?.sortDir ?? 'desc')
+  const [page, setPage] = useState(snapshot?.page ?? 1)
 
   const [status, setStatus] = useState<ListStatus>('loading')
   const [tickets, setTickets] = useState<StaffTicketListItem[]>([])
   const [meta, setMeta] = useState<TicketListMeta | null>(null)
-  const [openTicket, setOpenTicket] = useState<StaffTicketListItem | null>(null)
+
+  useEffect(() => {
+    onSnapshot?.({ search, categoryId, requestedPriority, itPriority, currentStatus, unassignedOnly, statusGroup, ownerId, reportedResolved, sortBy, sortDir, page })
+  }, [search, categoryId, requestedPriority, itPriority, currentStatus, unassignedOnly, statusGroup, ownerId, reportedResolved, sortBy, sortDir, page]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const hasActiveFilters =
-    search !== '' || categoryId !== '' || requestedPriority !== '' || itPriority !== '' || currentStatus !== '' || unassignedOnly
+    search !== '' || categoryId !== '' || requestedPriority !== '' || itPriority !== '' || currentStatus !== '' || unassignedOnly || statusGroup !== '' || ownerId !== '' || reportedResolved
 
   useEffect(() => {
     fetchActiveCategories().then(setCategories).catch(() => setCategories([]))
@@ -64,7 +102,10 @@ export function StaffTicketQueue({ currentUserId }: { currentUserId: number }) {
   useEffect(() => {
     const controller = new AbortController()
     let ignore = false
-    setStatus('loading')
+    // Coming back from a Ticket refetches quietly: the rows stay while fresh data loads.
+    const refreshOnly = lastRefresh.current !== refreshKey
+    lastRefresh.current = refreshKey
+    if (!refreshOnly) setStatus('loading')
 
     fetchStaffTicketQueue(
       {
@@ -74,6 +115,9 @@ export function StaffTicketQueue({ currentUserId }: { currentUserId: number }) {
         itPriority: itPriority || undefined,
         currentStatus: currentStatus || undefined,
         unassignedOnly: unassignedOnly || undefined,
+        statusGroup: statusGroup || undefined,
+        ticketOwnerId: ownerId === '' ? undefined : Number(ownerId),
+        requesterReportedResolved: reportedResolved || undefined,
         sortBy,
         sortDir,
         page,
@@ -95,7 +139,12 @@ export function StaffTicketQueue({ currentUserId }: { currentUserId: number }) {
       ignore = true
       controller.abort()
     }
-  }, [search, categoryId, requestedPriority, itPriority, currentStatus, unassignedOnly, sortBy, sortDir, page])
+  }, [search, categoryId, requestedPriority, itPriority, currentStatus, unassignedOnly, statusGroup, ownerId, reportedResolved, sortBy, sortDir, page, refreshKey])
+
+  const drillParts = describeFilters(
+    { statusGroup, ticketOwnerId: ownerId, requesterReportedResolved: reportedResolved ? 'true' : '' },
+    currentUserId,
+  )
 
   function handleClearFilters() {
     setSearch('')
@@ -104,6 +153,9 @@ export function StaffTicketQueue({ currentUserId }: { currentUserId: number }) {
     setItPriority('')
     setCurrentStatus('')
     setUnassignedOnly(false)
+    setStatusGroup('')
+    setOwnerId('')
+    setReportedResolved(false)
     setPage(1)
   }
 
@@ -117,22 +169,15 @@ export function StaffTicketQueue({ currentUserId }: { currentUserId: number }) {
     setPage(1)
   }
 
-  if (openTicket) {
-    return (
-      <StaffTicketDetail
-        ticketId={openTicket.id}
-        currentUserId={currentUserId}
-        onBackToQueue={() => setOpenTicket(null)}
-      />
-    )
-  }
-
   return (
     <div>
       <div className="d-flex justify-content-between align-items-start mb-3">
         <div>
           <h1 className="h4 fw-bold mb-1">Ticket Queue</h1>
           <p className="text-body-secondary mb-0">Tickets from every Requester.</p>
+          {drillParts.length > 0 && (
+            <p className="small mb-0" role="status">Showing: {drillParts.join(' · ')}</p>
+          )}
         </div>
         <button type="button" className="btn btn-outline-secondary btn-sm" onClick={handleClearFilters}>
           Clear Filters
@@ -269,11 +314,11 @@ export function StaffTicketQueue({ currentUserId }: { currentUserId: number }) {
                     role="button"
                     tabIndex={0}
                     style={{ cursor: 'pointer' }}
-                    onClick={() => setOpenTicket(ticket)}
+                    onClick={() => onOpenTicket(ticket.id)}
                     onKeyDown={(event) => {
                       if (event.key === 'Enter' || event.key === ' ') {
                         event.preventDefault()
-                        setOpenTicket(ticket)
+                        onOpenTicket(ticket.id)
                       }
                     }}
                   >
@@ -305,11 +350,11 @@ export function StaffTicketQueue({ currentUserId }: { currentUserId: number }) {
                 role="button"
                 tabIndex={0}
                 style={{ cursor: 'pointer' }}
-                onClick={() => setOpenTicket(ticket)}
+                onClick={() => onOpenTicket(ticket.id)}
                 onKeyDown={(event) => {
                   if (event.key === 'Enter' || event.key === ' ') {
                     event.preventDefault()
-                    setOpenTicket(ticket)
+                    onOpenTicket(ticket.id)
                   }
                 }}
               >

@@ -49,6 +49,8 @@ export type TicketListQuery = {
   categoryId?: number
   requestedPriority?: Priority
   currentStatus?: TicketStatus
+  statusGroup?: string
+  requesterReportedResolved?: boolean
   sortBy?: TicketSortField
   sortDir?: SortDirection
   page?: number

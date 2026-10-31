@@ -90,7 +90,7 @@ File: `ticket-workflow.api.test.ts`
 | WF-13 | AC-L4-08 | Two simultaneous status changes with the same version | Exactly one succeeds | Pass |
 | WF-14 | AC-L4-13, BR-L4-11 | Resolve while a Planned Action is added at the same moment, repeated | Never Resolved with an open Action; each run ends in one valid ordering | Pass |
 | WF-15 | FR-L4-07 | `GET /api/tickets/:id` for staff and Requester | `version`, `actionsSummary`, and for staff `resolution` correct | Pass |
-| WF-16 | AC-L4-25 | `statusGroup` and `requesterReportedResolved` for both roles; unknown value | Correct rows; 400 | Planned |
+| WF-16 | AC-L4-25 | `statusGroup` and `requesterReportedResolved` for both roles; unknown value | Correct rows; 400 | Pass |
 | WF-17 | AC-L4-20, BR-L4-14, BR-L4-15 | Which operations change `version` and which refresh `updatedAt` (claim, reassign, priority, status, Action, Comment, Note, Attachment) | As the table in BR-L4-14 and BR-L4-15 | Pass |
 | WF-18 | FR-L4-11 | Staff list and detail carry the indication; Requester list items do not | Present for staff only | Pass |
 
@@ -100,15 +100,15 @@ File: `requester-dashboard.api.test.ts`
 
 | Test ID | Requirement/AC | What It Tests | Expected Result | Final |
 |---|---|---|---|---|
-| RD-01 | AC-L4-21, BR-L4-17 | Each card count against a direct database query | Equal | Planned |
-| RD-02 | AC-L4-21 | Another Requester's Tickets present | Never counted or listed | Planned |
-| RD-03 | BR-L4-19 | List sizes and fields | At most 5 items, only the documented fields | Planned |
-| RD-04 | BR-L4-17 | Recently resolved around the 7-day edge, including a Closed Ticket and one reopened later | Inside included, outside and reopened excluded; uses history time | Planned |
-| RD-05 | AC-L4-24 | A Requester with no Tickets | Counts 0, lists empty | Planned |
-| RD-06 | AC-L4-23 | IT Staff, Administrator, no session | 403, 403, 401 | Planned |
-| RD-07 | AC-L4-25, BR-L4-20 | Open each card's drill-down on `GET /api/tickets` | `totalItems` equals the count | Planned |
-| RD-08 | AC-L4-33 | About 300 Tickets, one request | Under 1 second | Planned |
-| RD-09 | AC-L4-26 | Legacy Ticket with only a baseline history row | Counted like any other | Planned |
+| RD-01 | AC-L4-21, BR-L4-17 | Each card count against a direct database query | Equal | Pass |
+| RD-02 | AC-L4-21 | Another Requester's Tickets present | Never counted or listed | Pass |
+| RD-03 | BR-L4-19 | List sizes and fields | At most 5 items, only the documented fields | Pass |
+| RD-04 | BR-L4-17 | Recently resolved around the 7-day edge, including a Closed Ticket and one reopened later | Inside included, outside and reopened excluded; uses history time | Pass |
+| RD-05 | AC-L4-24 | A Requester with no Tickets | Counts 0, lists empty | Pass |
+| RD-06 | AC-L4-23 | IT Staff, Administrator, no session | 403, 403, 401 | Pass |
+| RD-07 | AC-L4-25, BR-L4-20 | Open each card's drill-down on `GET /api/tickets` | `totalItems` equals the count | Pass |
+| RD-08 | AC-L4-33 | About 300 Tickets, one request | Under 1 second | Pass |
+| RD-09 | AC-L4-26 | Legacy Ticket with only a baseline history row | Counted like any other | Pass |
 
 ### API: Staff Dashboard
 
@@ -116,15 +116,15 @@ File: `staff-dashboard.api.test.ts`
 
 | Test ID | Requirement/AC | What It Tests | Expected Result | Final |
 |---|---|---|---|---|
-| SD-01 | AC-L4-22, BR-L4-18 | Every card, `byStatus`, `byItPriority` against database queries | Equal | Planned |
-| SD-02 | AC-L4-22 | Administrator and IT Staff responses | `users` only for Administrator, counts correct | Planned |
-| SD-03 | AC-L4-23 | Requester, no session | 403, 401 | Planned |
-| SD-04 | AC-L4-24 | A clean state | Zeros, 8 status rows at 0, empty lists | Planned |
-| SD-05 | AC-L4-25, BR-L4-20 | Each drill-down against the queue | Row count equals the card count | Planned |
-| SD-06 | BR-L4-18 | `myActions` | Only the caller's Planned and In Progress Actions, soonest first, at most 5 | Planned |
-| SD-07 | BR-L4-18 | Reported-resolved count | Counts only active Tickets with the indication | Planned |
-| SD-08 | AC-L4-33 | About 300 Tickets | Under 1 second | Planned |
-| SD-09 | BR-L4-18 | Active definition | Resolved, Closed, Cancelled excluded from unassigned and mine | Planned |
+| SD-01 | AC-L4-22, BR-L4-18 | Every card, `byStatus`, `byItPriority` against database queries | Equal | Pass |
+| SD-02 | AC-L4-22 | Administrator and IT Staff responses | `users` only for Administrator, counts correct | Pass |
+| SD-03 | AC-L4-23 | Requester, no session | 403, 401 | Pass |
+| SD-04 | AC-L4-24 | A clean state | Zeros, 8 status rows at 0, empty lists | Pass |
+| SD-05 | AC-L4-25, BR-L4-20 | Each drill-down against the queue | Row count equals the card count | Pass |
+| SD-06 | BR-L4-18 | `myActions` | Only the caller's Planned and In Progress Actions, soonest first, at most 5 | Pass |
+| SD-07 | BR-L4-18 | Reported-resolved count | Counts only active Tickets with the indication | Pass |
+| SD-08 | AC-L4-33 | About 300 Tickets | Under 1 second | Pass |
+| SD-09 | BR-L4-18 | Active definition | Resolved, Closed, Cancelled excluded from unassigned and mine | Pass |
 
 ### API: Carry-overs and Security
 
@@ -160,13 +160,13 @@ File: `staff-dashboard.api.test.ts`
 
 | Test ID | Requirement/AC | What It Tests | Expected Result | File | Final |
 |---|---|---|---|---|---|
-| UI4-01 | AC-L4-21 | Requester dashboard with data | Four cards and two lists render | `RequesterDashboard.test.tsx` | Planned |
-| UI4-02 | AC-L4-24 | Zero counts and empty lists | `0` shown; empty messages shown | `RequesterDashboard.test.tsx` | Planned |
-| UI4-03 | AC-L4-25 | Click a card and a list row | Opens the right filtered list or Ticket | `RequesterDashboard.test.tsx` | Planned |
-| UI4-04 | FR-L4-14 | Loading, and failure with a working Retry | Status text; alert and Retry | `RequesterDashboard.test.tsx` | Planned |
-| UI4-05 | AC-L4-22 | Staff dashboard cards, breakdowns, my actions | Render and link correctly | `StaffDashboard.test.tsx` | Planned |
-| UI4-06 | AC-L4-22 | Administrator users strip, absent for IT Staff | Shown only for Administrator | `StaffDashboard.test.tsx` | Planned |
-| UI4-07 | AC-L4-24 | Staff empty and zero states | Messages shown | `StaffDashboard.test.tsx` | Planned |
+| UI4-01 | AC-L4-21 | Requester dashboard with data | Four cards and two lists render | `RequesterDashboard.test.tsx` | Pass |
+| UI4-02 | AC-L4-24 | Zero counts and empty lists | `0` shown; empty messages shown | `RequesterDashboard.test.tsx` | Pass |
+| UI4-03 | AC-L4-25 | Click a card and a list row | Opens the right filtered list or Ticket | `RequesterDashboard.test.tsx` | Pass |
+| UI4-04 | FR-L4-14 | Loading, and failure with a working Retry | Status text; alert and Retry | `RequesterDashboard.test.tsx` | Pass |
+| UI4-05 | AC-L4-22 | Staff dashboard cards, breakdowns, my actions | Render and link correctly | `StaffDashboard.test.tsx` | Pass |
+| UI4-06 | AC-L4-22 | Administrator users strip, absent for IT Staff | Shown only for Administrator | `StaffDashboard.test.tsx` | Pass |
+| UI4-07 | AC-L4-24 | Staff empty and zero states | Messages shown | `StaffDashboard.test.tsx` | Pass |
 | UI4-08 | FR-L4-01 | Actions list with several Actions; empty list | Cards in order; empty message | `ActionsTaken.test.tsx` | Pass |
 | UI4-09 | AC-L4-04 | Follow-up checkbox | Note field appears and is required | `ActionsTaken.test.tsx` | Pass |
 | UI4-10 | AC-L4-28 | A failed save | Entered values remain; message shown | `ActionsTaken.test.tsx` | Pass |
@@ -183,7 +183,7 @@ File: `staff-dashboard.api.test.ts`
 | UI4-21 | AC-L4-18 | History list | Ordered rows | `TicketWorkflow.test.tsx` | Pass |
 | UI4-22 | AC-L4-08 | A stale ticket update | Message and Reload; nothing overwritten | `TicketWorkflow.test.tsx` | Pass |
 | UI4-23 | AC-L4-27 | Reassign control, email field, specific messages, attachment controls | As specified; no Add or Remove for staff | `CarryOvers.test.tsx` | Pass |
-| UI4-24 | AC-L4-30, BR-L4-23 | Navigation per role, landing page, active-item marking | Right items, Dashboard first, `aria-current` on the active one | `Navigation.test.tsx` | Planned |
+| UI4-24 | AC-L4-30, BR-L4-23 | Navigation per role, landing page, active-item marking | Right items, Dashboard first, `aria-current` on the active one | `Navigation.test.tsx` | Pass |
 
 ### UI Style, Responsive, and Accessibility
 
@@ -201,8 +201,8 @@ File: `staff-dashboard.api.test.ts`
 |---|---|---|---|---|---|
 | E2E4-01 | AC-L4-01, AC-L4-05, AC-L4-07 | Staff adds an Action, another staff completes it with a follow-up, Requester views | Visible to all as specified; Requester has no controls | `actions-taken-flow.spec.ts` | Pass |
 | E2E4-02 | AC-L4-12, AC-L4-16, AC-L4-17 | Resolve blocked, clear the blockers, resolve; Requester indication; reopen | Matches the rules; history shows each step | `ticket-resolution.spec.ts` | Pass |
-| E2E4-03 | AC-L4-21, AC-L4-22, AC-L4-25, AC-L4-30 | Log in as each role, land on the Dashboard, open a card | The opened list size equals the count; Administrator sees users | `dashboards.spec.ts` | Planned |
-| E2E4-04 | AC-L4-32 | Walk every screen of every role, collecting console errors and failed requests | None | `dashboards.spec.ts` | Planned |
+| E2E4-03 | AC-L4-21, AC-L4-22, AC-L4-25, AC-L4-30 | Log in as each role, land on the Dashboard, open a card | The opened list size equals the count; Administrator sees users | `dashboards.spec.ts` | Pass |
+| E2E4-04 | AC-L4-32 | Walk every screen of every role, collecting console errors and failed requests | None | `dashboards.spec.ts` | Pass |
 
 ## 3. Acceptance-Criterion Traceability
 
@@ -309,7 +309,12 @@ above exists.
 - Feature 25 also adds `ticket-history.api.test.ts` (first history row on create) and `touch-ticket.api.test.ts` (BR-L4-15 for Comments, Notes, Attachments), covered by AC-L4-18 and AC-L4-20.
 - Status-change history rows are written by the workflow Issue (the Lab 3 `PATCH /status` route is rewritten there), so until then only the baseline and creation rows exist.
 - Feature 26 checked in a real browser at 1280, 768 and 390 px on a Ticket with an Action: no horizontal scroll or clipped text, focus moves to the first invalid field, Save errors appear under the field with `aria-invalid` and `aria-describedby`. Editable inputs use the page background (`#f5f7f6`) and read-only fields `#eef2f0`, a faint difference that the hardening Issue should review.
-- WF-16 (`statusGroup` and `requesterReportedResolved`) ships with the dashboards Issue because only the drill-down links use it.
 - WF-17 covers Action, Comment, Note and appears-resolved here; Attachment upload and removal are covered by `touch-ticket.api.test.ts`.
 - The Lab 3 tests that call claim, reassign, priority and status now send `expectedVersion`, and the Lab 3 transition-path test records a Completed Action before resolving, because BR-L4-10 and BR-L4-14 changed those rules. The rules were not weakened.
 - Feature 27 checked in a real browser at 390 px: the cancel confirmation, History list and status control fit with no horizontal scroll, and focus lands on Keep ticket.
+- `users.byRole` on the Administrator dashboard counts every user of each role, active and inactive, so the three counts add up to active plus inactive.
+- RD-08, SD-04 and SD-08 run in a throwaway database schema, because the shared test database holds tens of thousands of Tickets from other tests; all other dashboard numbers are compared with direct queries on the shared database.
+- Navigation: lists unmount while a Ticket is open and restore filters, page and search from a snapshot on Back; this keeps hidden list rows out of the page for assistive technology and E2E locators.
+- E2E now runs one worker (`playwright.config.ts`) because E2E4-03 compares a card count with a list total on a shared database. `authentication.spec.ts` needs `npm run prisma:seed` before each run (it uses up the seeded New Hire password); this was already true in Lab 3.
+- The Lab 3 and Lab 4 E2E specs and the Lab 3 client tests were changed only for the new landing page and for Ticket Detail now being rendered by `App`.
+- Feature 28 checked in a real browser: Dashboard cards are 4 across at desktop, 2 by 2 at 768 px and one column at 390 px with no horizontal scroll.

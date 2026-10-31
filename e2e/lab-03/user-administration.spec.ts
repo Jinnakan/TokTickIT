@@ -15,6 +15,7 @@ test.describe('Administrator user management', () => {
     await page.getByLabel('Email *').fill('morgan.kim@toktickit.test')
     await page.getByLabel('Password *').fill('DevPass123!')
     await page.getByRole('button', { name: 'Login' }).click()
+    await page.getByRole('button', { name: 'User Management' }).click()
     await expect(page.getByRole('heading', { name: 'Users' })).toBeVisible()
 
     // --- Create a user, confirm the password is shown once ---

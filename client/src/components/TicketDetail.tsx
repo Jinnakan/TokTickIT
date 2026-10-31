@@ -24,9 +24,11 @@ function formatDate(iso: string): string {
 export function TicketDetail({
   ticketId,
   onBackToMyTickets,
+  backLabel = '← Back to My Tickets',
 }: {
   ticketId: number
   onBackToMyTickets: () => void
+  backLabel?: string
 }) {
   const [status, setStatus] = useState<Status>('loading')
   const [ticket, setTicket] = useState<Ticket | null>(null)
@@ -99,7 +101,7 @@ export function TicketDetail({
     <div>
       <nav aria-label="breadcrumb" className="mb-3">
         <button type="button" className="btn btn-link p-0" onClick={onBackToMyTickets}>
-          ← Back to My Tickets
+          {backLabel}
         </button>
       </nav>
 
