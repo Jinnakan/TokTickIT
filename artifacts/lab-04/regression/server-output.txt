@@ -1,0 +1,277 @@
+commit faf933f plus uncommitted changes on feature/30-Release-readiness-lab4, 2026-10-31T14:32:29Z
+
+ RUN  v3.2.7 /Users/jinnakanchaviengpob/Desktop/3rd Year/CPE_334/ToKTickIT/server
+
+ ✓ tests/lab-04/ticket-workflow.api.test.ts > Status transitions (WF-01, WF-02, AC-L4-14) > WF-01 accepts every allowed transition, bumps the version, and writes a history row 203ms
+ ✓ tests/lab-04/ticket-workflow.api.test.ts > Status transitions (WF-01, WF-02, AC-L4-14) > WF-02 refuses every other pair with INVALID_TRANSITION and the allowed list 211ms
+ ✓ tests/lab-04/ticket-workflow.api.test.ts > Status transitions (WF-01, WF-02, AC-L4-14) > refuses an unknown status value the same way 8ms
+ ✓ tests/lab-04/ticket-workflow.api.test.ts > Resolution gate (WF-03, WF-04, AC-L4-12) > WF-03 reports each blocker 30ms
+ ✓ tests/lab-04/ticket-workflow.api.test.ts > Resolution gate (WF-03, WF-04, AC-L4-12) > WF-04 resolves once the blockers are cleared, and ignores a follow-up on a Cancelled Action 15ms
+ ✓ tests/lab-04/ticket-workflow.api.test.ts > Resolution gate (WF-03, WF-04, AC-L4-12) > WF-14 a status change waits for the Ticket lock, then sees an Action added by the lock holder 527ms
+ ✓ tests/lab-04/ticket-workflow.api.test.ts > Resolution gate (WF-03, WF-04, AC-L4-12) > WF-14 racing requests always end in one valid state 252ms
+ ✓ tests/lab-04/ticket-workflow.api.test.ts > Requester access (WF-05) > refuses status, priority, reassign and claim for a Requester 19ms
+ ✓ tests/lab-04/ticket-workflow.api.test.ts > Appears resolved (WF-06, WF-07, WF-08) > WF-06 sets requesterResolvedAt once in each allowed status and changes neither status nor version 252ms
+ ✓ tests/lab-04/ticket-workflow.api.test.ts > Appears resolved (WF-06, WF-07, WF-08) > WF-07 refuses another Requester, the wrong status, staff, an unknown Ticket, and no session 103ms
+ ✓ tests/lab-04/ticket-workflow.api.test.ts > Appears resolved (WF-06, WF-07, WF-08) > WF-08 clears the indication when the Ticket is reopened 60ms
+ ✓ tests/lab-04/ticket-workflow.api.test.ts > History (WF-09, WF-10) > WF-09 lists creation and every change once, in order, with the actor 65ms
+ ✓ tests/lab-04/ticket-workflow.api.test.ts > History (WF-09, WF-10) > WF-10 has no write route 26ms
+ ✓ tests/lab-04/ticket-workflow.api.test.ts > Cancelling (WF-11, AC-L4-19) > cancels Planned and In Progress Actions and leaves Completed ones 34ms
+ ✓ tests/lab-04/ticket-workflow.api.test.ts > Versions (WF-12, WF-13, WF-17, AC-L4-08, AC-L4-20) > WF-12 rejects a stale or missing expectedVersion on status, priority and reassign 92ms
+ ✓ tests/lab-04/ticket-workflow.api.test.ts > Versions (WF-12, WF-13, WF-17, AC-L4-08, AC-L4-20) > WF-13 lets exactly one of two simultaneous status changes win 28ms
+ ✓ tests/lab-04/ticket-workflow.api.test.ts > Versions (WF-12, WF-13, WF-17, AC-L4-08, AC-L4-20) > WF-17 changes the version only for claim, reassign, priority and status; any activity refreshes updatedAt 213ms
+ ✓ tests/lab-04/ticket-workflow.api.test.ts > Ticket detail and list fields (WF-15, WF-18, FR-L4-11) > WF-15 returns version, actionsSummary and, for staff only, resolution 44ms
+ ✓ tests/lab-04/ticket-workflow.api.test.ts > Ticket detail and list fields (WF-15, WF-18, FR-L4-11) > WF-18 carries the indication on staff list and detail, never on Requester list items 43ms
+ ✓ tests/lab-04/ticket-workflow.api.test.ts > Claim keeps its Lab 3 behavior > still answers ALREADY_CLAIMED to the second claimer 26ms
+ ✓ tests/lab-04/requester-dashboard.api.test.ts > Requester dashboard (RD-01 to RD-07, RD-09) > RD-01 each card equals a direct database query 221ms
+ ✓ tests/lab-04/requester-dashboard.api.test.ts > Requester dashboard (RD-01 to RD-07, RD-09) > RD-02 never counts or lists another Requester’s Tickets 278ms
+ ✓ tests/lab-04/requester-dashboard.api.test.ts > Requester dashboard (RD-01 to RD-07, RD-09) > RD-03 lists have at most 5 items with only the documented fields, newest first 148ms
+ ✓ tests/lab-04/requester-dashboard.api.test.ts > Requester dashboard (RD-01 to RD-07, RD-09) > RD-04 recently resolved follows the 7-day window, includes Closed, and drops a reopened Ticket 149ms
+ ✓ tests/lab-04/requester-dashboard.api.test.ts > Requester dashboard (RD-01 to RD-07, RD-09) > RD-05 a Requester with no Tickets sees zeros and empty lists 127ms
+ ✓ tests/lab-04/requester-dashboard.api.test.ts > Requester dashboard (RD-01 to RD-07, RD-09) > RD-06 refuses IT Staff and Administrator (403) and an anonymous caller (401) 251ms
+ ✓ tests/lab-04/requester-dashboard.api.test.ts > Requester dashboard (RD-01 to RD-07, RD-09) > RD-07 every card’s drill-down returns exactly as many Tickets as the card shows 162ms
+ ✓ tests/lab-04/requester-dashboard.api.test.ts > Requester dashboard (RD-01 to RD-07, RD-09) > RD-09 counts a legacy Ticket that has only its baseline history row like any other 131ms
+ ✓ tests/lab-04/requester-dashboard.api.test.ts > Requester dashboard on about 300 Tickets (RD-08, AC-L4-33) > RD-08 answers in under one second 17ms
+ ✓ tests/lab-04/carry-overs.api.test.ts > GET /api/users/assignable (CO-01, FR-L4-15) > lists active IT Staff and Administrators with minimal fields, for staff roles only 296ms
+ ✓ tests/lab-04/carry-overs.api.test.ts > GET /api/users/assignable (CO-01, FR-L4-15) > refuses a Requester with 403 and no session with 401 127ms
+ ✓ tests/lab-04/carry-overs.api.test.ts > Reassign accepts Administrators (CO-02, FR-L4-15) > assigns to an active Administrator and refuses inactive or non-staff owners 404ms
+ ✓ tests/lab-04/carry-overs.api.test.ts > PATCH /api/users/:id email (CO-03, FR-L4-16) > updates, trims, and lowercases the email 133ms
+ ✓ tests/lab-04/carry-overs.api.test.ts > PATCH /api/users/:id email (CO-03, FR-L4-16) > rejects a duplicate with 400 EMAIL_TAKEN and a malformed address with 400, changing nothing 193ms
+ ✓ tests/lab-04/carry-overs.api.test.ts > PATCH /api/users/:id email (CO-03, FR-L4-16) > accepts saving the user with their own unchanged email 127ms
+ ✓ tests/lab-04/carry-overs.api.test.ts > PATCH /api/users/:id email (CO-03, FR-L4-16) > refuses non-Administrators 186ms
+ ✓ tests/lab-04/carry-overs.api.test.ts > Attachment endpoint rules are unchanged (CO-04, AC-L4-27) > lets IT Staff list and download but not upload or remove 283ms
+ ✓ tests/lab-04/carry-overs.api.test.ts > Specific error codes for Administrator guards (CO-05, FR-L4-17) > returns SELF_DEACTIVATION with a message when an Administrator deactivates themselves 127ms
+ ✓ tests/lab-04/carry-overs.api.test.ts > Specific error codes for Administrator guards (CO-05, FR-L4-17) > returns EMAIL_TAKEN when creating a duplicate 123ms
+ ✓ tests/lab-04/carry-overs.api.test.ts > Specific error codes for Administrator guards (CO-05, FR-L4-17) > refuses to demote the only active Administrator with LAST_ADMINISTRATOR 133ms
+ ✓ tests/lab-03/auth.api.test.ts > POST /api/auth/login > logs in with valid credentials and sets a session cookie (AC-L3-01) 91ms
+ ✓ tests/lab-03/auth.api.test.ts > POST /api/auth/login > rejects a wrong password with the generic invalid-credentials message (AC-L3-02) 60ms
+ ✓ tests/lab-03/auth.api.test.ts > POST /api/auth/login > rejects an unknown email with the identical message (AC-L3-02) 3ms
+ ✓ tests/lab-03/auth.api.test.ts > POST /api/auth/login > rejects an inactive account with the identical message (AC-L3-02) 2ms
+ ✓ tests/lab-03/auth.api.test.ts > POST /api/auth/login > regenerates the session id on every successful login (BR-L3-06) 124ms
+ ✓ tests/lab-03/auth.api.test.ts > POST /api/auth/login > locks out an email+IP after repeated failures and clears after the window (AC-L3-06, BR-L3-08) 267ms
+ ✓ tests/lab-03/auth.api.test.ts > POST /api/auth/login > rejects a missing email or password before touching the database 4ms
+ ✓ tests/lab-03/auth.api.test.ts > POST /api/auth/logout > deletes the session server-side, not just the cookie (FR-L3-03) 99ms
+ ✓ tests/lab-03/auth.api.test.ts > POST /api/auth/logout > rejects logout with no session (AC-L3-04) 1ms
+ ✓ tests/lab-03/auth.api.test.ts > GET /api/auth/me > returns the current user for a valid session 66ms
+ ✓ tests/lab-03/auth.api.test.ts > GET /api/auth/me > rejects an unauthenticated request (AC-L3-04) 1ms
+ ✓ tests/lab-03/auth.api.test.ts > POST /api/auth/change-password > rejects a wrong current password (400 CURRENT_PASSWORD_INVALID) 246ms
+ ✓ tests/lab-03/auth.api.test.ts > POST /api/auth/change-password > changes the password, clears mustChangePassword, and the new password authenticates next login 428ms
+ ✓ tests/lab-03/auth.api.test.ts > POST /api/auth/change-password > is reachable even while mustChangePassword is true (not blocked by the password-change gate) 303ms
+ ✓ tests/lab-03/auth.api.test.ts > requirePasswordAlreadyChanged middleware (AUTH-06) > blocks a session with mustChangePassword true 187ms
+ ✓ tests/lab-03/auth.api.test.ts > requirePasswordAlreadyChanged middleware (AUTH-06) > allows a session with mustChangePassword false 62ms
+ ✓ tests/lab-03/auth.api.test.ts > Origin/Referer check on mutating session-protected routes (AUTH-10, AC-L3-16) > rejects a mutating request with no Origin/Referer header 65ms
+ ✓ tests/lab-03/auth.api.test.ts > Origin/Referer check on mutating session-protected routes (AUTH-10, AC-L3-16) > rejects a mutating request with a mismatched Origin 65ms
+ ✓ tests/lab-03/auth.api.test.ts > Origin/Referer check on mutating session-protected routes (AUTH-10, AC-L3-16) > allows a mutating request with a matching Origin 64ms
+ ✓ tests/lab-04/migration.test.ts > Lab 4 migration on existing data > MIG-01 keeps every earlier row and key field unchanged 4ms
+ ✓ tests/lab-04/migration.test.ts > Lab 4 migration on existing data > MIG-02 writes one baseline history row per existing Ticket 3ms
+ ✓ tests/lab-04/migration.test.ts > Lab 4 migration on existing data > MIG-03 gives legacy Tickets version 1, no requester indication, and zero Actions 2ms
+ ✓ tests/lab-04/migration.test.ts > Lab 4 migration on existing data > MIG-04 rollback.sql drops the new objects and leaves earlier data intact, inside a discarded transaction 19ms
+ ✓ tests/lab-04/migration.test.ts > Demo seed (MIG-05, MIG-06) > MIG-05 is idempotent and covers zero, one and many Actions, open and done follow-ups, and a Requester with no Tickets 329ms
+ ✓ tests/lab-04/migration.test.ts > Demo seed (MIG-05, MIG-06) > MIG-06 keeps a staff edit of a seeded Action when the seed runs again 84ms
+ ✓ tests/lab-03/staff-ticket-detail.api.test.ts > POST /api/tickets/:id/claim (STAFF-01, STAFF-02, AC-L3-10) > claims an unassigned ticket 192ms
+ ✓ tests/lab-03/staff-ticket-detail.api.test.ts > POST /api/tickets/:id/claim (STAFF-01, STAFF-02, AC-L3-10) > rejects claiming a ticket already claimed by someone else with 409 211ms
+ ✓ tests/lab-03/staff-ticket-detail.api.test.ts > POST /api/tickets/:id/claim (STAFF-01, STAFF-02, AC-L3-10) > returns 404 for an unknown ticket 68ms
+ ✓ tests/lab-03/staff-ticket-detail.api.test.ts > POST /api/tickets/:id/claim (STAFF-01, STAFF-02, AC-L3-10) > rejects a Requester attempting to claim 75ms
+ ✓ tests/lab-03/staff-ticket-detail.api.test.ts > POST /api/tickets/:id/reassign (STAFF-03) > rejects a ticketOwnerId that does not reference an active IT Staff user 145ms
+ ✓ tests/lab-03/staff-ticket-detail.api.test.ts > POST /api/tickets/:id/reassign (STAFF-03) > reassigns to a valid active IT Staff user 213ms
+ ✓ tests/lab-03/staff-ticket-detail.api.test.ts > PATCH /api/tickets/:id/priority (STAFF-04) > updates itPriority without changing requestedPriority 140ms
+ ✓ tests/lab-03/staff-ticket-detail.api.test.ts > PATCH /api/tickets/:id/priority (STAFF-04) > rejects an invalid priority value 140ms
+ ✓ tests/lab-03/staff-ticket-detail.api.test.ts > PATCH /api/tickets/:id/status (STAFF-05, STAFF-06, STAFF-07, AC-L3-11, AC-L3-12) > rejects an invalid transition (NEW -> CLOSED) and leaves status unchanged 139ms
+ ✓ tests/lab-03/staff-ticket-detail.api.test.ts > PATCH /api/tickets/:id/status (STAFF-05, STAFF-06, STAFF-07, AC-L3-11, AC-L3-12) > accepts every allowed transition in the BR-L3-13 table 188ms
+ ✓ tests/lab-03/staff-ticket-detail.api.test.ts > PATCH /api/tickets/:id/status (STAFF-05, STAFF-06, STAFF-07, AC-L3-11, AC-L3-12) > rejects every transition out of the terminal CANCELLED state 178ms
+ ✓ tests/lab-03/staff-ticket-detail.api.test.ts > PATCH /api/tickets/:id/status (STAFF-05, STAFF-06, STAFF-07, AC-L3-11, AC-L3-12) > rejects a status change from a Requester 73ms
+ ✓ tests/lab-03/staff-ticket-detail.api.test.ts > TicketState subclasses (STAFF-08, unit, no database) > matches the BR-L3-13 table exactly for every status 1ms
+ ✓ tests/lab-03/users-admin.api.test.ts > GET /api/users (USER-01, FR-L3-13) > filters by search, role, and isActive 125ms
+ ✓ tests/lab-03/users-admin.api.test.ts > GET /api/users (USER-01, FR-L3-13) > rejects a Requester 65ms
+ ✓ tests/lab-03/users-admin.api.test.ts > POST /api/users (USER-02, USER-03, AC-L3-14, BR-L3-19) > creates a user and returns initialPassword only in this response 131ms
+ ✓ tests/lab-03/users-admin.api.test.ts > POST /api/users (USER-02, USER-03, AC-L3-14, BR-L3-19) > rejects a duplicate email with 400 EMAIL_TAKEN 133ms
+ ✓ tests/lab-03/users-admin.api.test.ts > POST /api/users (USER-02, USER-03, AC-L3-14, BR-L3-19) > rejects a missing/invalid role 64ms
+ ✓ tests/lab-03/users-admin.api.test.ts > POST /api/users/:id/reset-password (USER-04, FR-L3-16, BR-L3-19) > sets a new password shown once and invalidates the old one 316ms
+ ✓ tests/lab-03/users-admin.api.test.ts > POST /api/users/:id/deactivate (USER-05, USER-06, AC-L3-15, BR-L3-18, FR-L3-17) > deactivates a user and immediately invalidates their session 204ms
+ ✓ tests/lab-03/users-admin.api.test.ts > POST /api/users/:id/deactivate (USER-05, USER-06, AC-L3-15, BR-L3-18, FR-L3-17) > is idempotent when called twice 136ms
+ ✓ tests/lab-03/users-admin.api.test.ts > POST /api/users/:id/deactivate (USER-05, USER-06, AC-L3-15, BR-L3-18, FR-L3-17) > rejects an Administrator deactivating their own account 65ms
+ ✓ tests/lab-03/users-admin.api.test.ts > Last-Administrator protection (defense-in-depth) > rejects an Administrator demoting their own role when they are the last active Administrator 136ms
+ ✓ tests/lab-03/users-admin.api.test.ts > PATCH /api/users/:id (USER-07, BR-L3-01) > rejects a role value outside the three valid roles 134ms
+ ✓ tests/lab-03/users-admin.api.test.ts > PATCH /api/users/:id (USER-07, BR-L3-01) > updates name and role for a valid request 133ms
+ ✓ tests/lab-03/users-admin.api.test.ts > PATCH /api/users/:id (USER-07, BR-L3-01) > returns 404 for an unknown user 65ms
+ ✓ tests/lab-04/staff-dashboard.api.test.ts > Staff dashboard (SD-01 to SD-03, SD-05 to SD-07, SD-09) > SD-01 every card, byStatus and byItPriority equals a direct query 37ms
+ ✓ tests/lab-04/staff-dashboard.api.test.ts > Staff dashboard (SD-01 to SD-03, SD-05 to SD-07, SD-09) > SD-02 only an Administrator receives user counts 14ms
+ ✓ tests/lab-04/staff-dashboard.api.test.ts > Staff dashboard (SD-01 to SD-03, SD-05 to SD-07, SD-09) > SD-03 refuses a Requester (403) and an anonymous caller (401) 3ms
+ ✓ tests/lab-04/staff-dashboard.api.test.ts > Staff dashboard (SD-01 to SD-03, SD-05 to SD-07, SD-09) > SD-05 every drill-down returns exactly as many Tickets as its count 46ms
+ ✓ tests/lab-04/staff-dashboard.api.test.ts > Staff dashboard (SD-01 to SD-03, SD-05 to SD-07, SD-09) > SD-06 myActions lists only the caller’s Planned and In Progress Actions, soonest first, at most 5 275ms
+ ✓ tests/lab-04/staff-dashboard.api.test.ts > Staff dashboard (SD-01 to SD-03, SD-05 to SD-07, SD-09) > SD-07 reported-resolved counts only active Tickets with the indication 8ms
+ ✓ tests/lab-04/staff-dashboard.api.test.ts > Staff dashboard (SD-01 to SD-03, SD-05 to SD-07, SD-09) > SD-09 Resolved, Closed and Cancelled are excluded from unassigned and mine 5ms
+ ✓ tests/lab-04/staff-dashboard.api.test.ts > Staff dashboard on a clean schema and on about 300 Tickets (SD-04, SD-08) > SD-04 an empty database gives zeros, 8 status rows at 0, and empty lists 28ms
+ ✓ tests/lab-04/staff-dashboard.api.test.ts > Staff dashboard on a clean schema and on about 300 Tickets (SD-04, SD-08) > SD-08 answers in under one second with about 300 Tickets 30ms
+ ✓ tests/lab-04/actions-taken.api.test.ts > POST /api/tickets/:ticketId/actions > ACT-01 creates an Action for IT Staff and Administrator with the session user as creator 67ms
+ ✓ tests/lab-04/actions-taken.api.test.ts > POST /api/tickets/:ticketId/actions > ACT-02 ignores createdById, ticketId, version, id and unknown fields 31ms
+ ✓ tests/lab-04/actions-taken.api.test.ts > POST /api/tickets/:ticketId/actions > ACT-03 rejects an inactive, Requester, unknown or non-integer assignee on create and edit 43ms
+ ✓ tests/lab-04/actions-taken.api.test.ts > POST /api/tickets/:ticketId/actions > ACT-04 rejects a missing follow-up note and a note without follow-up 14ms
+ ✓ tests/lab-04/actions-taken.api.test.ts > POST /api/tickets/:ticketId/actions > ACT-07 accepts a staff member who is not the Ticket Owner, with a third person as assignee 25ms
+ ✓ tests/lab-04/actions-taken.api.test.ts > POST /api/tickets/:ticketId/actions > ACT-10 makes a repeated requestId idempotent, also when two arrive at once 64ms
+ ✓ tests/lab-04/actions-taken.api.test.ts > POST /api/tickets/:ticketId/actions > ACT-11 refuses Actions on a Closed or Cancelled Ticket and allows them on a Resolved one 54ms
+ ✓ tests/lab-04/actions-taken.api.test.ts > POST /api/tickets/:ticketId/actions > ACT-12 enforces result, future-date and length limits 28ms
+ ✓ tests/lab-04/actions-taken.api.test.ts > POST /api/tickets/:ticketId/actions > ACT-15 stores a script tag as plain data 17ms
+ ✓ tests/lab-04/actions-taken.api.test.ts > GET /api/tickets/:ticketId/actions > ACT-05 lets a Requester read their own Ticket but not create, edit, or read another Requester’s 21ms
+ ✓ tests/lab-04/actions-taken.api.test.ts > GET /api/tickets/:ticketId/actions > ACT-14 returns 401 without a session and 403 PASSWORD_CHANGE_REQUIRED when a change is pending 143ms
+ ✓ tests/lab-04/actions-taken.api.test.ts > GET /api/tickets/:ticketId/actions > ACT-16 orders by actionAt then id, so equal times stay stable 37ms
+ ✓ tests/lab-04/actions-taken.api.test.ts > GET /api/tickets/:ticketId/actions > returns an empty array when there are no Actions and 404 for an unknown Ticket 14ms
+ ✓ tests/lab-04/actions-taken.api.test.ts > PATCH /api/tickets/:ticketId/actions/:actionId > ACT-06 returns 404 for an Action addressed through the wrong Ticket or an unknown id 31ms
+ ✓ tests/lab-04/actions-taken.api.test.ts > PATCH /api/tickets/:ticketId/actions/:actionId > ACT-08 rejects an outdated version and keeps the first change, in order and at the same moment 47ms
+ ✓ tests/lab-04/actions-taken.api.test.ts > PATCH /api/tickets/:ticketId/actions/:actionId > ACT-09 locks a Cancelled Action and the content of a Completed one 36ms
+ ✓ tests/lab-04/actions-taken.api.test.ts > PATCH /api/tickets/:ticketId/actions/:actionId > ACT-17 allows only the BR-L4-05 status moves 80ms
+ ✓ tests/lab-04/actions-taken.api.test.ts > PATCH /api/tickets/:ticketId/actions/:actionId > ACT-18 marks a follow-up done once, keeps the first time on repeat, and clears it on false 66ms
+ ✓ tests/lab-04/actions-taken.api.test.ts > PATCH /api/tickets/:ticketId/actions/:actionId > requires a positive integer version 40ms
+ ✓ tests/lab-04/actions-taken.api.test.ts > DELETE /api/tickets/:ticketId/actions/:actionId > ACT-13 returns 404 and leaves the row 20ms
+ ✓ tests/lab-04/ticket-list-filters.api.test.ts > statusGroup and requesterReportedResolved (WF-16, AC-L4-25) > filters the Requester list by status group and stays scoped to the Requester 297ms
+ ✓ tests/lab-04/ticket-list-filters.api.test.ts > statusGroup and requesterReportedResolved (WF-16, AC-L4-25) > requires both conditions when statusGroup and currentStatus are sent together 269ms
+ ✓ tests/lab-04/ticket-list-filters.api.test.ts > statusGroup and requesterReportedResolved (WF-16, AC-L4-25) > filters the staff list too, and keeps the indication on staff list items only 260ms
+ ✓ tests/lab-04/ticket-list-filters.api.test.ts > statusGroup and requesterReportedResolved (WF-16, AC-L4-25) > rejects an unknown value with 400 for both roles 129ms
+ ✓ tests/lab-04/ticket-list-filters.api.test.ts > statusGroup and requesterReportedResolved (WF-16, AC-L4-25) > still behaves like Lab 3 without the new parameters 265ms
+ ✓ tests/lab-04/security.api.test.ts > IDOR sweep (SEC4-01, BR-L4-22) > lets only the owner or staff read Actions, history and Ticket detail 47ms
+ ✓ tests/lab-04/security.api.test.ts > IDOR sweep (SEC4-01, BR-L4-22) > refuses a Requester every write on Actions and workflow, even on their own Ticket 8ms
+ ✓ tests/lab-04/security.api.test.ts > IDOR sweep (SEC4-01, BR-L4-22) > refuses another Requester the indication on a Ticket they do not own 3ms
+ ✓ tests/lab-04/security.api.test.ts > IDOR sweep (SEC4-01, BR-L4-22) > refuses staff the Requester-only indication, and scopes the Requester dashboard to the session user 12ms
+ ✓ tests/lab-04/security.api.test.ts > IDOR sweep (SEC4-01, BR-L4-22) > answers an Action addressed through another Ticket with 404, not 403 16ms
+ ✓ tests/lab-04/security.api.test.ts > Mass assignment (SEC4-02, §10) > ignores protected and unknown fields on Action create and edit 12ms
+ ✓ tests/lab-04/security.api.test.ts > Mass assignment (SEC4-02, §10) > ignores protected fields on Ticket mutations 9ms
+ ✓ tests/lab-04/security.api.test.ts > Origin check on every new mutating route (SEC4-03, BR-L3-09) > answers 403 ORIGIN_MISMATCH for a wrong or missing Origin 280ms
+ ✓ tests/lab-04/security.api.test.ts > Static guards (SEC4-05, §10) > uses raw SQL only as bound tagged templates, and only where a row lock or a constant connectivity check needs it 5ms
+ ✓ tests/lab-04/security.api.test.ts > Static guards (SEC4-05, §10) > never runs a shell command and never builds HTML from user text 2ms
+ ✓ tests/lab-04/security.api.test.ts > Static guards (SEC4-05, §10) > never returns an error message or stack from a caught error to the client 1ms
+ ✓ tests/lab-03/authorization.api.test.ts > requireRole (AUTHZ-01, AUTHZ-02) > blocks a Requester from an IT-Staff-only route with 403 FORBIDDEN 164ms
+ ✓ tests/lab-03/authorization.api.test.ts > requireRole (AUTHZ-01, AUTHZ-02) > blocks IT Staff from an Administrator-only route with 403 FORBIDDEN 132ms
+ ✓ tests/lab-03/authorization.api.test.ts > requireRole (AUTHZ-01, AUTHZ-02) > allows the matching role through 131ms
+ ✓ tests/lab-03/authorization.api.test.ts > Ticket ownership under session auth (AUTHZ-03, AC-L3-07) > returns 403 TICKET_FORBIDDEN when a Requester requests a ticket they do not own 271ms
+ ✓ tests/lab-03/authorization.api.test.ts > Generalized OwnershipResult<T> primitive (AUTHZ-04, BR-L3-10) > writes 404 for a not_found result, generic to any resource type 0ms
+ ✓ tests/lab-03/authorization.api.test.ts > Generalized OwnershipResult<T> primitive (AUTHZ-04, BR-L3-10) > writes 403 for a forbidden result, generic to any resource type 0ms
+ ✓ tests/lab-03/authorization.api.test.ts > Requester-only ticket creation blocked for other roles (AUTHZ-05) > rejects IT Staff creating a ticket as if they were a Requester 65ms
+ ✓ tests/lab-03/authorization.api.test.ts > Requester-only ticket creation blocked for other roles (AUTHZ-05) > rejects an Administrator creating a ticket as if they were a Requester 65ms
+ ✓ tests/lab-03/security-audit.api.test.ts > Command injection guard (SEC-02, BR-L3-21) > server/src never imports child_process, exec, or spawn 2ms
+ ✓ tests/lab-03/security-audit.api.test.ts > SQL injection guard (BR-L3-11) > server/src never calls $queryRawUnsafe or $executeRawUnsafe 1ms
+ ✓ tests/lab-03/security-audit.api.test.ts > Security headers (SEC-04, BR-L3-12) > sends a Content-Security-Policy header 6ms
+ ✓ tests/lab-03/security-audit.api.test.ts > Attachment path-containment regression (SEC-01, BR-L3-20) > a path-traversal-shaped filename never escapes the uploads root 130ms
+ ✓ tests/lab-03/security-audit.api.test.ts > Consolidated IDOR sweep (SEC-03) > Requester cannot read a ticket, its comments, or its notes owned by another Requester 217ms
+ ✓ tests/lab-03/security-audit.api.test.ts > Consolidated IDOR sweep (SEC-03) > a non-Administrator cannot read the user list 129ms
+ ✓ tests/lab-03/security-audit.api.test.ts > Consolidated IDOR sweep (SEC-03) > a deactivated user's session is rejected on the very next request, not just at their next login 202ms
+ ✓ tests/lab-02/attachments.api.test.ts > POST /api/tickets/:id/attachments > accepts a valid JPEG and returns active-attachment metadata 37ms
+ ✓ tests/lab-02/attachments.api.test.ts > POST /api/tickets/:id/attachments > rejects a file whose bytes do not match its claimed type, even with a matching extension and MIME (magic-byte check) 13ms
+ ✓ tests/lab-02/attachments.api.test.ts > POST /api/tickets/:id/attachments > rejects a disallowed extension 12ms
+ ✓ tests/lab-02/attachments.api.test.ts > POST /api/tickets/:id/attachments > rejects a file larger than 5 MB 14ms
+ ✓ tests/lab-02/attachments.api.test.ts > POST /api/tickets/:id/attachments > rejects upload with no file in the request 11ms
+ ✓ tests/lab-02/attachments.api.test.ts > POST /api/tickets/:id/attachments > returns 403 (not 404) uploading to a ticket owned by a different Requester 12ms
+ ✓ tests/lab-02/attachments.api.test.ts > POST /api/tickets/:id/attachments > returns 404 uploading to an unknown ticket 3ms
+ ✓ tests/lab-02/attachments.api.test.ts > POST /api/tickets/:id/attachments > rejects a request with no session 8ms
+ ✓ tests/lab-02/attachments.api.test.ts > POST /api/tickets/:id/attachments > enforces the 5-active-attachment limit and leaves exactly 5 stored (AC-08) 51ms
+ ✓ tests/lab-02/attachments.api.test.ts > POST /api/tickets/:id/attachments > enforces the limit correctly under real concurrent uploads, not just sequential ones 54ms
+ ✓ tests/lab-02/attachments.api.test.ts > GET /api/tickets/:id/attachments > lists metadata for an owned ticket and rejects a non-owner 20ms
+ ✓ tests/lab-02/attachments.api.test.ts > GET /api/attachments/:id/download > streams the file for its owner with the original filename 13ms
+ ✓ tests/lab-02/attachments.api.test.ts > GET /api/attachments/:id/download > returns 403 (not 404) for an attachment owned by a different Requester 17ms
+ ✓ tests/lab-02/attachments.api.test.ts > GET /api/attachments/:id/download > returns 404 for an unknown attachment id 2ms
+ ✓ tests/lab-02/attachments.api.test.ts > GET /api/attachments/:id/download > returns 410 for a removed attachment and blocks the download (BR-20) 17ms
+ ✓ tests/lab-02/attachments.api.test.ts > DELETE /api/attachments/:id > soft-removes with a valid reason and keeps the metadata visible (AC-13) 13ms
+ ✓ tests/lab-02/attachments.api.test.ts > DELETE /api/attachments/:id > rejects a missing or too-short reason (AC-14) 12ms
+ ✓ tests/lab-02/attachments.api.test.ts > DELETE /api/attachments/:id > rejects removing an already-removed attachment 15ms
+ ✓ tests/lab-02/attachments.api.test.ts > DELETE /api/attachments/:id > returns 403 (not 404) removing an attachment owned by a different Requester 12ms
+ ✓ tests/lab-04/touch-ticket.api.test.ts > Child activity refreshes Ticket.updatedAt (BR-L4-15, AC-L4-20) > refreshes on a Public Comment 56ms
+ ✓ tests/lab-04/touch-ticket.api.test.ts > Child activity refreshes Ticket.updatedAt (BR-L4-15, AC-L4-20) > refreshes on an Internal Note 50ms
+ ✓ tests/lab-04/touch-ticket.api.test.ts > Child activity refreshes Ticket.updatedAt (BR-L4-15, AC-L4-20) > refreshes on an Attachment upload and on its removal 80ms
+ ✓ tests/lab-03/comments-notes.api.test.ts > POST /api/tickets/:id/comments > creates a comment on the Requester's own ticket (CN-01, FR-L3-07) 37ms
+ ✓ tests/lab-03/comments-notes.api.test.ts > POST /api/tickets/:id/comments > rejects posting to a ticket owned by a different Requester (CN-02, AC-L3-07) 15ms
+ ✓ tests/lab-03/comments-notes.api.test.ts > POST /api/tickets/:id/comments > rejects an unauthenticated request 9ms
+ ✓ tests/lab-03/comments-notes.api.test.ts > POST /api/tickets/:id/comments > rejects an empty or over-length body 13ms
+ ✓ tests/lab-03/comments-notes.api.test.ts > POST /api/tickets/:id/comments > stores HTML/script-like text verbatim as data, not executable markup (CN-03, AC-L3-13, BR-L3-12) 19ms
+ ✓ tests/lab-03/comments-notes.api.test.ts > POST /api/tickets/:id/comments > has no edit or delete route (append-only by construction, CN-06, BR-L3-16) 17ms
+ ✓ tests/lab-03/comments-notes.api.test.ts > GET /api/tickets/:id/comments > returns comments oldest-first (CN-07) 25ms
+ ✓ tests/lab-03/comments-notes.api.test.ts > GET /api/tickets/:id/comments > rejects reading comments on a ticket owned by a different Requester 16ms
+ ✓ tests/lab-03/comments-notes.api.test.ts > GET /api/tickets/:id/comments > returns an empty array for a ticket with no comments yet 10ms
+ ✓ tests/lab-03/comments-notes.api.test.ts > IT Staff comment access on any ticket (Issue 19) > lets IT Staff read and post comments on a ticket they do not own 17ms
+ ✓ tests/lab-03/comments-notes.api.test.ts > POST /api/tickets/:id/notes (CN-04, FR-L3-08) > creates an internal note in InternalNote, not PublicComment 17ms
+ ✓ tests/lab-03/comments-notes.api.test.ts > POST /api/tickets/:id/notes (CN-04, FR-L3-08) > rejects a Requester posting a note, even on their own ticket, with 403 not 404 (BR-L3-17) 8ms
+ ✓ tests/lab-03/comments-notes.api.test.ts > GET /api/tickets/:id/notes (CN-05, AC-L3-08, BR-L3-17) > rejects a Requester reading notes on their own ticket, leaking no note content 13ms
+ ✓ tests/lab-03/comments-notes.api.test.ts > GET /api/tickets/:id/notes (CN-05, AC-L3-08, BR-L3-17) > lets IT Staff read notes on any ticket 15ms
+ ✓ tests/lab-03/comments-notes.api.test.ts > GET /api/tickets/:id/notes (CN-05, AC-L3-08, BR-L3-17) > rejects an unauthenticated request 6ms
+ ✓ tests/lab-02/create-ticket.api.test.ts > POST /api/tickets > creates a ticket and returns a unique Ticket Number (AC-01) 121ms
+ ✓ tests/lab-02/create-ticket.api.test.ts > POST /api/tickets > rejects a request with no session 2ms
+ ✓ tests/lab-02/create-ticket.api.test.ts > POST /api/tickets > rejects a missing summary with a field-level message and creates no row (AC-04) 74ms
+ ✓ tests/lab-02/create-ticket.api.test.ts > POST /api/tickets > rejects a summary shorter than 5 or longer than 150 characters (AC-05) 77ms
+ ✓ tests/lab-02/create-ticket.api.test.ts > POST /api/tickets > rejects an inactive or unknown Category and creates no row (AC-06) 71ms
+ ✓ tests/lab-03/data-model.migration.test.ts > DevRequester -> User migration (MIG-01, AC-L3-17) > every seeded Requester identity is now a User with role REQUESTER 22ms
+ ✓ tests/lab-03/data-model.migration.test.ts > DevRequester -> User migration (MIG-01, AC-L3-17) > every existing Ticket still resolves to its correct Requester User 7ms
+ ✓ tests/lab-03/data-model.migration.test.ts > DevRequester -> User migration (MIG-01, AC-L3-17) > copies itPriority from requestedPriority at creation, matching the migration's original backfill 8ms
+ ✓ tests/lab-03/data-model.migration.test.ts > DevRequester -> User migration (MIG-01, AC-L3-17) > the DevRequester table no longer exists (migrated away, not duplicated) 5ms
+ ✓ tests/lab-03/data-model.migration.test.ts > Seed script idempotency and minimums (MIG-02) > running the seed twice produces the same user set with no duplicates 197ms
+ ✓ tests/lab-03/data-model.migration.test.ts > Seed script idempotency and minimums (MIG-02) > meets the required seed minimums for every role 104ms
+ ✓ tests/lab-04/error-contract.api.test.ts > JSON error contract (SEC4-04, api-spec §0) > answers malformed JSON with 400 INVALID_JSON as JSON, with no stack trace 10ms
+ ✓ tests/lab-04/error-contract.api.test.ts > JSON error contract (SEC4-04, api-spec §0) > answers an unknown route with 404 NOT_FOUND as JSON 1ms
+ ✓ tests/lab-04/error-contract.api.test.ts > JSON error contract (SEC4-04, api-spec §0) > answers an oversized JSON body with 413 PAYLOAD_TOO_LARGE 4ms
+ ✓ tests/lab-04/error-contract.api.test.ts > JSON error contract (SEC4-04, api-spec §0) > answers an unexpected failure with 500 INTERNAL_ERROR and hides the cause 156ms
+ ✓ tests/lab-04/error-contract.api.test.ts > JSON error contract (SEC4-04, api-spec §0) > logs the cause on the server so it can be found 126ms
+ ✓ tests/lab-03/staff-queue.api.test.ts > GET /api/tickets as IT Staff (Queue) (QUEUE-01, AC-L3-09) > returns tickets from every Requester, not scoped to one 37ms
+ ✓ tests/lab-03/staff-queue.api.test.ts > GET /api/tickets as IT Staff (Queue) (QUEUE-01, AC-L3-09) > rejects a Requester using the staff-only query params silently (still scoped to their own tickets) 19ms
+ ✓ tests/lab-03/staff-queue.api.test.ts > GET /api/tickets unassignedOnly / ticketOwnerId filters (QUEUE-02, QUEUE-03) > unassignedOnly=true returns only tickets with no ticketOwnerId 12ms
+ ✓ tests/lab-03/staff-queue.api.test.ts > GET /api/tickets unassignedOnly / ticketOwnerId filters (QUEUE-02, QUEUE-03) > ticketOwnerId=<id> returns only tickets claimed by that staff member 3ms
+ ✓ tests/lab-03/staff-queue.api.test.ts > GET /api/tickets sortBy allowlist (QUEUE-04, BR-L3-11) > rejects a sortBy value outside the allowlist with 400, before it reaches Prisma 2ms
+ ✓ tests/lab-03/staff-queue.api.test.ts > GET /api/tickets sortBy allowlist (QUEUE-04, BR-L3-11) > rejects an invalid itPriority value 2ms
+ ✓ tests/lab-03/staff-queue.api.test.ts > TicketQueryBuilder (QUEUE-05, unit) > produces the expected where/orderBy/skip/take shape from a chained call 0ms
+ ✓ tests/lab-03/staff-queue.api.test.ts > TicketQueryBuilder (QUEUE-05, unit) > unassignedOnly overrides withTicketOwner when both are set after it 0ms
+ ✓ tests/lab-03/staff-queue.api.test.ts > TicketQueryBuilder (QUEUE-05, unit) > omits filters that were never set 0ms
+ ✓ tests/lab-02/my-tickets.api.test.ts > GET /api/tickets > rejects a request with no session 2ms
+ ✓ tests/lab-02/my-tickets.api.test.ts > GET /api/tickets > only returns tickets owned by the selected Requester (AC-03, BR-12) 38ms
+ ✓ tests/lab-02/my-tickets.api.test.ts > GET /api/tickets > returns an empty result set with zero totalItems for a search with no matches (AC-10) 3ms
+ ✓ tests/lab-02/my-tickets.api.test.ts > GET /api/tickets > finds a ticket by partial, case-insensitive summary search 7ms
+ ✓ tests/lab-02/my-tickets.api.test.ts > GET /api/tickets > paginates correctly and reports totalPages (AC-11) 16ms
+ ✓ tests/lab-02/my-tickets.api.test.ts > GET /api/tickets > clamps an out-of-range pageSize to the maximum (BR-15) 3ms
+ ✓ tests/lab-02/my-tickets.api.test.ts > GET /api/tickets > rejects an invalid sortBy value 1ms
+ ✓ tests/lab-02/my-tickets.api.test.ts > GET /api/tickets > sorts by summary ascending when requested 19ms
+ ✓ tests/lab-02/ticket-detail.api.test.ts > GET /api/tickets/:id > returns the full ticket for its owner (AC-12) 26ms
+ ✓ tests/lab-02/ticket-detail.api.test.ts > GET /api/tickets/:id > returns 403 (not 404) when a different Requester owns the ticket (AC-03) 11ms
+ ✓ tests/lab-02/ticket-detail.api.test.ts > GET /api/tickets/:id > returns 404 for an unknown ticket id 3ms
+ ✓ tests/lab-02/ticket-detail.api.test.ts > GET /api/tickets/:id > returns 404 for a non-numeric id rather than leaking a stack trace 2ms
+ ✓ tests/lab-02/ticket-detail.api.test.ts > GET /api/tickets/:id > rejects a request with no session 9ms
+ ✓ tests/lab-04/ticket-history.api.test.ts > Ticket creation writes the first history row (BR-L4-16, AC-L4-18) > records fromStatus null, toStatus NEW and the Requester as actor, once 190ms
+ ✓ tests/lab-04/workflow-rules.unit.test.ts > Resolution gate (WF-U01, BR-L4-10) > blocks a Ticket with no Actions at all (a legacy Ticket) 1ms
+ ✓ tests/lab-04/workflow-rules.unit.test.ts > Resolution gate (WF-U01, BR-L4-10) > allows a Ticket with one Completed Action and nothing else 0ms
+ ✓ tests/lab-04/workflow-rules.unit.test.ts > Resolution gate (WF-U01, BR-L4-10) > lists every blocker in the documented order with counts 0ms
+ ✓ tests/lab-04/workflow-rules.unit.test.ts > Resolution gate (WF-U01, BR-L4-10) > ignores a follow-up that is done and one on a Cancelled Action 0ms
+ ✓ tests/lab-04/workflow-rules.unit.test.ts > Resolution gate (WF-U01, BR-L4-10) > answers every combination of up to three Actions consistently with the rule 26ms
+ ✓ tests/lab-04/workflow-rules.unit.test.ts > Resolution gate (WF-U01, BR-L4-10) > summarizes the Actions for GET /api/tickets/:id 0ms
+ ✓ tests/lab-04/workflow-rules.unit.test.ts > Ticket transition matrix through the State classes (WF-U02, BR-L4-09) > matches the table exactly for every from/to pair 0ms
+ ✓ tests/lab-01/categories.test.ts > GET /api/categories > returns the seeded categories in ID order 23ms
+ ✓ tests/lab-01/health.test.ts > GET /api/health > returns the TokTickIT API health payload 7ms
+ ✓ tests/lab-04/action-rules.unit.test.ts > Action field validation (ACT-U01, BR-L4-06, BR-L4-07) > accepts a minimal create and applies defaults 1ms
+ ✓ tests/lab-04/action-rules.unit.test.ts > Action field validation (ACT-U01, BR-L4-06, BR-L4-07) > requires a description of 1 to 2000 characters and accepts exactly 2000 0ms
+ ✓ tests/lab-04/action-rules.unit.test.ts > Action field validation (ACT-U01, BR-L4-06, BR-L4-07) > requires a result when Completed and limits it to 2000 characters 0ms
+ ✓ tests/lab-04/action-rules.unit.test.ts > Action field validation (ACT-U01, BR-L4-06, BR-L4-07) > stores an empty optional text as null 0ms
+ ✓ tests/lab-04/action-rules.unit.test.ts > Action field validation (ACT-U01, BR-L4-06, BR-L4-07) > limits attachment notes to 500 characters 0ms
+ ✓ tests/lab-04/action-rules.unit.test.ts > Action field validation (ACT-U01, BR-L4-06, BR-L4-07) > pairs the follow-up note with followUpRequired 0ms
+ ✓ tests/lab-04/action-rules.unit.test.ts > Action field validation (ACT-U01, BR-L4-06, BR-L4-07) > clears the note when follow-up is switched off without a new note 0ms
+ ✓ tests/lab-04/action-rules.unit.test.ts > Action field validation (ACT-U01, BR-L4-06, BR-L4-07) > rejects non-text, non-boolean and non-integer values 0ms
+ ✓ tests/lab-04/action-rules.unit.test.ts > Action field validation (ACT-U01, BR-L4-06, BR-L4-07) > parses actionAt only as an ISO time with a UTC offset 0ms
+ ✓ tests/lab-04/action-rules.unit.test.ts > Action field validation (ACT-U01, BR-L4-06, BR-L4-07) > allows a Planned or In Progress action in the future but not a Completed one beyond one minute 0ms
+ ✓ tests/lab-04/action-rules.unit.test.ts > Action field validation (ACT-U01, BR-L4-06, BR-L4-07) > lets a create start only as Planned, In Progress or Completed 0ms
+ ✓ tests/lab-04/action-rules.unit.test.ts > Action field validation (ACT-U01, BR-L4-06, BR-L4-07) > validates requestId only on create 0ms
+ ✓ tests/lab-04/action-rules.unit.test.ts > Action field validation (ACT-U01, BR-L4-06, BR-L4-07) > merges a partial edit onto the existing action 0ms
+ ✓ tests/lab-04/action-rules.unit.test.ts > Action field validation (ACT-U01, BR-L4-06, BR-L4-07) > refuses followUpDone true when no follow-up is required 0ms
+ ✓ tests/lab-04/action-rules.unit.test.ts > Action status moves and locks (ACT-U02, BR-L4-05) > matches the BR-L4-05 table for every from/to pair 0ms
+ ✓ tests/lab-04/action-rules.unit.test.ts > Action status moves and locks (ACT-U02, BR-L4-05) > locks a Cancelled action against every edit 0ms
+ ✓ tests/lab-04/action-rules.unit.test.ts > Action status moves and locks (ACT-U02, BR-L4-05) > lets a Completed action change only follow-up fields and attachment notes 0ms
+ ✓ tests/lab-04/action-rules.unit.test.ts > Action status moves and locks (ACT-U02, BR-L4-05) > reports an illegal status move with from and to 0ms
+ ✓ tests/lab-04/action-rules.unit.test.ts > Action status moves and locks (ACT-U02, BR-L4-05) > treats the current status as no change and lets a legal move through 0ms
+ ✓ tests/lab-04/action-rules.unit.test.ts > Body allowlist (ACT-U03, BR-L4-04) > keeps only allowlisted fields and never copies protected ones 0ms
+ ✓ tests/lab-04/action-rules.unit.test.ts > Body allowlist (ACT-U03, BR-L4-04) > returns an empty object for a non-object body 0ms
+ ✓ tests/lab-04/action-rules.unit.test.ts > Body allowlist (ACT-U03, BR-L4-04) > does not copy protected fields into a parsed draft 0ms
+ ✓ tests/lab-04/config.unit.test.ts > loadConfig > reads the three settings 1ms
+ ✓ tests/lab-04/config.unit.test.ts > loadConfig > defaults the port and the origin like the rest of the app 0ms
+ ✓ tests/lab-04/config.unit.test.ts > loadConfig > splits several origins and trims them 0ms
+ ✓ tests/lab-04/config.unit.test.ts > loadConfig > reports every problem in one error, naming the setting 0ms
+ ✓ tests/lab-02/ticket-number.unit.test.ts > generateTicketNumber (unit, no database) > returns the required TKT-YYYY-NNNNNN format 0ms
+ ✓ tests/lab-02/ticket-number.unit.test.ts > generateTicketNumber (unit, no database) > pads the id to 6 digits 0ms
+ ✓ tests/lab-02/ticket-number.unit.test.ts > generateTicketNumber (unit, no database) > does not truncate an id already 6 or more digits long 0ms
+ ✓ tests/lab-02/ticket-number.unit.test.ts > generateTicketNumber (unit, no database) > uses the UTC year of createdAt, not the local year 0ms
+ ✓ tests/lab-04/storage-root.unit.test.ts > Attachment storage root > is server/uploads/lab-02, where earlier uploads already live and git ignores them 0ms
+
+ Test Files  30 passed (30)
+      Tests  267 passed (267)
+   Start at  21:32:30
+   Duration  30.79s (transform 230ms, setup 0ms, collect 2.36s, tests 24.68s, environment 2ms, prepare 720ms)
+

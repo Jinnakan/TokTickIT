@@ -1,0 +1,921 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Feature 30: Release (plan)</title>
+<style>
+  :root { --bg:#f6faf7; --fg:#1b2a22; --muted:#5b6b62; --card:#fff; --line:#cfe0d5; --accent:#2f7d52; --warn:#b4540a; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#101a14; --fg:#e4efe8; --muted:#9db3a5; --card:#18261e; --line:#2b4034; --accent:#6fcf97; --warn:#f0a35e; } }
+  body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.55 system-ui,sans-serif; }
+  main { max-width:1080px; margin:0 auto; padding:24px 16px 80px; }
+  h1 { font-size:1.7rem; margin:.2em 0; } h2 { margin-top:2em; border-bottom:2px solid var(--line); padding-bottom:.2em; }
+  .meta { color:var(--muted); }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px 18px; margin:14px 0; }
+  .pair { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  @media (max-width:760px) { .pair { grid-template-columns:1fr; } }
+  .pair h4 { margin:0 0 6px; } .before h4 { color:var(--warn); } .after h4 { color:var(--accent); }
+  table { border-collapse:collapse; width:100%; font-size:.93rem; } th,td { border:1px solid var(--line); padding:6px 9px; text-align:left; vertical-align:top; }
+  code, pre { font-family:ui-monospace,Menlo,monospace; font-size:.85rem; } pre { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:10px 12px; overflow:auto; }
+  #plan h3 { margin-top:2em; padding-top:.4em; border-top:1px dashed var(--line); } #plan ul { padding-left:1.2em; }
+  .mermaid { text-align:center; overflow:auto; }
+</style>
+</head>
+<body>
+<main>
+<h1>Feature 30: Release</h1>
+<p class="meta">Issue #53 · branch <code>feature/30-...</code> from <code>lab4-staging</code> (needs feature 29, PR #64, merged) · repo files first, then GitHub steps that are yours, then the PDF report</p>
+
+<h2>A. Read this</h2>
+
+<div class="card">
+<p><strong>Goal.</strong> Turn a finished product into a submission that can be graded from evidence: the six required documents, the screenshots the handout names, test output from <code>main</code>, a release pull request into <code>main</code>, and the nine-part PDF.</p>
+<p><strong>The order matters.</strong> The handout asks for evidence "from main", for rendered documents, and for commit history showing feature branches merged into <code>lab4-staging</code> and then <code>main</code>. Most of that can only exist after the release merge. So the work has two halves:</p>
+<ol>
+<li><strong>In the repository (this feature, before the release PR):</strong> verification script, screenshots, evidence scripts, <code>reviewer.md</code>, <code>ai-use.md</code>, final checks.</li>
+<li><strong>After the release merge (yours, then mine):</strong> the GitHub steps only you can do, then capture of the GitHub pages and test output from <code>main</code>, then the report.</li>
+</ol>
+</div>
+
+<div class="card">
+<p><strong>What the handout grades, mapped to where each part comes from.</strong></p>
+<table>
+<tr><th>Part</th><th>Evidence needed</th><th>Source</th><th>Who</th></tr>
+<tr><td>1 Git use (10)</td><td>Merges into <code>lab4-staging</code> then <code>main</code>; Kanban all Done; <code>reviewer.md</code>; README and <code>.gitignore</code>; directory tree</td><td>GitHub pages (public repo, I can capture), Kanban (login needed), <code>reviewer.md</code> (T4), tree from the repo</td><td>Kanban shot: you; rest: me</td></tr>
+<tr><td>2 Spec (5)</td><td>Rendered <code>specification.md</code>; evidence it existed before the implementation PRs</td><td>GitHub rendered page, PR merge times (T3 script)</td><td>me</td></tr>
+<tr><td>3 Tests (10)</td><td>Rendered <code>tests.md</code>; complete passing output from <code>main</code></td><td>GitHub page; output files from T3</td><td>me, after the release merge</td></tr>
+<tr><td>4 AI use (5)</td><td>Rendered <code>ai-use.md</code>, LLM named, 6 to 10 real prompts, reflection</td><td>T5</td><td>me draft, you own the reflection</td></tr>
+<tr><td>5 Staff dashboard (5)</td><td>Metrics, drill-down, loading, empty, forbidden, safe failure, responsive, metrics equal database queries</td><td>Screenshots (T2), database comparison (T3), SD-03 for forbidden</td><td>me</td></tr>
+<tr><td>6 Actions Taken (10)</td><td>List, create, assign, edit, transition, complete, cancel, validation, inactive assignee, roles, safe failures, responsive, several Actions on one Ticket</td><td>Screenshots (T2)</td><td>me</td></tr>
+<tr><td>7 Ticket workflow (5)</td><td>Transitions, stable order, append-only history, visibility</td><td>Screenshots, WF test output</td><td>me</td></tr>
+<tr><td>8 Requester dashboard and regression (5)</td><td>Requester metrics, drill-down, ownership, regression of Labs 1 to 3 screens</td><td>Screenshots (T2 regression set), IDOR tests</td><td>me</td></tr>
+<tr><td>9 UI and accessibility (5)</td><td>Rendered <code>ui-spec.md</code>, three-width screenshots, completed checklist</td><td>T2, ticked checklist from feature 29</td><td>me</td></tr>
+</table>
+</div>
+
+<div class="card">
+<p><strong>Decisions the plan makes (veto any before "Ready for feature 30").</strong></p>
+<ol>
+<li><strong>Screenshots come from a repeatable capture script</strong> (a Playwright run you start on demand, kept out of the normal test run). It creates its own Tickets and Actions through the real API, and uses a mocked response only for states live data cannot show: loading, failure, and an empty staff dashboard. Every mocked shot is marked as such in an index file, so nothing is passed off as live.</li>
+<li><strong>About 70 images:</strong> the contract's 54 (staff dashboard 5 states, requester dashboard 4, Actions Taken 9, each at 1280, 768 and 390 px) plus 16 regression screens (8 Lab 1 to 3 screens at desktop and mobile) for Part 8. Expected size 8 to 15 MB, like Lab 3's 15 MB. The repository keeps every image; the report does not: Task 9 builds one contact sheet per scene (the three widths side by side, Pillow) so the PDF carries about 25 pictures, not 70, and test output is excerpted per file with counts, not pasted line by line.</li>
+<li><strong>A release verification script</strong> (<code>npm run verify:release</code>) that checks every file the handout lists exists, no test row is Planned, no checklist box is open, every screenshot in the index exists, and the ignore rules hold. The report is not started until it passes.</li>
+<li><strong><code>reviewer.md</code> is built from GitHub data, not memory.</strong> I read the real reviews and comments with <code>gh</code> (read only) and quote them. The history is stated honestly: the first attempt's PRs #54 to #57 were reset; PR #59 was merged without a formal approval; PR #64 and the release PR are filled in only after they exist.</li>
+<li><strong><code>ai-use.md</code> quotes your real prompts</strong> taken verbatim from this project's session transcript (6 to 10 chosen). I draft the reflection in first person from what actually happened, and you edit it: it is your reflection and your grade.</li>
+<li><strong>The AI planning reviews count as evidence.</strong> Each plan was reviewed by a fresh read-only agent, and those reviews caught real defects before any code was written (for example a test that could never fail, a hidden-list bug, a build-breaking import rewrite). <code>reviewer.md</code> lists them next to the human reviews, clearly labelled.</li>
+<li><strong>The report is a Word file built by script</strong> in your Lab 3 style (plain bold part headings, "Image N : caption", no Word heading styles, no em dashes), with images embedded and links live. You export the PDF from Word (<code>Save As PDF</code>); the only images I cannot produce are the Kanban board and anything behind a login, which the plan lists for you.</li>
+<li><strong>Merges, the release PR and the Kanban are yours</strong>, as before; the plan gives the exact sequence and the checks to run after each step.</li>
+</ol>
+</div>
+
+<h3>Before and after: where the evidence comes from</h3>
+<div class="pair">
+<div class="card before"><h4>Lab 3 (by hand)</h4>
+<pre class="mermaid">
+flowchart LR
+  A[Take screenshots by hand] --> B[Paste into Word]
+  C[Copy test output by hand] --> B
+</pre></div>
+<div class="card after"><h4>Lab 4</h4>
+<pre class="mermaid">
+flowchart LR
+  A[capture script] --> I["screenshots + INDEX.md"]
+  B[evidence scripts] --> E["test output, dashboard vs database, PR times"]
+  G["gh read-only"] --> R["reviewer.md"]
+  T["session transcript"] --> U["ai-use.md"]
+  V["verify:release"] -->|passes| P["report builder"]
+  I --> P
+  E --> P
+  P --> D["Lab 4 Report.docx, you export the PDF"]
+</pre></div>
+</div>
+
+<h3>What changes</h3>
+<table>
+<tr><th>Added</th><th>Modified</th></tr>
+<tr><td>
+<code>scripts/verify-release.sh</code>, <code>scripts/collect-evidence.sh</code>, <code>server/evidence/dashboard-vs-database.mts</code>, <code>scripts/evidence/pr-timeline.sh</code><br>
+<code>e2e/capture/lab-04-screenshots.spec.ts</code>, <code>playwright.capture.config.ts</code><br>
+<code>artifacts/lab-04/screenshots/**</code> (about 70 images + <code>INDEX.md</code>)<br>
+<code>artifacts/lab-04/regression/*.txt</code>, <code>artifacts/lab-04/evidence/*.txt</code><br>
+<code>docs/lab-04/reviewer.md</code>, <code>docs/lab-04/ai-use.md</code><br>
+outside the repo: <code>Reports/Lab 4 Report.docx</code> (builder script kept in the scratch folder, not committed)
+</td><td>
+<code>package.json</code> (scripts <code>verify:release</code>, <code>screenshots</code>, <code>evidence</code>)<br>
+<code>playwright.config.ts</code> (ignore the capture folder in normal runs)<br>
+<code>docs/lab-04/tests.md</code> (Definition of Done evidence table, final counts)<br>
+<code>docs/lab-04/ui-spec.md</code> §10 (real file names)<br>
+<code>README.md</code> only if the verification finds it stale<br>
+product code only if the final visual pass finds a real defect
+</td></tr>
+</table>
+
+<h3>Parallelization analysis</h3>
+<table>
+<tr><th>Batch</th><th>Tasks</th><th>Why</th></tr>
+<tr><td>1</td><td>T1 verification script, T4 <code>reviewer.md</code> data and draft, T5 <code>ai-use.md</code> prompts</td><td>Different files; T4 and T5 only read GitHub and the transcript</td></tr>
+<tr><td>2</td><td>T2 screenshot capture, T3 evidence scripts</td><td>Both need the running app and database, so they run one after the other, but their files are disjoint</td></tr>
+<tr><td>3</td><td>T6 final polish and docs, T7 release gate</td><td>Needs T1 to T5</td></tr>
+<tr><td>4 (yours)</td><td>T8 GitHub release steps</td><td>Merge, release PR, Kanban</td></tr>
+<tr><td>5</td><td>T9 evidence from <code>main</code>, GitHub page capture, report</td><td>Needs the merge to <code>main</code></td></tr>
+</table>
+<p class="meta">Critical path: T2 → T6 → T7 → T8 → T9. T2 (about 70 shots and its debugging) is the long one.</p>
+
+<h2>B. Implementation plan</h2>
+<div id="plan">Loading plan...</div>
+</main>
+
+<script type="text/plain" id="plan-md">
+# Feature 30: Release Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Produce a gradeable Lab 4 submission: required documents and screenshots in the repository, a verification script that proves they are complete, evidence scripts, and (after the merge to `main`) the nine-part report.
+
+**Architecture:** Scripts under `scripts/` collect evidence from the real app, database and GitHub (read only). A Playwright capture spec, kept out of the normal run, produces the screenshots and an index. Documents are written from collected data. The report is a Word file built by a python-docx script that lives outside the repository.
+
+**Tech Stack:** Bash, Playwright 1.63, tsx, Prisma client (read only), `gh` CLI (read only), python-docx 1.2.
+
+**Spec:** `docs/lab-04/specification.md` §12 (Definition of Done), `docs/lab-04/ui-spec.md` §9, §10; the handout `SE+Lab+4.pdf` §12 (required structure) and §14 (PDF parts); `docs/lab-04/tests.md`.
+
+## Global Constraints
+
+- Repo root: `/Users/jinnakanchaviengpob/Desktop/3rd Year/CPE_334/ToKTickIT`; report folder: `/Users/jinnakanchaviengpob/Desktop/3rd Year/CPE_334/Reports`.
+- Do not create branches, push, open or merge PRs, close issues, edit the Kanban, or change GitHub settings. `gh` is used read only (`gh api`, `gh pr view`, `gh pr list`). Stage only; commit only when the user says so.
+- No invented evidence: every quote comes from GitHub or the transcript; every screenshot is of the running app; a mocked state is labelled mocked in `INDEX.md`.
+- Product code is not changed in this feature unless the final pass finds a real defect; if so it is fixed with a test and listed in the commit.
+- Prose written for submission (documents and report) follows the user's writing rules: plain wording, no em dashes (use a comma, a period, or a colon), the ordinary hyphen for minus, no "not just X but Y", no stacks of three parallel phrases, no promotional adjectives, contractions where the text is conversational, bold plain headings (no Word heading styles) in the `.docx`.
+- Run the capture on a freshly seeded database (earlier E2E runs leave rows such as "Actions E2E check" that would show in the dashboards): `cd server && npm run prisma:seed`; also run `npm run prisma:seed:demo` once before the capture run (it provides the Requester with no Tickets and demo Actions).
+- Baseline to match at the start: server 267 tests, client 135 tests, 21 E2E specs, `npm run check` green.
+
+## File Structure
+
+| File | Responsibility |
+|---|---|
+| `scripts/verify-release.sh` | Checks the submission is complete; exits non-zero with a list of what is missing |
+| `scripts/collect-evidence.sh` | Runs server, client and E2E suites and saves their output with the commit hash |
+| `server/evidence/dashboard-vs-database.mts` | Prints dashboard numbers next to direct SQL counts |
+| `scripts/evidence/pr-timeline.sh` | Lists merged PRs with merge times (spec existed before implementation) |
+| `playwright.capture.config.ts` | Config for the capture run only |
+| `e2e/capture/lab-04-screenshots.spec.ts` | Creates data, takes every screenshot, writes `INDEX.md` |
+| `docs/lab-04/reviewer.md`, `ai-use.md` | Required documents |
+
+---
+
+### Task 1: Release verification script
+
+**Files:**
+- Create: `scripts/verify-release.sh`
+- Modify: `package.json` (scripts)
+
+- [ ] **Step 1: `scripts/verify-release.sh`:**
+
+```bash
+#!/usr/bin/env bash
+# Checks that the Lab 4 submission is complete (handout §12 and the contract's definition of done).
+# Prints every problem, then exits non-zero if there was any.
+cd "$(dirname "$0")/.." || exit 1
+problems=0
+fail() { echo "PROBLEM: $1"; problems=$((problems + 1)); }
+need() { [ -e "$1" ] || fail "missing $1"; }
+
+for f in specification tests ui-spec api-spec reviewer ai-use; do need "docs/lab-04/$f.md"; done
+for f in actions-taken ticket-workflow requester-dashboard staff-dashboard; do need "server/tests/lab-04/$f.api.test.ts"; done
+for f in StaffDashboard RequesterDashboard ActionsTaken TicketWorkflow; do need "client/tests/lab-04/$f.test.tsx"; done
+for f in actions-taken-flow ticket-resolution dashboards; do need "e2e/lab-04/$f.spec.ts"; done
+need "artifacts/lab-04/regression/server-repeat.txt"
+
+planned=$(grep -c "| Planned |" docs/lab-04/tests.md)
+[ "$planned" -eq 0 ] || fail "docs/lab-04/tests.md still has $planned Planned rows"
+open=$(cat docs/lab-04/tests.md docs/lab-04/ui-spec.md | grep -c '^- \[ \]')
+[ "$open" -eq 0 ] || fail "$open unchecked checklist boxes in tests.md or ui-spec.md"
+
+grep -q "0 of 10 runs" artifacts/lab-04/regression/server-repeat.txt 2>/dev/null || fail "server-repeat.txt does not show 0 of 10 bad runs"
+
+index="artifacts/lab-04/screenshots/INDEX.md"
+if [ -f "$index" ]; then
+  listed=$(grep -oE '[a-z0-9-]+/[a-z0-9-]+-(desktop|tablet|mobile)\.png' "$index" | sort -u)
+  [ -n "$listed" ] || fail "$index lists no screenshots"
+  for rel in $listed; do [ -f "artifacts/lab-04/screenshots/$rel" ] || fail "screenshot in the index is missing: $rel"; done
+  for group in staff-dashboard requester-dashboard actions-taken; do
+    count=$(echo "$listed" | grep -c "^$group/")
+    [ "$count" -gt 0 ] || fail "no screenshots for $group"
+  done
+else
+  fail "missing $index (run npm run screenshots)"
+fi
+
+git check-ignore -q server/uploads || fail "server/uploads is not ignored"
+git check-ignore -q server/.env || fail "server/.env is not ignored"
+git check-ignore -q test-results || fail "test-results is not ignored"
+tracked_uploads=$(git ls-files server/uploads server/src/uploads | wc -l | tr -d ' ')
+[ "$tracked_uploads" -eq 0 ] || fail "$tracked_uploads uploaded files are tracked"
+tracked_env=$(git ls-files | grep -cE '(^|/)\.env$')
+[ "$tracked_env" -eq 0 ] || fail "a .env file is tracked"
+
+for f in artifacts/lab-04/evidence/pr-timeline.txt artifacts/lab-04/evidence/dashboard-vs-database.txt artifacts/lab-04/regression/server-output.txt artifacts/lab-04/regression/client-output.txt artifacts/lab-04/regression/e2e-output.txt; do need "$f"; done
+grep -q "Every number agrees" artifacts/lab-04/evidence/dashboard-vs-database.txt 2>/dev/null || fail "dashboard-vs-database.txt does not say every number agrees"
+prompts=$(grep -cE '^\| [0-9]+ \|' docs/lab-04/ai-use.md 2>/dev/null)
+{ [ "${prompts:-0}" -ge 6 ] && [ "${prompts:-0}" -le 10 ]; } || fail "ai-use.md has ${prompts:-0} prompt rows, the handout wants 6 to 10"
+
+grep -q "docs/lab-04" README.md || fail "README does not point at docs/lab-04"
+grep -qi "npm run check" README.md || fail "README does not mention npm run check"
+
+if [ "$problems" -eq 0 ]; then echo "verify-release: everything is in place"; else echo "verify-release: $problems problem(s)"; exit 1; fi
+```
+
+- [ ] **Step 2: Scripts in `package.json`.** Add to the root `scripts` block:
+
+```json
+    "verify:release": "bash scripts/verify-release.sh",
+    "screenshots": "playwright test --config=playwright.capture.config.ts",
+    "evidence": "bash scripts/collect-evidence.sh"
+```
+
+- [ ] **Step 3: Run it now.** `chmod +x scripts/verify-release.sh && npm run verify:release`. Expected right now: problems for `reviewer.md`, `ai-use.md`, the missing screenshots index (and possibly the stale `tests.md` count). That list is the to-do list for the rest of this feature; the script must pass at the end (Task 7).
+
+- [ ] **Step 4: Stage.** `git add scripts package.json`
+
+---
+
+### Task 2: Screenshots (contract §10 plus regression set)
+
+**Files:**
+- Create: `playwright.capture.config.ts`, `e2e/capture/lab-04-screenshots.spec.ts`, `artifacts/lab-04/screenshots/**`
+- Modify: `playwright.config.ts` (ignore the capture folder)
+
+**What gets shot (each at 1280, 768 and 390 px unless noted):**
+
+| Folder | Scenes | Live or mocked |
+|---|---|---|
+| `staff-dashboard/` | `loaded`, `loading`, `zero`, `drilldown`, `admin`, `failure` | `zero` mocked (an empty staff dashboard cannot exist in the shared database; SD-04 proves the real case); `loading` mocked (a delayed response, then a fresh load); `failure` mocked (500, then a fresh load so no stale data hides the alert); others live. Forbidden has no screen (the navigation never offers a screen the role cannot use), so Part 5 uses the 403 results of SD-03 and RD-06 and the report says so |
+| `requester-dashboard/` | `loaded`, `loading`, `zero`, `drilldown`, `failure` | `zero` live (the demo Requester with no Tickets); `failure` mocked; others live |
+| `actions-taken/` | `list`, `create`, `create-assigned`, `start-complete`, `cancel-confirm`, `edit`, `validation`, `inactive-assignee`, `conflict`, `locked`, `requester-readonly`, `resolution-blocked`, `status-options`, `history-staff`, `history-requester` | `inactive-assignee` mocked (400 with the field message; the select never offers an inactive user, ACT-03 proves the API); others live (`conflict` uses two real sessions) |
+| `regression/` (1280 and 390 only) | `login`, `my-tickets`, `ticket-detail`, `attachments`, `comments`, `staff-queue`, `internal-notes`, `user-management` | live |
+
+- [ ] **Step 1: Keep the capture out of normal runs.** In `playwright.config.ts` add `testIgnore: '**/capture/**',` inside `defineConfig`. Create `playwright.capture.config.ts`:
+
+```ts
+import { defineConfig, devices } from '@playwright/test'
+import base from './playwright.config'
+
+// Run on demand with `npm run screenshots`. Same servers and browser as the tests, but only the capture spec.
+export default defineConfig({
+  ...base,
+  testDir: './e2e/capture',
+  testIgnore: [],
+  timeout: 180_000,
+  reporter: [['list']],
+  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+})
+```
+
+- [ ] **Step 2: Write the capture spec** `e2e/capture/lab-04-screenshots.spec.ts`:
+
+```ts
+import { mkdirSync, writeFileSync } from 'node:fs'
+import { expect, test, type Browser, type Page } from '@playwright/test'
+
+// Produces the Lab 4 screenshots and INDEX.md. Not a test of behavior: the behavior is covered by
+// the suites. Run with `npm run screenshots` after `npm run prisma:seed` and `npm run prisma:seed:demo`.
+
+const OUT = 'artifacts/lab-04/screenshots'
+const ORIGIN = 'http://localhost:5173'
+const PASSWORD = 'DevPass123!'
+const SIZES = [
+  { name: 'desktop', width: 1280, height: 900 },
+  { name: 'tablet', width: 768, height: 1024 },
+  { name: 'mobile', width: 390, height: 844 },
+]
+const TWO_SIZES = [SIZES[0], SIZES[2]]
+
+type Row = { file: string; what: string; source: 'live' | 'mocked' }
+const index: Row[] = []
+
+async function shoot(page: Page, group: string, scene: string, what: string, source: Row['source'], sizes = SIZES) {
+  mkdirSync(`${OUT}/${group}`, { recursive: true })
+  for (const size of sizes) {
+    await page.setViewportSize({ width: size.width, height: size.height })
+    await page.waitForTimeout(300)
+    // Part 9: no horizontal overflow at any width, checked at the moment of every shot.
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
+    expect(overflow, `horizontal overflow in ${group}/${scene} at ${size.width}px`).toBeLessThanOrEqual(0)
+    const file = `${group}/${scene}-${size.name}.png`
+    await page.screenshot({ path: `${OUT}/${file}`, fullPage: true })
+    index.push({ file, what: `${what} (${size.width}px)`, source })
+  }
+  // Later steps click in the desktop layout, so always finish there.
+  await page.setViewportSize({ width: SIZES[0].width, height: SIZES[0].height })
+}
+
+async function login(page: Page, email: string) {
+  await page.goto('/')
+  await page.getByLabel('Email *').fill(email)
+  await page.getByLabel('Password *').fill(PASSWORD)
+  await page.getByRole('button', { name: 'Login' }).click()
+  await expect(page.getByRole('button', { name: 'Logout' })).toBeVisible()
+  await page.waitForLoadState('networkidle')
+}
+
+const nav = (page: Page, name: string) => page.locator('header').getByRole('button', { name, exact: true })
+
+/** A signed-in browser context plus API helpers that send the Origin header the server requires. */
+async function session(browser: Browser, email: string) {
+  const context = await browser.newContext()
+  const page = await context.newPage()
+  await login(page, email)
+  const call = (method: 'post' | 'patch', url: string, data?: object) =>
+    page.request[method](url, { data, headers: { Origin: ORIGIN } })
+  return { context, page, call }
+}
+
+async function createTicket(requester: Awaited<ReturnType<typeof session>>, summary: string) {
+  const categories = (await (await requester.page.request.get('/api/categories')).json()) as Array<{ id: number }>
+  const systems = (await (await requester.page.request.get('/api/related-systems')).json()) as Array<{ id: number }>
+  const response = await requester.call('post', '/api/tickets', {
+    categoryId: categories[0].id, relatedSystemId: systems[0].id, requestedPriority: 'HIGH', summary,
+    description: 'Created by the Lab 4 screenshot script so the screens show realistic content.',
+  })
+  return (await response.json()) as { id: number; ticketNumber: string }
+}
+
+async function openTicketByNumber(page: Page, listScreen: string, ticketNumber: string) {
+  await nav(page, listScreen).click()
+  await page.getByPlaceholder('Search by ticket number or summary…').fill(ticketNumber)
+  await page.waitForLoadState('networkidle')
+  await page.locator(`text=${ticketNumber}`).locator('visible=true').first().click()
+  await expect(page.getByRole('heading', { name: new RegExp(ticketNumber) })).toBeVisible()
+  await expect(page.getByRole('heading', { name: /^Actions Taken \(\d+\)$/ })).toBeVisible()
+  await page.waitForLoadState('networkidle')
+}
+
+test.describe.configure({ mode: 'serial' })
+
+let sarah: Awaited<ReturnType<typeof session>>
+let alex: Awaited<ReturnType<typeof session>>
+let priya: Awaited<ReturnType<typeof session>>
+let morgan: Awaited<ReturnType<typeof session>>
+let busy: { id: number; ticketNumber: string }
+let blocked: { id: number; ticketNumber: string }
+let closed: { id: number; ticketNumber: string }
+
+test.beforeAll(async ({ browser }) => {
+  ;[sarah, alex, priya, morgan] = await Promise.all([
+    session(browser, 'sarah.johnson@toktickit.test'),
+    session(browser, 'alex.rivera@toktickit.test'),
+    session(browser, 'priya.nair@toktickit.test'),
+    session(browser, 'morgan.kim@toktickit.test'),
+  ])
+
+  // One Ticket with different Actions Taken (handout part 6: "different Actions Taken on one Ticket").
+  busy = await createTicket(sarah, 'Docking station is not detected after sleep')
+  await alex.call('post', `/api/tickets/${busy.id}/claim`)
+  const completed = await (await alex.call('post', `/api/tickets/${busy.id}/actions`, {
+    description: 'Updated the docking station firmware.', status: 'COMPLETED', result: 'The dock is detected after a reboot.',
+    followUpRequired: true, followUpNote: 'Check again on Friday.',
+  })).json()
+  await alex.call('post', `/api/tickets/${busy.id}/actions`, {
+    description: 'Test the dock with a second laptop.', status: 'IN_PROGRESS', assigneeId: undefined,
+  })
+  await priya.call('post', `/api/tickets/${busy.id}/actions`, { description: 'Replace the dock if the firmware does not help.', status: 'PLANNED' })
+  const cancelled = await (await alex.call('post', `/api/tickets/${busy.id}/actions`, { description: 'Visit the desk (not needed any more).' })).json()
+  await alex.call('patch', `/api/tickets/${busy.id}/actions/${cancelled.id}`, { version: cancelled.version, status: 'CANCELLED' })
+  void completed
+
+  // A Ticket whose resolution is blocked, and one that is closed.
+  blocked = await createTicket(sarah, 'Printer on floor 2 keeps going offline')
+  await alex.call('post', `/api/tickets/${blocked.id}/claim`)
+  for (const status of ['OPEN', 'IN_PROGRESS']) {
+    const current = await (await alex.page.request.get(`/api/tickets/${blocked.id}`)).json()
+    await alex.call('patch', `/api/tickets/${blocked.id}/status`, { status, expectedVersion: current.version })
+  }
+  await alex.call('post', `/api/tickets/${blocked.id}/actions`, { description: 'Check the print server queue.', status: 'PLANNED' })
+
+  closed = await createTicket(sarah, 'Old request closed last week')
+  for (const status of ['OPEN', 'IN_PROGRESS']) {
+    const current = await (await alex.page.request.get(`/api/tickets/${closed.id}`)).json()
+    await alex.call('patch', `/api/tickets/${closed.id}/status`, { status, expectedVersion: current.version })
+  }
+  await alex.call('post', `/api/tickets/${closed.id}/actions`, { description: 'Reset the account.', status: 'COMPLETED', result: 'Account works again.' })
+  for (const status of ['RESOLVED', 'CLOSED']) {
+    const current = await (await alex.page.request.get(`/api/tickets/${closed.id}`)).json()
+    await alex.call('patch', `/api/tickets/${closed.id}/status`, { status, expectedVersion: current.version })
+  }
+})
+
+test.afterAll(async () => {
+  const rows = index.map((row) => `| ${row.file} | ${row.what} | ${row.source} |`).join('\n')
+  writeFileSync(
+    `${OUT}/INDEX.md`,
+    `# Lab 4 screenshots\n\nGenerated by \`npm run screenshots\` (\`e2e/capture/lab-04-screenshots.spec.ts\`). "mocked" means the server response was replaced to show a state live data cannot show; the real behavior of that state is covered by the named tests.\n\n| File | What it shows | Source |\n|---|---|---|\n${rows}\n`,
+  )
+  await Promise.all([sarah, alex, priya, morgan].map((s) => s.context.close()))
+})
+
+test('staff dashboard', async () => {
+  const { page } = alex
+  await page.goto('/')
+  await nav(page, 'Dashboard').click()
+  await expect(page.getByRole('heading', { name: /Welcome/ })).toBeVisible()
+  await page.waitForLoadState('networkidle')
+  await shoot(page, 'staff-dashboard', 'loaded', 'IT Staff dashboard with live counts', 'live')
+
+  await page.getByRole('link', { name: /^Unassigned, / }).click()
+  await expect(page.getByText(/^Showing: /)).toBeVisible()
+  await page.waitForLoadState('networkidle')
+  await shoot(page, 'staff-dashboard', 'drilldown', 'Ticket Queue opened from the Unassigned card, filter shown', 'live')
+
+  await nav(page, 'Dashboard').click()
+  await page.route('**/api/dashboard/staff', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        generatedAt: new Date().toISOString(), windowDays: 7,
+        cards: [
+          { key: 'unassigned', label: 'Unassigned', count: 0, drillDown: { view: 'ticket-queue', query: { unassignedOnly: 'true', statusGroup: 'active' } } },
+          { key: 'mine', label: 'Owned by me', count: 0, drillDown: { view: 'ticket-queue', query: { ticketOwnerId: '1', statusGroup: 'active' } } },
+          { key: 'reported-resolved', label: 'Reported resolved by Requester', count: 0, drillDown: { view: 'ticket-queue', query: { requesterReportedResolved: 'true', statusGroup: 'active' } } },
+          { key: 'my-open-actions', label: 'My open actions', count: 0, drillDown: null },
+        ],
+        byStatus: ['NEW', 'OPEN', 'IN_PROGRESS', 'WAITING_FOR_REQUESTER', 'RESOLVED', 'CLOSED', 'REOPENED', 'CANCELLED'].map((status) => ({ status, count: 0, drillDown: { view: 'ticket-queue', query: { currentStatus: status } } })),
+        byItPriority: ['LOW', 'MEDIUM', 'HIGH'].map((priority) => ({ priority, count: 0, drillDown: { view: 'ticket-queue', query: { itPriority: priority, statusGroup: 'active' } } })),
+        myActions: [], recentlyUpdated: [],
+      }),
+    })
+  })
+  await page.getByRole('button', { name: 'Refresh' }).click()
+  await expect(page.getByText('Nothing planned for you.')).toBeVisible()
+  await shoot(page, 'staff-dashboard', 'zero', 'Staff dashboard with every count at zero and empty lists', 'mocked')
+  await page.unroute('**/api/dashboard/staff')
+
+  // Loading: a slow answer, seen on a fresh load so no earlier data is on screen.
+  await page.route('**/api/dashboard/staff', async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 4000))
+    await route.continue()
+  })
+  await page.reload()
+  await expect(page.getByText('Loading dashboard…')).toBeVisible()
+  await shoot(page, 'staff-dashboard', 'loading', 'Loading state while the dashboard request is in flight', 'mocked')
+  await page.unroute('**/api/dashboard/staff')
+
+  // Failure: set the failing answer first, then load fresh, so the alert is not shown over old numbers.
+  await page.route('**/api/dashboard/staff', (route) => route.fulfill({ status: 500, contentType: 'application/json', body: '{"error":"INTERNAL_ERROR"}' }))
+  await page.reload()
+  await expect(page.getByText('Unable to load the dashboard.')).toBeVisible()
+  await shoot(page, 'staff-dashboard', 'failure', 'Safe failure message with Retry, no technical detail', 'mocked')
+  await page.unroute('**/api/dashboard/staff')
+
+  const admin = morgan.page
+  await nav(admin, 'Dashboard').click()
+  await page.waitForLoadState('networkidle')
+  await expect(admin.getByRole('heading', { name: /Welcome/ })).toBeVisible()
+  await shoot(admin, 'staff-dashboard', 'admin', 'Administrator view with the user counts strip', 'live')
+})
+
+test('requester dashboard', async ({ browser }) => {
+  const { page } = sarah
+  await nav(page, 'Dashboard').click()
+  await expect(page.getByRole('heading', { name: /Welcome/ })).toBeVisible()
+  await page.waitForLoadState('networkidle')
+  await shoot(page, 'requester-dashboard', 'loaded', 'Requester dashboard with live counts and lists', 'live')
+
+  await page.getByRole('link', { name: /^Open tickets, / }).click()
+  await expect(page.getByText(/^Showing: /)).toBeVisible()
+  await page.waitForLoadState('networkidle')
+  await shoot(page, 'requester-dashboard', 'drilldown', 'My Tickets opened from the Open tickets card, filter shown', 'live')
+
+  await nav(page, 'Dashboard').click()
+  await page.route('**/api/dashboard/requester', async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 4000))
+    await route.continue()
+  })
+  await page.reload()
+  await expect(page.getByText('Loading dashboard…')).toBeVisible()
+  await shoot(page, 'requester-dashboard', 'loading', 'Loading state while the dashboard request is in flight', 'mocked')
+  await page.unroute('**/api/dashboard/requester')
+
+  await page.route('**/api/dashboard/requester', (route) => route.fulfill({ status: 500, contentType: 'application/json', body: '{"error":"INTERNAL_ERROR"}' }))
+  await page.reload()
+  await expect(page.getByText('Unable to load the dashboard.')).toBeVisible()
+  await shoot(page, 'requester-dashboard', 'failure', 'Safe failure message with Retry, no technical detail', 'mocked')
+  await page.unroute('**/api/dashboard/requester')
+
+  const empty = await session(browser, 'nina.brooks@toktickit.test')
+  await expect(empty.page.getByRole('heading', { name: /Welcome/ })).toBeVisible()
+  await shoot(empty.page, 'requester-dashboard', 'zero', 'Requester with no Tickets: zero counts and empty lists', 'live')
+  await empty.context.close()
+})
+
+test('actions taken', async ({ browser }) => {
+  const { page } = alex
+  await openTicketByNumber(page, 'Ticket Queue', busy.ticketNumber)
+  const section = page.getByRole('heading', { name: /^Actions Taken/ })
+  await section.scrollIntoViewIfNeeded()
+  await shoot(page, 'actions-taken', 'list', 'Four Actions on one Ticket: completed with follow-up, in progress, planned, cancelled', 'live')
+
+  await page.getByRole('button', { name: 'Add action' }).click()
+  await expect(page.getByRole('form', { name: 'Add action' })).toBeVisible()
+  await shoot(page, 'actions-taken', 'create', 'Add action form', 'live')
+
+  // An assignee chosen in the form (a different staff member from the creator).
+  await page.getByLabel('Assigned to').selectOption({ label: 'Priya Nair' })
+  await shoot(page, 'actions-taken', 'create-assigned', 'Add action form with another staff member chosen as assignee', 'live')
+
+  await page.getByRole('form', { name: 'Add action' }).getByRole('button', { name: 'Save' }).click()
+  await expect(page.getByText('Description must be 1-2000 characters.')).toBeVisible()
+  await shoot(page, 'actions-taken', 'validation', 'Validation message under the field, focus on the first invalid field', 'live')
+
+  await page.getByLabel('Description *').fill('Ask the vendor about the firmware.')
+  await page.route('**/api/tickets/*/actions', async (route) => {
+    if (route.request().method() !== 'POST') return route.continue()
+    return route.fulfill({
+      status: 400, contentType: 'application/json',
+      body: JSON.stringify({ error: 'VALIDATION_FAILED', fields: { assigneeId: 'Assignee must be an active IT Staff or Administrator.' } }),
+    })
+  })
+  await page.getByRole('form', { name: 'Add action' }).getByRole('button', { name: 'Save' }).click()
+  await expect(page.getByText('Assignee must be an active IT Staff or Administrator.')).toBeVisible()
+  await shoot(page, 'actions-taken', 'inactive-assignee', 'An inactive assignee is rejected with its message (server response replaced; ACT-03 proves the API)', 'mocked')
+  await page.unroute('**/api/tickets/*/actions')
+  await page.getByRole('form', { name: 'Add action' }).getByRole('button', { name: 'Cancel' }).click()
+
+  // Start and Complete: a Planned Action is started, then completed (a Result is required).
+  const plannedText = 'Replace the dock if the firmware does not help.'
+  await page.getByRole('listitem').filter({ hasText: plannedText }).getByRole('button', { name: 'Start' }).click()
+  await expect(page.getByRole('listitem').filter({ hasText: plannedText }).getByText('In Progress')).toBeVisible()
+  await page.getByRole('listitem').filter({ hasText: plannedText }).getByRole('button', { name: 'Complete' }).click()
+  await expect(page.getByLabel('Result *')).toBeVisible()
+  await shoot(page, 'actions-taken', 'start-complete', 'Complete opens the form with Completed chosen and a required Result', 'live')
+  await page.getByRole('form', { name: 'Edit action' }).getByRole('button', { name: 'Cancel' }).click()
+
+  // Cancel asks for confirmation first.
+  await page.getByRole('listitem').filter({ hasText: 'Test the dock with a second laptop.' }).getByRole('button', { name: 'Cancel action' }).click()
+  await expect(page.getByRole('alertdialog')).toBeVisible()
+  await shoot(page, 'actions-taken', 'cancel-confirm', 'Cancel action asks for confirmation before anything is sent', 'live')
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Keep action' }).click()
+
+  // Edit, and a real conflict: Priya changes the same Action first through her own session.
+  const card = page.getByRole('listitem').filter({ hasText: 'Test the dock with a second laptop.' })
+  await card.getByRole('button', { name: 'Edit' }).click()
+  await expect(page.getByRole('form', { name: 'Edit action' })).toBeVisible()
+  await shoot(page, 'actions-taken', 'edit', 'Edit action form for an In Progress Action', 'live')
+
+  const actions = (await (await priya.page.request.get(`/api/tickets/${busy.id}/actions`)).json()) as Array<{ id: number; version: number; description: string }>
+  const target = actions.find((action) => action.description.startsWith('Test the dock'))!
+  await priya.call('patch', `/api/tickets/${busy.id}/actions/${target.id}`, { version: target.version, description: 'Test the dock with a second laptop and a spare cable.' })
+  await page.getByLabel('Description *').fill('My edit made at the same time.')
+  await page.getByRole('form', { name: 'Edit action' }).getByRole('button', { name: 'Save' }).click()
+  await expect(page.getByText('This action was changed by someone else. Reload to see the latest.')).toBeVisible()
+  await shoot(page, 'actions-taken', 'conflict', 'Stale edit: conflict message with Reload, typed text kept', 'live')
+
+  await openTicketByNumber(page, 'Ticket Queue', blocked.ticketNumber)
+  await page.getByLabel('Current Status').selectOption('RESOLVED')
+  await expect(page.getByText('This ticket cannot be resolved yet.')).toBeVisible()
+  await shoot(page, 'actions-taken', 'resolution-blocked', 'Resolve refused while an Action is still planned, blocker lines shown', 'live')
+
+  // Allowed next statuses and the append-only History, for staff and for the Requester (handout part 7).
+  await page.getByLabel('Current Status').focus()
+  await shoot(page, 'actions-taken', 'status-options', 'Only the permitted next statuses are offered', 'live')
+  await page.getByText('History', { exact: true }).click()
+  await expect(page.getByText('Created as New')).toBeVisible()
+  await shoot(page, 'actions-taken', 'history-staff', 'History list, oldest first, with who and when', 'live')
+
+  await openTicketByNumber(page, 'Ticket Queue', closed.ticketNumber)
+  await expect(page.getByText('This ticket is closed, so actions can no longer be changed.')).toBeVisible()
+  await shoot(page, 'actions-taken', 'locked', 'Closed Ticket: Actions can no longer be changed', 'live')
+
+  const requester = sarah.page
+  await openTicketByNumber(requester, 'My Tickets', busy.ticketNumber)
+  await expect(requester.getByRole('button', { name: 'Add action' })).toHaveCount(0)
+  await shoot(requester, 'actions-taken', 'requester-readonly', 'Requester sees the same Actions with no controls', 'live')
+  await requester.getByText('History', { exact: true }).click()
+  await shoot(requester, 'actions-taken', 'history-requester', 'The Requester can read the History of their own Ticket', 'live')
+  void browser
+})
+
+test('regression screens from Labs 1 to 3', async ({ browser }) => {
+  const anonymous = await browser.newContext()
+  const loginPage = await anonymous.newPage()
+  await loginPage.goto('/')
+  await expect(loginPage.getByLabel('Email *')).toBeVisible()
+  await shoot(loginPage, 'regression', 'login', 'Login screen', 'live', TWO_SIZES)
+  await anonymous.close()
+
+  const requester = sarah.page
+  await nav(requester, 'My Tickets').click()
+  await requester.waitForLoadState('networkidle')
+  await shoot(requester, 'regression', 'my-tickets', 'My Tickets list', 'live', TWO_SIZES)
+  await openTicketByNumber(requester, 'My Tickets', busy.ticketNumber)
+  await shoot(requester, 'regression', 'ticket-detail', 'Requester Ticket Detail', 'live', TWO_SIZES)
+  await requester.getByRole('heading', { name: 'Attachments' }).scrollIntoViewIfNeeded()
+  await shoot(requester, 'regression', 'attachments', 'Attachments panel', 'live', TWO_SIZES)
+  await requester.getByRole('heading', { name: 'Comments' }).scrollIntoViewIfNeeded()
+  await shoot(requester, 'regression', 'comments', 'Public Comments', 'live', TWO_SIZES)
+
+  const staff = alex.page
+  await nav(staff, 'Ticket Queue').click()
+  await staff.waitForLoadState('networkidle')
+  await shoot(staff, 'regression', 'staff-queue', 'IT Staff Ticket Queue', 'live', TWO_SIZES)
+  await openTicketByNumber(staff, 'Ticket Queue', busy.ticketNumber)
+  await staff.getByRole('heading', { name: 'Internal Notes' }).scrollIntoViewIfNeeded()
+  await shoot(staff, 'regression', 'internal-notes', 'Internal Notes, visible to staff only', 'live', TWO_SIZES)
+
+  const admin = morgan.page
+  await nav(admin, 'User Management').click()
+  await expect(admin.getByRole('heading', { name: 'Users' })).toBeVisible()
+  await shoot(admin, 'regression', 'user-management', 'Administrator user management', 'live', TWO_SIZES)
+})
+```
+
+- [ ] **Step 3: Run it.** From the repo root: `cd server && npm run prisma:seed && npm run prisma:seed:demo && cd .. && npm run screenshots`. Expected: four tests pass and about 70 files appear. This step is where the real work is: fix a locator or a wait to match the real screen, never fake a state. If a scene's text differs from the real UI (for example a heading), read the component and correct the locator. If `npm run prisma:seed:demo` has already run, it is safe to run again.
+
+- [ ] **Step 4: Look at the images.** Open a sample of each group and each width (the Read tool can show a PNG): check readable text, nothing clipped or overlapping, the intended state visible, no stray test data that looks wrong (for example a "Helper ticket for tests" row dominating a list). A shot that does not show its scene is redone before moving on. Check the total size: `du -sh artifacts/lab-04/screenshots`; if it is over 25 MB, switch `shoot` to `type: 'jpeg', quality: 80` with `.jpg` names and update the index pattern in `verify-release.sh`.
+
+- [ ] **Step 5: Normal runs ignore the capture.** `npx playwright test --list | grep -c capture` must print 0.
+
+- [ ] **Step 6: Stage.** `git add playwright.config.ts playwright.capture.config.ts e2e/capture artifacts/lab-04/screenshots`
+
+---
+
+### Task 3: Evidence scripts and saved output
+
+**Files:**
+- Create: `scripts/collect-evidence.sh`, `server/evidence/dashboard-vs-database.mts`, `scripts/evidence/pr-timeline.sh`, `artifacts/lab-04/regression/*.txt`, `artifacts/lab-04/evidence/*.txt`
+
+- [ ] **Step 1: `server/evidence/dashboard-vs-database.mts`** (Part 5: "selected metrics match database queries"). It calls the same service the route uses and compares with separate SQL:
+
+```ts
+import 'dotenv/config'
+import { mkdirSync, writeFileSync } from 'node:fs'
+import { PrismaClient } from '@prisma/client'
+import { createDashboardService } from '../src/dashboard/dashboard-service.js'
+
+// Prints each dashboard number next to a hand-written SQL count and says whether they agree.
+const prisma = new PrismaClient()
+const lines: string[] = []
+const say = (text: string) => { lines.push(text); console.log(text) }
+
+async function count(sql: string, ...params: unknown[]): Promise<number> {
+  const rows = await prisma.$queryRawUnsafe<Array<{ n: bigint }>>(sql, ...params)
+  return Number(rows[0].n)
+}
+
+const ACTIVE = `('NEW','OPEN','REOPENED','IN_PROGRESS','WAITING_FOR_REQUESTER')`
+const staff = await prisma.user.findFirstOrThrow({ where: { email: 'alex.rivera@toktickit.test' } })
+const requester = await prisma.user.findFirstOrThrow({ where: { email: 'sarah.johnson@toktickit.test' } })
+const service = createDashboardService(prisma)
+let mismatches = 0
+
+function compare(label: string, shown: number, sql: string, expected: number) {
+  const ok = shown === expected
+  if (!ok) mismatches += 1
+  say(`${ok ? 'MATCH   ' : 'MISMATCH'} ${label.padEnd(44)} dashboard=${String(shown).padStart(6)}  sql=${String(expected).padStart(6)}   ${sql}`)
+}
+
+say(`Dashboard numbers against direct SQL, generated ${new Date().toISOString()}`)
+say('')
+say(`IT Staff dashboard for ${staff.email}`)
+const sd = await service.staff(staff.id, 'IT_STAFF')
+const card = (key: string) => sd.cards.find((c) => c.key === key)!.count
+compare('Unassigned', card('unassigned'), 'Ticket where ownerless and active', await count(`SELECT count(*) AS n FROM "Ticket" WHERE "ticketOwnerId" IS NULL AND "currentStatus" IN ${ACTIVE}`))
+compare('Owned by me', card('mine'), 'Ticket where owner = user and active', await count(`SELECT count(*) AS n FROM "Ticket" WHERE "ticketOwnerId" = $1 AND "currentStatus" IN ${ACTIVE}`, staff.id))
+compare('Reported resolved by Requester', card('reported-resolved'), 'Ticket where requesterResolvedAt set and active', await count(`SELECT count(*) AS n FROM "Ticket" WHERE "requesterResolvedAt" IS NOT NULL AND "currentStatus" IN ${ACTIVE}`))
+compare('My open actions', card('my-open-actions'), 'ActionTaken planned or in progress for me', await count(`SELECT count(*) AS n FROM "ActionTaken" WHERE "assigneeId" = $1 AND "status" IN ('PLANNED','IN_PROGRESS')`, staff.id))
+for (const row of sd.byStatus) {
+  compare(`By status: ${row.status}`, row.count, 'Ticket by status', await count(`SELECT count(*) AS n FROM "Ticket" WHERE "currentStatus" = '${row.status}'`))
+}
+for (const row of sd.byItPriority) {
+  compare(`By IT priority: ${row.priority} (active)`, row.count, 'Ticket by itPriority and active', await count(`SELECT count(*) AS n FROM "Ticket" WHERE "itPriority" = '${row.priority}' AND "currentStatus" IN ${ACTIVE}`))
+}
+
+say('')
+say(`Requester dashboard for ${requester.email}`)
+const rd = await service.requester(requester.id)
+const rcard = (key: string) => rd.cards.find((c) => c.key === key)!.count
+compare('Open tickets', rcard('open'), 'own Tickets, active', await count(`SELECT count(*) AS n FROM "Ticket" WHERE "requesterId" = $1 AND "currentStatus" IN ${ACTIVE}`, requester.id))
+compare('In progress', rcard('in-progress'), 'own Tickets, IN_PROGRESS', await count(`SELECT count(*) AS n FROM "Ticket" WHERE "requesterId" = $1 AND "currentStatus" = 'IN_PROGRESS'`, requester.id))
+compare('Waiting for you', rcard('waiting'), 'own Tickets, WAITING_FOR_REQUESTER', await count(`SELECT count(*) AS n FROM "Ticket" WHERE "requesterId" = $1 AND "currentStatus" = 'WAITING_FOR_REQUESTER'`, requester.id))
+compare('Resolved', rcard('resolved'), 'own Tickets, RESOLVED', await count(`SELECT count(*) AS n FROM "Ticket" WHERE "requesterId" = $1 AND "currentStatus" = 'RESOLVED'`, requester.id))
+
+say('')
+say(mismatches === 0 ? 'Every number agrees with its SQL count.' : `${mismatches} number(s) disagree.`)
+// Always run from server/ (see the run command); the file goes to the repository's artifacts folder.
+mkdirSync('../artifacts/lab-04/evidence', { recursive: true })
+writeFileSync('../artifacts/lab-04/evidence/dashboard-vs-database.txt', lines.join('\n') + '\n')
+await prisma.$disconnect()
+process.exit(mismatches === 0 ? 0 : 1)
+```
+(The script uses raw SQL strings with parameters; it lives in `server/evidence/`, outside `server/src`, so the static guards, which scan `server/src`, are not affected; `server/` is also where `@prisma/client` and `dotenv` resolve.) Run it from `server/` so Prisma finds `.env`: `cd server && npx tsx evidence/dashboard-vs-database.mts`.
+
+- [ ] **Step 2: `scripts/evidence/pr-timeline.sh`** (Part 2: the specification existed before the implementation):
+
+```bash
+#!/usr/bin/env bash
+# Lists the Lab 4 pull requests with their merge times, oldest first.
+cd "$(dirname "$0")/../.." || exit 1
+mkdir -p artifacts/lab-04/evidence
+{
+  echo "Pull requests, oldest merge first (generated $(date -u +%Y-%m-%dT%H:%M:%SZ))"
+  echo
+  gh pr list --state all --limit 100 --json number,title,baseRefName,headRefName,state,mergedAt,createdAt \
+    --jq 'sort_by(.number) | .[] | select(.number >= 54) | "#\(.number) \(.state) base=\(.baseRefName) head=\(.headRefName) created=\(.createdAt) merged=\(.mergedAt // "-") | \(.title)"'
+} | tee artifacts/lab-04/evidence/pr-timeline.txt
+```
+
+- [ ] **Step 3: `scripts/collect-evidence.sh`** (Part 3: full passing output, from the commit being released):
+
+```bash
+#!/usr/bin/env bash
+# Runs every suite and saves its output with the commit it ran on.
+# Usage: collect-evidence.sh [output-dir]. Pass a folder outside the repository (for example when run on main)
+# so a run on another branch does not rewrite the committed copies.
+set -o pipefail
+cd "$(dirname "$0")/.." || exit 1
+out="${1:-artifacts/lab-04/regression}"
+mkdir -p "$out"
+commit=$(git rev-parse --short HEAD)$(git diff --quiet HEAD || echo ' plus uncommitted changes')
+branch=$(git branch --show-current)
+stamp() { echo "commit $commit on $branch, $(date -u +%Y-%m-%dT%H:%M:%SZ)"; }
+status=0
+
+{ stamp; (cd server && npm run prisma:seed >/dev/null 2>&1; npx vitest run --reporter=verbose 2>&1) ; } > "$out/server-output.txt" || status=1
+{ stamp; (cd client && npx vitest run --reporter=verbose 2>&1) ; } > "$out/client-output.txt" || status=1
+{ stamp; (cd server && npm run prisma:seed >/dev/null 2>&1); npx playwright test 2>&1 ; } > "$out/e2e-output.txt" || status=1
+{ stamp; npm run check 2>&1 | tail -40 ; } > "$out/check-output.txt"; [ "${PIPESTATUS[0]}" -eq 0 ] || status=1
+
+for f in server client e2e check; do
+  echo "$f: $(grep -E '^ +Tests |passed|failed' "$out/$f-output.txt" | tail -1 | sed 's/^ *//')"
+done
+exit $status
+```
+`chmod +x scripts/*.sh scripts/evidence/*.sh`.
+
+- [ ] **Step 4: Run them.** `bash scripts/evidence/pr-timeline.sh` (needs `gh`, read only); the dashboard comparison from Step 1 (expected: "Every number agrees"); `npm run evidence`. Expected: the server, client and E2E summaries all pass, with counts that match the baseline (server 267, client 135, E2E 21). Re-run `npm run test:repeat` last so the log is from this exact commit.
+
+- [ ] **Step 5: Stage.** `git add scripts artifacts/lab-04/regression artifacts/lab-04/evidence package.json`. Note: these output files are a snapshot of the release branch; Task 9 saves a second set from `main` after the merge (not committed, pasted into the report).
+
+---
+
+### Task 4: `reviewer.md`
+
+**Files:** Create `docs/lab-04/reviewer.md`
+
+- [ ] **Step 1: Collect the real data (read only).** Print and read, do not summarize from memory:
+
+```bash
+gh pr list --state all --limit 100 --json number,title,baseRefName,headRefName,state,mergedAt --jq 'sort_by(.number)|.[]|select(.number>=54)|"#\(.number) \(.state) \(.baseRefName)<-\(.headRefName) merged=\(.mergedAt // "-") \(.title)"'
+for n in 58 59 60 61 62 63 64; do
+  echo "=== PR $n reviews"; gh api repos/Jinnakan/TokTickIT/pulls/$n/reviews --jq '.[]|"\(.user.login) \(.state) \(.submitted_at): \(.body)"'
+  echo "=== PR $n review comments"; gh api repos/Jinnakan/TokTickIT/pulls/$n/comments --jq '.[]|"\(.user.login) \(.path):\(.line): \(.body)"'
+  echo "=== PR $n conversation"; gh api repos/Jinnakan/TokTickIT/issues/$n/comments --jq '.[]|"\(.user.login): \(.body)"'
+done
+```
+Also read the earlier PRs #54 to #57 the same way: they belong to the abandoned first attempt, and the document says so.
+
+- [ ] **Step 2: Write the file** with these sections, in this order, using only what Step 1 printed:
+  1. **Reviewer identity** (same wording as Lab 3: Jinnakan author, N0M3KM peer reviewer on GitHub, AI-assisted review), and "All feature pull requests below target `lab4-staging`".
+  2. **Pull requests reviewed**: a table like Lab 3's (PR link, title, branch, reviewer, outcome) for #58, #59, #60, #61, #62, #63, #64, and a final row for the release PR added in Task 8 once it exists.
+  3. **Comments given and received, with responses**: one subsection per PR with the reviewer's words quoted exactly and Jinnakan's response if there is one. If a PR has only "LGTM", say so; do not embellish.
+  4. **Honest notes**: (a) PR #59 was merged without a formal GitHub approval (state that plainly; do not edit history); (b) the first attempt at features 23 and 24 was discarded on purpose: PR #54 (contract) was merged into `main` and PR #55 (carry-overs) into `lab4-staging`, and then both branches were reset to the end of Lab 3 (`aa262af`), so their pages remain on GitHub but their commits are not in the current history; (c) PRs #56 (into `main`) and #57 (into `lab4-staging`) for feature 25 were closed unmerged, the first because it targeted `main` by mistake and the second because of conflicts with the discarded history. State merged-then-reset exactly like that; do not say they were never merged.
+  5. **AI-assisted review of plans** (labelled as AI, not peer review): for features 25 to 29 a fresh read-only agent reviewed each plan against the real code before any implementation. List, per feature, two or three real catches taken from this project's session (for example: feature 25, parallel batches that would have broken the "suite green" gates and a demo-seed run that would have polluted the shared test database; feature 26, a test that could never fail because the label was `Result *` and not `Result`; feature 27, a branch that lacked feature 26's files; feature 28, a hidden-but-mounted list that made E2E locators match invisible rows; feature 29, a `db-check.ts` raw query that would have failed the static guard, and an import-rewrite script that would have missed `.tsx` files). Quote only what is documented in the plan files or the session; check each against `docs/superpowers/plans/*.html` and the git history before writing it.
+  6. **Reviews given**: the review of N0M3KM's PR on `N0M3KM/TokTickIT` (pull 48) was delivered to Jinnakan as plain text and not posted on GitHub; say exactly that.
+  7. **Known process note**: the release pull request from `lab4-staging` to `main` (added to the table in Task 8).
+
+- [ ] **Step 3: Check the writing.** No em dashes, no promotional words, quotes exact. `grep -c "—" docs/lab-04/reviewer.md` must print 0.
+
+- [ ] **Step 4: Stage.** `git add docs/lab-04/reviewer.md`
+
+---
+
+### Task 5: `ai-use.md`
+
+**Files:** Create `docs/lab-04/ai-use.md`
+
+- [ ] **Step 1: List the real prompts.** The session transcript is `/Users/jinnakanchaviengpob/.claude/projects/-Users-jinnakanchaviengpob-Desktop-3rd-Year-PRE-380/d55ae8ca-0dcd-44b9-82b8-f74bfe68810d.jsonl`. Print the user's own messages (skip system notifications and tool results):
+
+```bash
+python3 - <<'EOF'
+import json
+path = '/Users/jinnakanchaviengpob/.claude/projects/-Users-jinnakanchaviengpob-Desktop-3rd-Year-PRE-380/d55ae8ca-0dcd-44b9-82b8-f74bfe68810d.jsonl'
+n = 0
+for line in open(path):
+    try:
+        row = json.loads(line)
+    except json.JSONDecodeError:
+        continue
+    if row.get('type') != 'user':
+        continue
+    content = row.get('message', {}).get('content')
+    text = content if isinstance(content, str) else ' '.join(part.get('text', '') for part in content if isinstance(part, dict) and part.get('type') == 'text')
+    text = text.strip()
+    if not text or text.startswith('<') or 'SYSTEM NOTIFICATION' in text or 'tool_use_id' in text:
+        continue
+    n += 1
+    print(f'[{n}] {text[:300]!r}')
+EOF
+```
+
+- [ ] **Step 2: Choose 8 to 10** that show different things, each quoted exactly (copy from the transcript, do not retype): the restart request ("Let do this again from lab 3 again... take your time, understand the code and what to interact with them."), the scope-of-authority correction ("Don't touch my github please. I will close issue myself and don't create random branch."), the plan-then-implement rhythm ("Ready for feature N"), the flake decision ("What is your read? Fix it here now to make sure no issue later or finish the work then dubug."), "Fix the flake now, then commit", the final-hardening framing ("Since I am not sure what is the next sprint is about. It would be nice to make our code scalable and flexable."), the parallel-features question ("What feature can do simultaneously?"), the question about the PR that conflicted ("What did I do wrong?" and "Why is this happen. I though we just go back to finish sprint 3..."), and the interruption that kept the ten-run proof intact ("sorry. Please finish ten-run proof."). For each: what the agent did, and what I (the user) learned or had to correct.
+
+- [ ] **Step 3: Write the file** in the shape of Lab 3's: (1) the LLM named exactly (Claude Code; model used for the main work: Claude Sonnet 5.5, plus read-only review subagents), the working pattern (plan turn, then "Ready for feature N", then my own review before I commit), and what was treated as the source of truth (the handout and `docs/lab-04/*.md`); (2) a table "Work completed by branch" for `feature/23` to `feature/30` with what the assistant did and a concrete number or finding per row (tests added, defects found); (3) "Selected key prompts" table (number, name, exact prompt, result and reflection); (4) **My Reflection** with two paragraphs, Specification-agent use and Coding-agent use.
+
+- [ ] **Step 4: The reflection is a draft for the user.** Write it in first person from facts (what went wrong and was caught: the first attempt that was thrown away; the flaky suite whose real cause was port collisions with other apps on the machine; a refactor that silently moved the uploads folder and was caught by a file count; tests that passed while proving nothing until a mutation check was added; plan reviews that caught real defects). Put at the top of the message you give the user when this task is done: "Read the reflection and change anything that is not how you would say it. It is graded as yours."
+
+- [ ] **Step 5: Check.** Prompts match the transcript character for character (re-grep each quoted string in the JSONL); `grep -c "—" docs/lab-04/ai-use.md` prints 0; between 6 and 10 prompts.
+
+- [ ] **Step 6: Stage.** `git add docs/lab-04/ai-use.md`
+
+---
+
+### Task 6: Final polish of documents
+
+**Files:** `docs/lab-04/tests.md`, `docs/lab-04/ui-spec.md`, `README.md` (only if stale)
+
+- [ ] **Step 1: ui-spec §10 matches reality.** Replace the three folder bullets with the real file names from `artifacts/lab-04/screenshots/INDEX.md` (scene names and the three widths), and add the `regression/` set.
+
+- [ ] **Step 2: Definition of Done evidence.** Append to `docs/lab-04/tests.md` a section "Definition of Done: where each item is proved" as a table with one row per bullet of `specification.md` §12 (product completion: every FR, BR and security requirement implemented; every acceptance criterion traced to a passing test; Lab 1 to 3 plus Lab 4 suites pass and the server suite passes ten times; backend enforcement tested through the API; dashboard numbers verified against queries; clean console and README current; screens meet the checklist at three widths; course delivery: each Issue on its own branch merged by peer-reviewed PR, specification merged before implementation, one release PR, `reviewer.md` and `ai-use.md` current, Kanban Done). The Evidence column names the test IDs or file (for example `artifacts/lab-04/evidence/dashboard-vs-database.txt`, `server-repeat.txt`, `INDEX.md`, `pr-timeline.txt`). Do not claim the Kanban or the release PR yet: mark those two rows "after the release merge (Task 8)" and finish them in Task 9.
+
+- [ ] **Step 3: Final counts.** In `tests.md` state the final totals (server 267, client 135, E2E 21 plus 12 accessibility tests counted inside the 21; check with the evidence output) and the date and commit.
+
+- [ ] **Step 4: README check.** Follow the README's own setup steps literally in a clean state: `npm ci`, `docker compose up -d`, copy `.env.example`, `prisma generate`, `migrate deploy`, `prisma:seed`, `prisma:seed:demo`, start both servers, load `http://localhost:5173`, log in as each starting-point account. Fix anything that does not work. Confirm `.gitignore` covers `server/uploads/`, `test-results/`, `playwright-report/`, `.env`, `node_modules/`, `dist/`.
+
+- [ ] **Step 5: Stage.** `git add docs README.md`
+
+---
+
+### Task 7: Release gate on this branch
+
+- [ ] **Step 1:** `npm run verify:release` must print "everything is in place". Fix what it lists (it should now be only things from Tasks 2 to 6).
+- [ ] **Step 2:** `npm run check`; seed, then `npm run test:e2e`; `npm run test:repeat` (ten clean runs, on this exact code); all green.
+- [ ] **Step 3: Visual pass over the shots.** Look at every group once more as a whole, at each width, for clipping, overlap, awkward wrapping, wrong state. Anything wrong in the product (not in the shot) is fixed in the product with a test first; anything wrong in a shot is retaken. Re-run Task 2 step 3 and Task 3 step 4 if the product changed.
+- [ ] **Step 3b:** `git status --short | wc -l` and a look at the list: only intended files (no uploads, no `test-results`, no `.env`). A count that surprises you is investigated before anything is staged (the lesson from feature 29).
+- [ ] **Step 4: Stage and report.** `git add -A`; report counts and anything not done; wait for "commit".
+
+---
+
+### Task 8: GitHub release steps (yours; I check after each)
+
+Do these in order. After each, tell me and I run the check named.
+
+1. PR #64 (final hardening) is already merged into `lab4-staging`; fetch and confirm. *Check:* `git fetch origin && git log --oneline -3 origin/lab4-staging`.
+2. Reset `origin/feature/30-...` onto `lab4-staging`, create the local branch, push this feature as before; open the PR into `lab4-staging` (draft first); get N0M3KM's review; merge it. *Check:* `gh pr view <n> --json reviewDecision,mergedAt`.
+3. Open the release PR `lab4-staging` into `main` as a draft and tell me its number. I add its row to `reviewer.md` (and the two Definition of Done rows) in a small change that goes into `lab4-staging` before the release is merged, so no second PR into `main` is needed. Read the file list (it should be the whole Lab 4 and nothing unexpected); mark it ready (your separate confirmation, because that publishes it); get the approval; merge it with a merge commit (not squash) so the history shows each feature branch merged in. *Check:* `git log --oneline --first-parent origin/main -12`.
+4. Move every Lab 4 Issue (#46 to #53) to Done on the GitHub Project board; close the issues yourself. *Check:* you send me a screenshot or I cannot verify it (the board needs your login: `gh auth refresh -s read:project` would let me read it).
+5. After the merge, tell me; I check that `main` equals `lab4-staging` and move to Task 9.
+
+---
+
+### Task 9: After the merge: evidence from `main`, then the report
+
+**9a. Evidence from `main`.**
+- [ ] `git switch main && git pull` (you do the switch; the working tree must be clean). Run `npm ci`, `npm run verify:release`, `npm run evidence` and `npm run test:repeat` on `main`. These outputs are for pasting into the report (Part 3 asks for output from `main`); they are not committed again (the committed copies are from the identical release branch).
+
+**9b. GitHub pages (public repo, no login).** A Playwright script (kept in the scratch folder) opens and screenshots these at 1280 px wide and saves them next to the report: rendered `specification.md`, `tests.md`, `ui-spec.md`, `reviewer.md`, `ai-use.md` on `main`; the pull requests list filtered to merged; PR #58 and the release PR; the commits page of `main`; the repository front page with README; `.gitignore`. Long pages are captured in several vertical slices so text stays readable.
+
+**9c. Contact sheets, then build `Reports/Lab 4 Report.docx`** with python-docx, mirroring the Lab 3 report: first line `CPE 334 TokTickIT Lab 4 Report`; each part starts with a plain bold paragraph `Answer Part N: <title>` (no Word heading style), then the handout's required-evidence sentence, a short factual paragraph or two, then pictures with a plain `Image N : caption` line above each; links are live hyperlinks; page letter, one-inch margins. Content per part:
+
+| Part | Text and evidence |
+|---|---|
+| 1 | Commit history of `main` (first-parent) and the PR list, the Kanban shot you take, `reviewer.md` rendered, README and `.gitignore` shots, the directory tree (`tree -L 3 -I node_modules` pasted as a monospaced block) |
+| 2 | Rendered `specification.md` slices (requirements, rules, transitions, dashboard calculations, acceptance criteria, migration decisions, definition of done) and `pr-timeline.txt` showing PR #58 merged before PRs #60 to #63 |
+| 3 | Rendered `tests.md` slices (planned tests, traceability, file paths, final status) and the saved outputs: server, client, E2E and the ten-run log from `main` |
+| 4 | Rendered `ai-use.md` (LLM named, the key prompts, My Reflection) |
+| 5 | Staff dashboard shots (loaded, zero, drill-down, admin, failure at three widths), `dashboard-vs-database.txt`, SD-03 and RD-06 output for forbidden |
+| 6 | Actions Taken shots (list with several Actions, create, edit, validation, inactive assignee, conflict, locked, Requester read-only, blocked), ACT test output |
+| 7 | Workflow evidence: blocked resolve shot, History list, WF test output (matrix, append-only, role visibility) |
+| 8 | Requester dashboard shots and the regression set, IDOR test output |
+| 9 | Rendered `ui-spec.md`, the completed checklist, the accessibility run output, a three-width contact sheet per major screen |
+
+- [ ] **Style check on the docx:** no Heading styles, no em dash, hyphen minus, plain paragraphs; images at most 6.5 inches wide and readable; every URL is a working hyperlink.
+- [ ] **PDF.** You open the `.docx` in Word and `Save As PDF`; I check the page count and that images are legible (open the PDF, read a sample of pages). The handout wants "exactly one concise PDF": if the PDF is long, shorten by cropping slices and dropping repeated shots, not by shrinking text.
+- [ ] **Manual evidence list for you** (cannot be produced without your login): the Kanban board with all Issues in Done; optionally the Git network or commit graph from your own GitHub view. I will leave a numbered gap with a caption for each and list them in my message.
+
+---
+
+## Self-Review
+
+**Spec coverage.** Handout §12 files: all six docs, the named server, client and E2E test files, the three screenshot folders (T1 checks them, T2 produces them). §14 parts 1 to 9: each has a source, a producer and a check in the table above; the only items I cannot produce are the Kanban shot and anything behind a login, which are listed. Contract §10 screenshot list: staff 5 states, requester 4, Actions Taken 9, three widths each, in T2. `ui-spec.md` §9 checklist: ticked in feature 29, rechecked in T7. Spec Definition of Done: T6 evidence table. Honest history: T4.
+
+**Placeholders.** None shipped. The scripts are complete. Two steps are by nature procedures over live data (reading GitHub and the transcript for exact quotes; fixing a locator against the real page), each with the rule for what is allowed (quote exactly; never fake a state).
+
+**Type consistency.** `INDEX.md` rows are `file | what | source`; `verify-release.sh` parses the file names with the same pattern the capture writes (`<group>/<scene>-<desktop|tablet|mobile>.png`). Evidence files named in T3, T6 and T9 match. The report table reuses the same file names as the index.
+</script>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
+<script>
+  try {
+    var md = document.getElementById('plan-md').textContent;
+    document.getElementById('plan').innerHTML = marked.parse(md);
+  } catch (e) {
+    document.getElementById('plan').innerHTML = '<pre></pre>';
+    document.querySelector('#plan pre').textContent = document.getElementById('plan-md').textContent;
+  }
+  try {
+    var dark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    mermaid.initialize({ startOnLoad: false, theme: dark ? 'dark' : 'neutral' });
+    mermaid.run({ querySelector: '.mermaid' });
+  } catch (e) {}
+</script>
+</body>
+</html>

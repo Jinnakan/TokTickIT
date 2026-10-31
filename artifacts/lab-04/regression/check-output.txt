@@ -1,0 +1,41 @@
+commit faf933f plus uncommitted changes on feature/30-Release-readiness-lab4, 2026-10-31T14:34:24Z
+
+ Test Files  30 passed (30)
+      Tests  267 passed (267)
+   Start at  21:34:27
+   Duration  31.68s (transform 217ms, setup 0ms, collect 2.37s, tests 25.45s, environment 2ms, prepare 715ms)
+
+
+> toktickit-client@0.1.0 test
+> vitest run
+
+
+ RUN  v4.1.12 /Users/jinnakanchaviengpob/Desktop/3rd Year/CPE_334/ToKTickIT/client
+
+
+ Test Files  19 passed (19)
+      Tests  135 passed (135)
+   Start at  21:34:59
+   Duration  3.43s (transform 1.19s, setup 2.14s, import 1.76s, tests 6.48s, environment 10.36s)
+
+
+> build
+> npm run build -w server && npm run build -w client
+
+
+> toktickit-server@0.1.0 build
+> tsc
+
+
+> toktickit-client@0.1.0 build
+> tsc -b && vite build
+
+vite v7.3.7 building client environment for production...
+transforming...
+✓ 78 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                   0.39 kB │ gzip:  0.27 kB
+dist/assets/index-ArTa1XKH.css  233.71 kB │ gzip: 31.50 kB
+dist/assets/index-Dl32XgPA.js   327.94 kB │ gzip: 93.06 kB
+✓ built in 530ms

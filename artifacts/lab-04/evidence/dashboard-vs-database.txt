@@ -1,0 +1,26 @@
+Dashboard numbers against direct SQL, generated 2026-10-31T14:32:20.802Z
+
+IT Staff dashboard for alex.rivera@toktickit.test
+MATCH    Unassigned                                   dashboard= 29371  sql= 29371   Ticket where ownerless and active
+MATCH    Owned by me                                  dashboard=   907  sql=   907   Ticket where owner = user and active
+MATCH    Reported resolved by Requester               dashboard=   349  sql=   349   Ticket where requesterResolvedAt set and active
+MATCH    My open actions                              dashboard=     9  sql=     9   ActionTaken planned or in progress for me
+MATCH    By status: NEW                               dashboard= 29631  sql= 29631   Ticket by status
+MATCH    By status: OPEN                              dashboard=   467  sql=   467   Ticket by status
+MATCH    By status: IN_PROGRESS                       dashboard=   761  sql=   761   Ticket by status
+MATCH    By status: WAITING_FOR_REQUESTER             dashboard=   202  sql=   202   Ticket by status
+MATCH    By status: RESOLVED                          dashboard=   634  sql=   634   Ticket by status
+MATCH    By status: CLOSED                            dashboard=   341  sql=   341   Ticket by status
+MATCH    By status: REOPENED                          dashboard=   168  sql=   168   Ticket by status
+MATCH    By status: CANCELLED                         dashboard=  1193  sql=  1193   Ticket by status
+MATCH    By IT priority: LOW (active)                 dashboard=   641  sql=   641   Ticket by itPriority and active
+MATCH    By IT priority: MEDIUM (active)              dashboard= 29653  sql= 29653   Ticket by itPriority and active
+MATCH    By IT priority: HIGH (active)                dashboard=   935  sql=   935   Ticket by itPriority and active
+
+Requester dashboard for sarah.johnson@toktickit.test
+MATCH    Open tickets                                 dashboard=   485  sql=   485   own Tickets, active
+MATCH    In progress                                  dashboard=     4  sql=     4   own Tickets, IN_PROGRESS
+MATCH    Waiting for you                              dashboard=     4  sql=     4   own Tickets, WAITING_FOR_REQUESTER
+MATCH    Resolved                                     dashboard=     0  sql=     0   own Tickets, RESOLVED
+
+Every number agrees with its SQL count.

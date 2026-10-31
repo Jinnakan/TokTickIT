@@ -2,6 +2,8 @@ import { defineConfig, devices } from '@playwright/test'
 
 export default defineConfig({
   testDir: './e2e',
+  // The screenshot capture is run on demand with `npm run screenshots`, never as part of the tests.
+  testIgnore: '**/capture/**',
   fullyParallel: false,
   // One shared database: the dashboard spec compares card counts with list totals, which other specs would change mid-run.
   workers: 1,
