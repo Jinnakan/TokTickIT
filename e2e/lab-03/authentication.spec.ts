@@ -29,7 +29,7 @@ test.describe('Authentication', () => {
 
     // Password change succeeded and the real session-driven shell is
     // reachable (Issue 16 removed the Dev Requester selector).
-    await expect(page.getByRole('button', { name: 'My Tickets' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'My Tickets', exact: true })).toBeVisible()
     await expect(page.getByText('New Hire')).toBeVisible()
   })
 

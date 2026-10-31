@@ -5,13 +5,12 @@ export type NavItem = {
   label: string
 }
 
+const DASHBOARD: NavItem = { key: 'dashboard', label: 'Dashboard' }
+
 const NAV_BY_ROLE: Record<CurrentUser['role'], NavItem[]> = {
-  REQUESTER: [
-    { key: 'my-tickets', label: 'My Tickets' },
-    { key: 'create-ticket', label: 'Create Ticket' },
-  ],
-  IT_STAFF: [{ key: 'ticket-queue', label: 'Ticket Queue' }],
-  ADMINISTRATOR: [{ key: 'user-management', label: 'User Management' }],
+  REQUESTER: [DASHBOARD, { key: 'my-tickets', label: 'My Tickets' }, { key: 'create-ticket', label: 'Create Ticket' }],
+  IT_STAFF: [DASHBOARD, { key: 'ticket-queue', label: 'Ticket Queue' }],
+  ADMINISTRATOR: [DASHBOARD, { key: 'ticket-queue', label: 'Ticket Queue' }, { key: 'user-management', label: 'User Management' }],
 }
 
 /**

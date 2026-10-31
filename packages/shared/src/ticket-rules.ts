@@ -87,3 +87,16 @@ export function validateTicketFields(input: TicketFieldInput): FieldErrors {
 
   return fields
 }
+
+/** "Active" everywhere in Lab 4 (BR-L4-17, BR-L4-18): the Ticket is still being worked. */
+export const ACTIVE_STATUSES: readonly TicketStatusValue[] = ['NEW', 'OPEN', 'REOPENED', 'IN_PROGRESS', 'WAITING_FOR_REQUESTER']
+
+export const STATUS_GROUP_NAMES = ['active', 'in-progress', 'waiting', 'resolved'] as const
+export type StatusGroup = (typeof STATUS_GROUP_NAMES)[number]
+
+export const STATUS_GROUPS: Record<StatusGroup, readonly TicketStatusValue[]> = {
+  active: ACTIVE_STATUSES,
+  'in-progress': ['IN_PROGRESS'],
+  waiting: ['WAITING_FOR_REQUESTER'],
+  resolved: ['RESOLVED'],
+}

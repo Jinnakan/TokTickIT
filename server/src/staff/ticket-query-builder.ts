@@ -1,5 +1,5 @@
 import type { Prisma, Priority, TicketStatus } from '@prisma/client'
-import type { SortDirection, TicketSortField } from '@toktickit/shared'
+import { STATUS_GROUPS, type SortDirection, type StatusGroup, type TicketSortField } from '@toktickit/shared'
 
 export type TicketQueryResult = {
   where: Prisma.TicketWhereInput
@@ -18,6 +18,7 @@ export type TicketQueryResult = {
  */
 export class TicketQueryBuilder {
   private where: Prisma.TicketWhereInput = {}
+  private and: Prisma.TicketWhereInput[] = []
   private orderField: TicketSortField = 'createdAt'
   private orderDir: SortDirection = 'desc'
   private pageNum = 1
@@ -64,6 +65,22 @@ export class TicketQueryBuilder {
     return this
   }
 
+  withRequester(requesterId?: number): this {
+    if (requesterId !== undefined) this.where.requesterId = requesterId
+    return this
+  }
+
+  /** ANDed with withStatus(), so a status group and an exact status must both match. */
+  withStatusGroup(group?: StatusGroup): this {
+    if (group) this.and.push({ currentStatus: { in: [...STATUS_GROUPS[group]] as TicketStatus[] } })
+    return this
+  }
+
+  reportedResolved(flag?: boolean): this {
+    if (flag) this.where.requesterResolvedAt = { not: null }
+    return this
+  }
+
   sortBy(field: TicketSortField, direction: SortDirection): this {
     this.orderField = field
     this.orderDir = direction
@@ -78,7 +95,7 @@ export class TicketQueryBuilder {
 
   build(): TicketQueryResult {
     return {
-      where: this.where,
+      where: this.and.length > 0 ? { ...this.where, AND: this.and } : this.where,
       // id desc as a stable secondary sort, same convention as Lab 2's
       // Requester-scoped ticket list.
       orderBy: [{ [this.orderField]: this.orderDir }, { id: 'desc' }],

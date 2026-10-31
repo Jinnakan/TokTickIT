@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { describeFilters, type ListFilters } from '../nav/app-navigation.js'
 import { fetchActiveCategories, type ReferenceItem } from '../api/referenceData.js'
 import { fetchTickets } from '../api/tickets.js'
 import {
@@ -28,28 +29,53 @@ function formatDate(iso: string): string {
   })
 }
 
+export type MyTicketsSnapshot = {
+  search: string
+  categoryId: string
+  requestedPriority: Priority | ''
+  currentStatus: TicketStatus | ''
+  statusGroup: string
+  sortBy: TicketSortField
+  sortDir: SortDirection
+  page: number
+}
+
 export function MyTicketsList({
   onCreateTicket,
   onOpenTicket,
+  initialFilters = {},
+  refreshKey = 0,
+  snapshot,
+  onSnapshot,
 }: {
   onCreateTicket: () => void
   onOpenTicket: (ticketId: number) => void
+  initialFilters?: ListFilters
+  refreshKey?: number
+  snapshot?: MyTicketsSnapshot
+  onSnapshot?: (snapshot: MyTicketsSnapshot) => void
 }) {
   const [categories, setCategories] = useState<ReferenceItem[]>([])
 
-  const [search, setSearch] = useState('')
-  const [categoryId, setCategoryId] = useState('')
-  const [requestedPriority, setRequestedPriority] = useState<Priority | ''>('')
-  const [currentStatus, setCurrentStatus] = useState<TicketStatus | ''>('')
-  const [sortBy, setSortBy] = useState<TicketSortField>('createdAt')
-  const [sortDir, setSortDir] = useState<SortDirection>('desc')
-  const [page, setPage] = useState(1)
+  const [search, setSearch] = useState(snapshot?.search ?? '')
+  const [categoryId, setCategoryId] = useState(snapshot?.categoryId ?? '')
+  const [requestedPriority, setRequestedPriority] = useState<Priority | ''>(snapshot?.requestedPriority ?? '')
+  const [currentStatus, setCurrentStatus] = useState<TicketStatus | ''>(snapshot?.currentStatus ?? (initialFilters.currentStatus as TicketStatus | undefined) ?? '')
+  const [statusGroup, setStatusGroup] = useState(snapshot?.statusGroup ?? initialFilters.statusGroup ?? '')
+  const lastRefresh = useRef(refreshKey)
+  const [sortBy, setSortBy] = useState<TicketSortField>(snapshot?.sortBy ?? 'createdAt')
+  const [sortDir, setSortDir] = useState<SortDirection>(snapshot?.sortDir ?? 'desc')
+  const [page, setPage] = useState(snapshot?.page ?? 1)
 
   const [status, setStatus] = useState<ListStatus>('loading')
   const [tickets, setTickets] = useState<TicketListItem[]>([])
   const [meta, setMeta] = useState<TicketListMeta | null>(null)
 
-  const hasActiveFilters = search !== '' || categoryId !== '' || requestedPriority !== '' || currentStatus !== ''
+  useEffect(() => {
+    onSnapshot?.({ search, categoryId, requestedPriority, currentStatus, statusGroup, sortBy, sortDir, page })
+  }, [search, categoryId, requestedPriority, currentStatus, statusGroup, sortBy, sortDir, page]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const hasActiveFilters = search !== '' || categoryId !== '' || requestedPriority !== '' || currentStatus !== '' || statusGroup !== ''
 
   useEffect(() => {
     fetchActiveCategories().then(setCategories).catch(() => setCategories([]))
@@ -58,7 +84,9 @@ export function MyTicketsList({
   useEffect(() => {
     const controller = new AbortController()
     let ignore = false
-    setStatus('loading')
+    const refreshOnly = lastRefresh.current !== refreshKey
+    lastRefresh.current = refreshKey
+    if (!refreshOnly) setStatus('loading')
 
     fetchTickets(
       {
@@ -66,6 +94,7 @@ export function MyTicketsList({
         categoryId: categoryId === '' ? undefined : Number(categoryId),
         requestedPriority: requestedPriority || undefined,
         currentStatus: currentStatus || undefined,
+        statusGroup: statusGroup || undefined,
         sortBy,
         sortDir,
         page,
@@ -87,7 +116,7 @@ export function MyTicketsList({
       ignore = true
       controller.abort()
     }
-  }, [search, categoryId, requestedPriority, currentStatus, sortBy, sortDir, page])
+  }, [search, categoryId, requestedPriority, currentStatus, statusGroup, sortBy, sortDir, page, refreshKey])
 
   function handleSearchChange(value: string) {
     setSearch(value)
@@ -114,6 +143,7 @@ export function MyTicketsList({
     setCategoryId('')
     setRequestedPriority('')
     setCurrentStatus('')
+    setStatusGroup('')
     setPage(1)
   }
 
@@ -133,6 +163,7 @@ export function MyTicketsList({
         <div>
           <h1 className="h4 fw-bold mb-1">My Tickets</h1>
           <p className="text-body-secondary mb-0">View and track all of your support requests.</p>
+          {statusGroup && <p className="small mb-0" role="status">Showing: {describeFilters({ statusGroup }).join(' · ')}</p>}
         </div>
         <div className="d-flex gap-2">
           <button type="button" className="btn btn-outline-secondary btn-sm" onClick={handleClearFilters}>

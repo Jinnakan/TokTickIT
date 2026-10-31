@@ -3,6 +3,8 @@ import { defineConfig, devices } from '@playwright/test'
 export default defineConfig({
   testDir: './e2e',
   fullyParallel: false,
+  // One shared database: the dashboard spec compares card counts with list totals, which other specs would change mid-run.
+  workers: 1,
   retries: 0,
   reporter: [['list']],
   use: {

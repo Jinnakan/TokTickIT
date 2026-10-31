@@ -73,7 +73,7 @@ describe('StaffTicketQueue', () => {
   it('renders tickets from multiple requesters, not scoped to one (UI-L3-05, AC-L3-09)', async () => {
     stubFetch()
 
-    render(<StaffTicketQueue currentUserId={1} />)
+    render(<StaffTicketQueue currentUserId={1} onOpenTicket={() => {}} />)
 
     await waitFor(async () => {
       expect((await screen.findAllByText('Jennifer Anderson'))[0]).toBeInTheDocument()
@@ -87,7 +87,7 @@ describe('StaffTicketQueue', () => {
     let lastUrl = ''
     stubFetch({ onTicketsRequest: (url) => { lastUrl = url } })
 
-    render(<StaffTicketQueue currentUserId={1} />)
+    render(<StaffTicketQueue currentUserId={1} onOpenTicket={() => {}} />)
     await screen.findAllByText('Jennifer Anderson')
 
     fireEvent.change(screen.getByLabelText('Filter by current status'), { target: { value: 'OPEN' } })
@@ -101,7 +101,7 @@ describe('StaffTicketQueue', () => {
     let lastUrl = ''
     stubFetch({ onTicketsRequest: (url) => { lastUrl = url } })
 
-    render(<StaffTicketQueue currentUserId={1} />)
+    render(<StaffTicketQueue currentUserId={1} onOpenTicket={() => {}} />)
     await screen.findAllByText('Jennifer Anderson')
 
     fireEvent.click(screen.getByLabelText('Unassigned only'))
@@ -111,16 +111,16 @@ describe('StaffTicketQueue', () => {
     })
   })
 
-  it('opens the real Staff Ticket Detail screen when a row is clicked', async () => {
+  it('asks the app to open the Ticket when a row is clicked (the detail screen is rendered by App)', async () => {
     stubFetch()
+    const onOpenTicket = vi.fn()
 
-    render(<StaffTicketQueue currentUserId={1} />)
+    render(<StaffTicketQueue currentUserId={1} onOpenTicket={onOpenTicket} />)
     const [ticketCell] = await screen.findAllByText('TKT-2026-000001')
 
     fireEvent.click(ticketCell)
 
-    expect(await screen.findByRole('heading', { name: /Ticket TKT-2026-000001/ })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Claim Ticket' })).toBeInTheDocument()
+    expect(onOpenTicket).toHaveBeenCalledWith(1)
   })
 
   it('shows the empty state when the queue has no tickets', async () => {
@@ -132,7 +132,7 @@ describe('StaffTicketQueue', () => {
       throw new Error(`Unexpected fetch: ${url}`)
     }))
 
-    render(<StaffTicketQueue currentUserId={1} />)
+    render(<StaffTicketQueue currentUserId={1} onOpenTicket={() => {}} />)
 
     await waitFor(() => {
       expect(screen.getByText('No tickets in the queue yet.')).toBeInTheDocument()

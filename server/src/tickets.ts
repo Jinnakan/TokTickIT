@@ -14,11 +14,13 @@ import {
   MAX_PAGE_SIZE,
   PRIORITIES,
   SORT_DIRECTIONS,
+  STATUS_GROUP_NAMES,
   TICKET_SORT_FIELDS,
   TICKET_STATUSES,
   validateTicketFields,
   type FieldErrors,
   type SortDirection,
+  type StatusGroup,
   type TicketSortField,
 } from '@toktickit/shared'
 
@@ -70,6 +72,8 @@ type TicketListQuery = {
   categoryId?: number
   requestedPriority?: Priority
   currentStatus?: TicketStatus
+  statusGroup?: StatusGroup
+  requesterReportedResolved: boolean
   sortBy: TicketSortField
   sortDir: SortDirection
   page: number
@@ -87,6 +91,12 @@ function parseTicketListQuery(query: Record<string, unknown>): { query: TicketLi
 
   const currentStatus = parseOptionalEnum(query.currentStatus, TICKET_STATUSES)
   if (currentStatus === null) errors.currentStatus = 'currentStatus is invalid.'
+
+  const statusGroup = parseOptionalEnum(query.statusGroup, STATUS_GROUP_NAMES)
+  if (statusGroup === null) errors.statusGroup = 'statusGroup is invalid.'
+
+  const reported = parseOptionalEnum(query.requesterReportedResolved, ['true'] as const)
+  if (reported === null) errors.requesterReportedResolved = 'requesterReportedResolved must be true.'
 
   const sortByRaw = parseOptionalEnum(query.sortBy, TICKET_SORT_FIELDS)
   if (sortByRaw === null) errors.sortBy = 'sortBy is invalid.'
@@ -107,6 +117,8 @@ function parseTicketListQuery(query: Record<string, unknown>): { query: TicketLi
       categoryId: categoryId ?? undefined,
       requestedPriority: requestedPriority ?? undefined,
       currentStatus: currentStatus ?? undefined,
+      statusGroup: statusGroup ?? undefined,
+      requesterReportedResolved: reported === 'true',
       sortBy: sortByRaw ?? 'createdAt',
       sortDir: sortDirRaw ?? 'desc',
       page: Math.max(DEFAULT_PAGE, pageRaw ?? DEFAULT_PAGE),
@@ -230,24 +242,21 @@ ticketsRouter.get('/', ...requireAnyAuthenticatedRole, async (request, response,
 
       const requesterId = response.locals.userId as number
 
-      const where: Prisma.TicketWhereInput = {
-        requesterId,
-        ...(query.categoryId !== undefined ? { categoryId: query.categoryId } : {}),
-        ...(query.requestedPriority !== undefined ? { requestedPriority: query.requestedPriority } : {}),
-        ...(query.currentStatus !== undefined ? { currentStatus: query.currentStatus } : {}),
-        ...(query.search
-          ? {
-              OR: [
-                { ticketNumber: { contains: query.search, mode: 'insensitive' } },
-                { summary: { contains: query.search, mode: 'insensitive' } },
-              ],
-            }
-          : {}),
-      }
+      const built = new TicketQueryBuilder()
+        .withRequester(requesterId)
+        .withSearch(query.search || undefined)
+        .withCategory(query.categoryId)
+        .withRequestedPriority(query.requestedPriority)
+        .withStatus(query.currentStatus)
+        .withStatusGroup(query.statusGroup)
+        .reportedResolved(query.requesterReportedResolved)
+        .sortBy(query.sortBy, query.sortDir)
+        .paginate(query.page, query.pageSize)
+        .build()
 
       const [tickets, totalItems] = await Promise.all([
         prisma.ticket.findMany({
-          where,
+          where: built.where,
           select: {
             id: true,
             ticketNumber: true,
@@ -258,11 +267,11 @@ ticketsRouter.get('/', ...requireAnyAuthenticatedRole, async (request, response,
             createdAt: true,
             updatedAt: true,
           },
-          orderBy: [{ [query.sortBy]: query.sortDir }, { id: 'desc' }],
-          skip: (query.page - 1) * query.pageSize,
-          take: query.pageSize,
+          orderBy: built.orderBy,
+          skip: built.skip,
+          take: built.take,
         }),
-        prisma.ticket.count({ where }),
+        prisma.ticket.count({ where: built.where }),
       ])
 
       response.status(200).json({
@@ -290,6 +299,8 @@ ticketsRouter.get('/', ...requireAnyAuthenticatedRole, async (request, response,
       .withRequestedPriority(query.requestedPriority)
       .withItPriority(query.itPriority)
       .withStatus(query.currentStatus)
+      .withStatusGroup(query.statusGroup)
+      .reportedResolved(query.requesterReportedResolved)
       .withTicketOwner(query.ticketOwnerId)
       .unassignedOnly(query.unassignedOnly)
       .sortBy(query.sortBy, query.sortDir)

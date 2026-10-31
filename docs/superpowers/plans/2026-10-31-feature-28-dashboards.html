@@ -1,0 +1,2316 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Feature 28: Dashboards and navigation (plan)</title>
+<style>
+  :root { --bg:#f6faf7; --fg:#1b2a22; --muted:#5b6b62; --card:#fff; --line:#cfe0d5; --accent:#2f7d52; --warn:#b4540a; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#101a14; --fg:#e4efe8; --muted:#9db3a5; --card:#18261e; --line:#2b4034; --accent:#6fcf97; --warn:#f0a35e; } }
+  body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.55 system-ui,sans-serif; }
+  main { max-width:1080px; margin:0 auto; padding:24px 16px 80px; }
+  h1 { font-size:1.7rem; margin:.2em 0; } h2 { margin-top:2em; border-bottom:2px solid var(--line); padding-bottom:.2em; }
+  .meta { color:var(--muted); }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px 18px; margin:14px 0; }
+  .pair { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  @media (max-width:760px) { .pair { grid-template-columns:1fr; } }
+  .pair h4 { margin:0 0 6px; } .before h4 { color:var(--warn); } .after h4 { color:var(--accent); }
+  table { border-collapse:collapse; width:100%; font-size:.93rem; } th,td { border:1px solid var(--line); padding:6px 9px; text-align:left; vertical-align:top; }
+  code, pre { font-family:ui-monospace,Menlo,monospace; font-size:.85rem; } pre { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:10px 12px; overflow:auto; }
+  #plan h3 { margin-top:2em; padding-top:.4em; border-top:1px dashed var(--line); } #plan ul { padding-left:1.2em; }
+  .mermaid { text-align:center; overflow:auto; }
+</style>
+</head>
+<body>
+<main>
+<h1>Feature 28: Dashboards and navigation</h1>
+<p class="meta">Issue #51 · branch <code>feature/28-Role-dashboards</code> from <code>lab4-staging</code> (needs features 25 to 27 merged) · server, client, E2E</p>
+
+<h2>A. Read this</h2>
+
+<div class="card">
+<p><strong>Goal.</strong> Every role lands on a Dashboard that answers "what needs my attention?" in a few cards, and every card, count and row links into the detailed list or Ticket it summarizes. The numbers come from the database through small metric classes, are scoped by the session user, and always equal the rows their drill-down list returns.</p>
+<p><strong>What this feature also has to do.</strong> The drill-down needs two things that do not exist yet: the <code>statusGroup</code> and <code>requesterReportedResolved</code> list filters (WF-16, deferred from #50), and a way for a dashboard row to open a Ticket Detail directly and for Back to return to where you came from. Today each list screen keeps its own "open ticket" state, which cannot work from a dashboard. So navigation moves into one place.</p>
+</div>
+
+<div class="card">
+<p><strong>Decisions the plan makes (veto any before "Ready for feature 28").</strong></p>
+<ol>
+<li><strong>Metric classes, one per number or list</strong> (Strategy pattern from the contract): each has <code>compute(context)</code>; a small service runs them together and assembles the response. The service takes the Prisma client as an argument, so tests can run it against a throwaway schema.</li>
+<li><strong>Clean-state and 300-ticket tests run in a throwaway Postgres schema</strong> (the sandbox from feature 25). The shared test database holds tens of thousands of Tickets from other tests, so "all zeros" (SD-04) and "about 300 Tickets under one second" (RD-08, SD-08) cannot be measured there. Counts that must equal direct queries (SD-01 and the rest) run against the shared database.</li>
+<li><strong>"Recently resolved" uses history</strong> (feature 25's table): the Ticket is now Resolved or Closed and its latest move to Resolved is inside the last 7 days (UTC rolling window). A legacy Ticket is dated by its baseline row. A Ticket reopened later drops out because it is no longer Resolved or Closed.</li>
+<li><strong>Administrator's <code>users.byRole</code> counts every user of that role</strong> (active and inactive), so the three role counts add up to active plus inactive. The contract's example numbers do not add up either way, so this is my reading; say if you want active-only.</li>
+<li><strong>One navigation state, one reducer.</strong> A pure <code>navReducer</code> holds the current place (view plus filters), the open Ticket, and a refresh counter. List and dashboard screens stay mounted but hidden while a Ticket is open, so filters, page and typed search survive Back; the refresh counter makes them refetch on return so a changed status is not shown stale (the old queue never refetched).</li>
+<li><strong>The Administrator gets the Ticket Queue</strong> (nav: Dashboard, Ticket Queue, User Management); Requester and IT Staff nav gain Dashboard first.</li>
+<li><strong>A card is a real link</strong> (<code>&lt;a href&gt;</code> with one accessible name such as "Unassigned, 7 tickets") that opens the filtered list; "My open actions" is not a link and points down to its list, as the UI spec says.</li>
+<li><strong>Existing E2E specs and client tests change on purpose</strong>: after login the first screen is the Dashboard, so specs that expect the queue or Users straight after login now click the nav item first.</li>
+<li><strong>Out of scope here:</strong> the leftover health-check panel and other cleanup, the visual and accessibility sweep, and screenshots (hardening and release Issues).</li>
+</ol>
+</div>
+
+<h3>Before and after: navigation and opening a Ticket</h3>
+<div class="pair">
+<div class="card before"><h4>Now</h4>
+<pre class="mermaid">
+flowchart TB
+  A[App.tsx by role] --> B[Staff: StaffTicketQueue]
+  A --> C[Admin: UserManagement only]
+  A --> D[Requester: list or form]
+  B --> E["Queue keeps its own open-ticket state"]
+</pre></div>
+<div class="card after"><h4>After feature 28</h4>
+<pre class="mermaid">
+flowchart TB
+  A["App: navReducer (place + filters, open ticket, refresh)"] --> B[Dashboard]
+  A --> C["List screens (queue, my tickets), kept mounted"]
+  A --> D["UserManagement, CreateTicket"]
+  A --> E["Ticket Detail rendered by App"]
+  B -->|card or row| A
+  C -->|row| A
+  E -->|Back| A
+</pre></div>
+</div>
+
+<h3>Before and after: where a card number comes from</h3>
+<div class="pair">
+<div class="card before"><h4>Now</h4>
+<pre class="mermaid">
+flowchart LR
+  A[User scans the full list] --> B[Counts by eye]
+</pre></div>
+<div class="card after"><h4>After</h4>
+<pre class="mermaid">
+sequenceDiagram
+  participant UI as Dashboard
+  participant R as dashboard router
+  participant S as dashboard service
+  participant M as Metric classes
+  participant DB
+  UI->>R: GET /api/dashboard/staff
+  R->>S: staff(userId, role)
+  S->>M: compute each metric (parallel)
+  M->>DB: counts, groupBy, short findMany
+  S-->>UI: cards, breakdowns, lists, drillDown targets
+  UI->>R: card click = GET /api/tickets?statusGroup=...
+  Note over UI,DB: same filter, same rows: card count equals list total
+</pre></div>
+</div>
+
+<h3>What changes</h3>
+<table>
+<tr><th>Added</th><th>Modified</th></tr>
+<tr><td>
+<code>server/src/dashboard/{metric.ts, dashboard-service.ts, dashboard-router.ts, metrics/requester-metrics.ts, metrics/staff-metrics.ts}</code><br>
+<code>client/src/api/dashboard.ts</code>, <code>client/src/nav/app-navigation.ts</code><br>
+<code>client/src/components/{RequesterDashboard, StaffDashboard, DashboardParts}.tsx</code><br>
+tests: <code>server/tests/lab-04/{requester-dashboard, staff-dashboard}.api.test.ts</code>, <code>ticket-list-filters.api.test.ts</code>; <code>client/tests/lab-04/{Navigation, RequesterDashboard, StaffDashboard}.test.tsx</code>; <code>e2e/lab-04/dashboards.spec.ts</code>
+</td><td>
+<code>packages/shared/src/ticket-rules.ts</code> (status groups)<br>
+<code>server/src/staff/ticket-query-builder.ts</code>, <code>tickets.ts</code> (list filters, Requester list onto the Builder), <code>app.ts</code><br>
+<code>client/src/App.tsx</code>, <code>nav/role-navigation-factory.ts</code>, <code>components/{StaffTicketQueue, MyTicketsList, StaffTicketDetail, TicketDetail}.tsx</code>, <code>api/{tickets, staffTickets}.ts</code>, <code>types/ticket.ts</code><br>
+existing tests: <code>client/tests/lab-02/test-helpers.ts</code>, <code>lab-03/{AppShell, StaffTicketQueue}.test.tsx</code>; E2E specs of Labs 3 and 4 (landing page); <code>tests/helpers/tickets.ts</code>; <code>docs/lab-04/tests.md</code>
+</td></tr>
+</table>
+
+<h3>Parallelization analysis</h3>
+<table>
+<tr><th>Batch</th><th>Tasks</th><th>Why</th></tr>
+<tr><td>1</td><td>T1 list filters + Builder (server), T4 client API layer and navigation reducer</td><td>Disjoint (server vs client)</td></tr>
+<tr><td>2</td><td>T2 dashboard metrics, service, router (server), T5 client list refactor and App navigation</td><td>T2 needs T1's shared constants; T5 needs T4</td></tr>
+<tr><td>3</td><td>T3 server dashboard tests, T6 dashboard components</td><td>Server tests need T2; components need T4, T5</td></tr>
+<tr><td>4</td><td>T7 client tests, updating old tests</td><td>Needs T5, T6</td></tr>
+<tr><td>5</td><td>T8 E2E, real-browser check, docs, full runs</td><td>Needs everything</td></tr>
+</table>
+<p class="meta">Critical path: T1 → T2 → T3 → T8. The client chain T4 → T5 → T6 → T7 runs beside the server chain; the two meet only in the E2E.</p>
+
+<h2>B. Implementation plan</h2>
+<div id="plan">Loading plan...</div>
+</main>
+
+<script type="text/plain" id="plan-md">
+# Feature 28: Dashboards and Navigation Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Give every role a Dashboard landing page backed by two scoped endpoints, add the list filters its drill-downs need, and move navigation into one place so a dashboard row can open a Ticket and Back returns to where it came from.
+
+**Architecture:** Metric classes (Strategy) compute counts and short lists from the database; `createDashboardService(db)` assembles them; two routes expose them. `statusGroup` and `requesterReportedResolved` become allowlisted `TicketQueryBuilder` steps used by both roles' list routes. On the client a pure `navReducer` holds the place, open Ticket and refresh counter, and `App` renders the Dashboard, the (kept-mounted) lists and Ticket Detail from it.
+
+**Tech Stack:** Express 5, Prisma 6.19, Vitest + supertest, React 19 + Testing Library, Playwright.
+
+**Spec:** `docs/lab-04/specification.md` (BR-L4-17 to 20, 23; FR-L4-12 to 14, 19; AC-L4-21 to 25, 30, 33); `docs/lab-04/api-spec.md` §3 (list filters), §4 (dashboards); `docs/lab-04/ui-spec.md` §1 to §3; `docs/lab-04/tests.md` WF-16, RD-01 to 09, SD-01 to 09, UI4-01 to 07, UI4-24, E2E4-03, E2E4-04.
+
+## Global Constraints
+
+- Repo root: `/Users/jinnakanchaviengpob/Desktop/3rd Year/CPE_334/ToKTickIT`. Server commands in `server/`, client in `client/`.
+- Do not create branches, push, open PRs or close issues. Stage only; commit only when the user says so. No migration in this feature.
+- Prisma queries only; raw SQL is not needed here. The Lab 3 static guard (`security-audit.api.test.ts`) must keep passing.
+- Window: rolling 7 days from the server time of the request, UTC (`windowDays: 7`). Active statuses: `NEW`, `OPEN`, `REOPENED`, `IN_PROGRESS`, `WAITING_FOR_REQUESTER`.
+- Dashboards return counts, lists of at most 5 items with at most 6 fields, and drill-down targets (BR-L4-19). Every card count must equal its drill-down list total for the same user (BR-L4-20), except "My open actions", which has `drillDown: null`.
+- Tests own their data (`loginAsNewUser`, `createTicketRow`, the migration sandbox). Counts in the shared database are compared with direct Prisma queries run at the same moment, never with constants.
+- UI strings exactly: `Welcome, {first name}`, `View all`, `No recent tickets yet.`, `Nothing planned for you.`, `Unable to load the dashboard.`, `Loading dashboard…`, `Retry`, `Refresh`, `You do not have access to this page.`, card accessible names `{label}, {count} tickets`.
+- After each task: `cd server && npx tsc --noEmit -p . && npx vitest run`, `cd client && npx tsc --noEmit -p tsconfig.app.json && npx vitest run` as relevant.
+
+## File Structure
+
+| File | Responsibility |
+|---|---|
+| `packages/shared/src/ticket-rules.ts` | add `ACTIVE_STATUSES`, `STATUS_GROUPS`, `STATUS_GROUP_NAMES`, `StatusGroup` |
+| `server/src/staff/ticket-query-builder.ts` | add `withRequester`, `withStatusGroup`, `reportedResolved` |
+| `server/src/dashboard/metric.ts` | `DashboardContext`, `Metric<T>`, `DrillDown`, `Card`, `makeContext` |
+| `server/src/dashboard/metrics/requester-metrics.ts` | the three Requester metrics |
+| `server/src/dashboard/metrics/staff-metrics.ts` | the six staff/Administrator metrics |
+| `server/src/dashboard/dashboard-service.ts` | `createDashboardService(db)` |
+| `server/src/dashboard/dashboard-router.ts` | `GET /requester`, `GET /staff` |
+| `client/src/nav/app-navigation.ts` | `navReducer`, `initialNavState`, `ListFilters` |
+| `client/src/api/dashboard.ts` | dashboard types and fetchers |
+| `client/src/components/DashboardParts.tsx` | `MetricCard`, `TicketRows`, `DashboardShell` (loading/failure/refresh) |
+| `client/src/components/RequesterDashboard.tsx`, `StaffDashboard.tsx` | the two screens |
+
+---
+
+### Task 1: List filters and the Builder (WF-16)
+
+**Files:**
+- Modify: `packages/shared/src/ticket-rules.ts`, `server/src/staff/ticket-query-builder.ts`, `server/src/tickets.ts`
+- Test: `server/tests/lab-04/ticket-list-filters.api.test.ts`
+- Modify (helpers): `server/tests/helpers/tickets.ts`
+
+**Interfaces:**
+- Produces: `ACTIVE_STATUSES: readonly TicketStatusValue[]`; `STATUS_GROUP_NAMES = ['active','in-progress','waiting','resolved'] as const`; `type StatusGroup`; `STATUS_GROUPS: Record<StatusGroup, readonly TicketStatusValue[]>`; Builder `withRequester(id?: number)`, `withStatusGroup(group?: StatusGroup)`, `reportedResolved(flag?: boolean)`; test helper `createTicketRow(input)`.
+
+- [ ] **Step 1: Shared constants.** Append to `packages/shared/src/ticket-rules.ts`:
+
+```ts
+/** "Active" everywhere in Lab 4 (BR-L4-17, BR-L4-18): the Ticket is still being worked. */
+export const ACTIVE_STATUSES: readonly TicketStatusValue[] = ['NEW', 'OPEN', 'REOPENED', 'IN_PROGRESS', 'WAITING_FOR_REQUESTER']
+
+export const STATUS_GROUP_NAMES = ['active', 'in-progress', 'waiting', 'resolved'] as const
+export type StatusGroup = (typeof STATUS_GROUP_NAMES)[number]
+
+export const STATUS_GROUPS: Record<StatusGroup, readonly TicketStatusValue[]> = {
+  active: ACTIVE_STATUSES,
+  'in-progress': ['IN_PROGRESS'],
+  waiting: ['WAITING_FOR_REQUESTER'],
+  resolved: ['RESOLVED'],
+}
+```
+
+- [ ] **Step 2: Test helper.** Append to `server/tests/helpers/tickets.ts` (needs `Priority` added to the existing `@prisma/client` type import):
+
+```ts
+let rowCounter = 0
+
+/** Test-only: a Ticket row written straight to the database, with optional history rows. */
+export async function createTicketRow(input: {
+  requesterId: number
+  status?: TicketStatus
+  ownerId?: number | null
+  itPriority?: Priority
+  updatedAt?: Date
+  requesterResolvedAt?: Date | null
+  history?: Array<{ from: TicketStatus | null; to: TicketStatus; at: Date }>
+}) {
+  rowCounter += 1
+  const [category, relatedSystem] = await Promise.all([
+    prisma.category.findFirstOrThrow({ where: { isActive: true }, orderBy: { id: 'asc' } }),
+    prisma.relatedSystem.findFirstOrThrow({ where: { isActive: true }, orderBy: { id: 'asc' } }),
+  ])
+  const ticket = await prisma.ticket.create({
+    data: {
+      ticketNumber: `TEST-DASH-${Date.now()}-${process.pid}-${rowCounter}`,
+      requesterId: input.requesterId,
+      ticketOwnerId: input.ownerId ?? null,
+      categoryId: category.id,
+      relatedSystemId: relatedSystem.id,
+      summary: `Dashboard test ticket ${rowCounter}`,
+      description: 'Row created directly for a dashboard or filter test.',
+      requestedPriority: 'MEDIUM',
+      itPriority: input.itPriority ?? 'MEDIUM',
+      currentStatus: input.status ?? 'NEW',
+      requesterResolvedAt: input.requesterResolvedAt ?? null,
+      ...(input.updatedAt ? { updatedAt: input.updatedAt } : {}),
+    },
+  })
+  for (const row of input.history ?? []) {
+    await prisma.ticketStatusHistory.create({
+      data: { ticketId: ticket.id, fromStatus: row.from, toStatus: row.to, changedAt: row.at },
+    })
+  }
+  return ticket
+}
+```
+
+- [ ] **Step 3: Write the failing test** `server/tests/lab-04/ticket-list-filters.api.test.ts`:
+
+```ts
+import { beforeAll, describe, expect, it } from 'vitest'
+import type { TicketStatus } from '@prisma/client'
+import { loginAsNewUser } from '../helpers/users.js'
+import { createTicketRow } from '../helpers/tickets.js'
+
+type Actor = Awaited<ReturnType<typeof loginAsNewUser>>
+let requester: Actor
+let other: Actor
+let staff: Actor
+
+const ids = (response: { body: { data: Array<{ id: number }> } }) => response.body.data.map((item) => item.id).sort((a, b) => a - b)
+
+beforeAll(async () => {
+  ;[requester, other, staff] = await Promise.all([
+    loginAsNewUser('REQUESTER'),
+    loginAsNewUser('REQUESTER'),
+    loginAsNewUser('IT_STAFF'),
+  ])
+}, 60_000)
+
+async function seed() {
+  const made: Record<string, number> = {}
+  for (const status of ['NEW', 'OPEN', 'IN_PROGRESS', 'WAITING_FOR_REQUESTER', 'RESOLVED', 'CLOSED'] as TicketStatus[]) {
+    made[status] = (await createTicketRow({ requesterId: requester.userId, status })).id
+  }
+  made.REPORTED = (await createTicketRow({ requesterId: requester.userId, status: 'IN_PROGRESS', requesterResolvedAt: new Date() })).id
+  made.OTHER = (await createTicketRow({ requesterId: other.userId, status: 'IN_PROGRESS', requesterResolvedAt: new Date() })).id
+  return made
+}
+
+describe('statusGroup and requesterReportedResolved (WF-16, AC-L4-25)', () => {
+  it('filters the Requester list by status group and stays scoped to the Requester', async () => {
+    const made = await seed()
+    const get = (query: string) => requester.agent.get(`/api/tickets?${query}&pageSize=50`)
+
+    expect(ids(await get('statusGroup=active'))).toEqual([made.NEW, made.OPEN, made.IN_PROGRESS, made.WAITING_FOR_REQUESTER, made.REPORTED].sort((a, b) => a - b))
+    expect(ids(await get('statusGroup=in-progress'))).toEqual([made.IN_PROGRESS, made.REPORTED].sort((a, b) => a - b))
+    expect(ids(await get('statusGroup=waiting'))).toEqual([made.WAITING_FOR_REQUESTER])
+    expect(ids(await get('statusGroup=resolved'))).toEqual([made.RESOLVED])
+    expect(ids(await get('requesterReportedResolved=true'))).toEqual([made.REPORTED])
+    expect(ids(await get('statusGroup=active&requesterReportedResolved=true'))).toEqual([made.REPORTED])
+  })
+
+  it('requires both conditions when statusGroup and currentStatus are sent together', async () => {
+    const made = await seed()
+    const get = (query: string) => requester.agent.get(`/api/tickets?${query}&pageSize=50`)
+    expect(ids(await get('statusGroup=active&currentStatus=OPEN'))).toEqual([made.OPEN])
+    expect(ids(await get('statusGroup=active&currentStatus=RESOLVED'))).toEqual([])
+    expect(ids(await get('statusGroup=resolved&currentStatus=RESOLVED'))).toEqual([made.RESOLVED])
+  })
+
+  it('filters the staff list too, and keeps the indication on staff list items only', async () => {
+    const made = await seed()
+    const response = await staff.agent.get(`/api/tickets?requesterReportedResolved=true&statusGroup=active&pageSize=50`)
+    expect(response.status).toBe(200)
+    const found = ids(response)
+    expect(found).toContain(made.REPORTED)
+    expect(found).toContain(made.OTHER)
+    expect(found).not.toContain(made.IN_PROGRESS)
+    expect(response.body.data.every((item: { requesterResolvedAt: string | null }) => item.requesterResolvedAt !== null)).toBe(true)
+  })
+
+  it('rejects an unknown value with 400 for both roles', async () => {
+    for (const actor of [requester, staff]) {
+      const group = await actor.agent.get('/api/tickets?statusGroup=everything')
+      expect(group.status).toBe(400)
+      expect(group.body.fields.statusGroup).toBeDefined()
+      const flag = await actor.agent.get('/api/tickets?requesterReportedResolved=false')
+      expect(flag.status).toBe(400)
+      expect(flag.body.fields.requesterReportedResolved).toBeDefined()
+    }
+  })
+
+  it('still behaves like Lab 3 without the new parameters', async () => {
+    await seed()
+    const response = await requester.agent.get('/api/tickets?pageSize=50')
+    expect(response.status).toBe(200)
+    expect(response.body.data.length).toBeGreaterThanOrEqual(7)
+    expect('requesterResolvedAt' in response.body.data[0]).toBe(false)
+  })
+})
+```
+
+- [ ] **Step 4: Run to verify it fails.** `cd server && npx vitest run tests/lab-04/ticket-list-filters.api.test.ts` → FAIL (filters ignored).
+
+- [ ] **Step 5: Builder.** In `ticket-query-builder.ts` import `STATUS_GROUPS, type StatusGroup` from `@toktickit/shared` and `TicketStatus` is already imported. Add a field `private and: Prisma.TicketWhereInput[] = []` and these methods (before `build()`):
+
+```ts
+  withRequester(requesterId?: number): this {
+    if (requesterId !== undefined) this.where.requesterId = requesterId
+    return this
+  }
+
+  /** ANDed with withStatus(), so a status group and an exact status must both match. */
+  withStatusGroup(group?: StatusGroup): this {
+    if (group) this.and.push({ currentStatus: { in: [...STATUS_GROUPS[group]] as TicketStatus[] } })
+    return this
+  }
+
+  reportedResolved(flag?: boolean): this {
+    if (flag) this.where.requesterResolvedAt = { not: null }
+    return this
+  }
+```
+and change `build()` to return `where: this.and.length > 0 ? { ...this.where, AND: this.and } : this.where`.
+
+- [ ] **Step 6: Routes.** In `tickets.ts`:
+  1. Import `STATUS_GROUP_NAMES, type StatusGroup` from `@toktickit/shared`.
+  2. `TicketListQuery` gains `statusGroup?: StatusGroup; requesterReportedResolved: boolean`.
+  3. In `parseTicketListQuery` add before `return`:
+
+```ts
+  const statusGroup = parseOptionalEnum(query.statusGroup, STATUS_GROUP_NAMES)
+  if (statusGroup === null) errors.statusGroup = 'statusGroup is invalid.'
+
+  const reported = parseOptionalEnum(query.requesterReportedResolved, ['true'] as const)
+  if (reported === null) errors.requesterReportedResolved = 'requesterReportedResolved must be true.'
+```
+   and in the returned `query` object add `statusGroup: statusGroup ?? undefined, requesterReportedResolved: reported === 'true',`.
+  4. Replace the Requester branch's hand-built `where` (the `const where: Prisma.TicketWhereInput = { requesterId, ... }` block) and its `findMany`/`count` with the Builder:
+
+```ts
+      const built = new TicketQueryBuilder()
+        .withRequester(requesterId)
+        .withSearch(query.search || undefined)
+        .withCategory(query.categoryId)
+        .withRequestedPriority(query.requestedPriority)
+        .withStatus(query.currentStatus)
+        .withStatusGroup(query.statusGroup)
+        .reportedResolved(query.requesterReportedResolved)
+        .sortBy(query.sortBy, query.sortDir)
+        .paginate(query.page, query.pageSize)
+        .build()
+
+      const [tickets, totalItems] = await Promise.all([
+        prisma.ticket.findMany({
+          where: built.where,
+          select: { /* keep the existing Requester select unchanged */ },
+          orderBy: built.orderBy,
+          skip: built.skip,
+          take: built.take,
+        }),
+        prisma.ticket.count({ where: built.where }),
+      ])
+```
+  (Keep the `select` object exactly as it is; remove the now-unused `Prisma` import only if nothing else uses it.)
+  5. In the staff branch chain add `.withStatusGroup(query.statusGroup).reportedResolved(query.requesterReportedResolved)` after `.withStatus(query.currentStatus)`.
+
+- [ ] **Step 7: Run.** The new file → PASS; `npx tsc --noEmit -p .`; full `npx vitest run` → green (Lab 2 list tests prove the Requester path did not change).
+
+- [ ] **Step 8: Stage.** `git add packages/shared server`
+
+---
+
+### Task 2: Dashboard metrics, service, router
+
+**Files:**
+- Create: `server/src/dashboard/metric.ts`, `metrics/requester-metrics.ts`, `metrics/staff-metrics.ts`, `dashboard-service.ts`, `dashboard-router.ts`
+- Modify: `server/src/app.ts`
+
+**Interfaces:**
+- Produces: `createDashboardService(db: PrismaClient)` returning `{ requester(userId: number, now?: Date), staff(userId: number, role: 'IT_STAFF' | 'ADMINISTRATOR', now?: Date) }`; routes `GET /api/dashboard/requester`, `GET /api/dashboard/staff`.
+
+- [ ] **Step 1: `metric.ts`:**
+
+```ts
+import type { PrismaClient } from '@prisma/client'
+
+export const WINDOW_DAYS = 7
+export const LIST_SIZE = 5
+const DAY_MS = 86_400_000
+
+export type DashboardContext = {
+  db: PrismaClient
+  userId: number
+  now: Date
+  /** Start of the rolling window, UTC (BR-L4-19). */
+  windowStart: Date
+}
+
+export function makeContext(db: PrismaClient, userId: number, now: Date = new Date()): DashboardContext {
+  return { db, userId, now, windowStart: new Date(now.getTime() - WINDOW_DAYS * DAY_MS) }
+}
+
+/** Strategy: every number or list on a dashboard is one class with this shape. */
+export interface Metric<T> {
+  readonly key: string
+  compute(context: DashboardContext): Promise<T>
+}
+
+export type DrillDown = { view: 'my-tickets' | 'ticket-queue'; query: Record<string, string> } | null
+export type Card = { key: string; label: string; count: number; drillDown: DrillDown }
+```
+
+- [ ] **Step 2: `metrics/requester-metrics.ts`:**
+
+```ts
+import type { TicketStatus } from '@prisma/client'
+import { ACTIVE_STATUSES } from '@toktickit/shared'
+import { LIST_SIZE, type Card, type DashboardContext, type Metric } from '../metric.js'
+
+function total(rows: Array<{ currentStatus: TicketStatus; _count: { _all: number } }>, statuses: readonly string[]): number {
+  return rows.filter((row) => statuses.includes(row.currentStatus)).reduce((sum, row) => sum + row._count._all, 0)
+}
+
+/** BR-L4-17: the four cards, from the Requester's own Tickets only. */
+export class RequesterCardsMetric implements Metric<Card[]> {
+  readonly key = 'cards'
+
+  async compute({ db, userId }: DashboardContext): Promise<Card[]> {
+    const rows = await db.ticket.groupBy({ by: ['currentStatus'], where: { requesterId: userId }, _count: { _all: true } })
+    const card = (key: string, label: string, statuses: readonly string[], group: string): Card => ({
+      key,
+      label,
+      count: total(rows, statuses),
+      drillDown: { view: 'my-tickets', query: { statusGroup: group } },
+    })
+    return [
+      card('open', 'Open tickets', ACTIVE_STATUSES, 'active'),
+      card('in-progress', 'In progress', ['IN_PROGRESS'], 'in-progress'),
+      card('waiting', 'Waiting for you', ['WAITING_FOR_REQUESTER'], 'waiting'),
+      card('resolved', 'Resolved', ['RESOLVED'], 'resolved'),
+    ]
+  }
+}
+
+export type RecentTicket = { id: number; ticketNumber: string; summary: string; currentStatus: TicketStatus; updatedAt: Date }
+
+export class RequesterRecentlyUpdatedMetric implements Metric<RecentTicket[]> {
+  readonly key = 'recentlyUpdated'
+
+  async compute({ db, userId }: DashboardContext): Promise<RecentTicket[]> {
+    return db.ticket.findMany({
+      where: { requesterId: userId },
+      orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+      take: LIST_SIZE,
+      select: { id: true, ticketNumber: true, summary: true, currentStatus: true, updatedAt: true },
+    })
+  }
+}
+
+export type ResolvedTicket = { id: number; ticketNumber: string; summary: string; currentStatus: TicketStatus; resolvedAt: Date }
+
+/**
+ * BR-L4-17: Tickets that are now Resolved or Closed and whose latest move to
+ * Resolved is inside the window, dated from the status history. A Ticket
+ * reopened later is no longer Resolved or Closed, so it drops out.
+ */
+export class RequesterRecentlyResolvedMetric implements Metric<ResolvedTicket[]> {
+  readonly key = 'recentlyResolved'
+
+  async compute({ db, userId, windowStart }: DashboardContext): Promise<ResolvedTicket[]> {
+    const grouped = await db.ticketStatusHistory.groupBy({
+      by: ['ticketId'],
+      where: {
+        toStatus: 'RESOLVED',
+        changedAt: { gte: windowStart },
+        ticket: { requesterId: userId, currentStatus: { in: ['RESOLVED', 'CLOSED'] } },
+      },
+      _max: { changedAt: true },
+      orderBy: { _max: { changedAt: 'desc' } },
+      take: LIST_SIZE,
+    })
+    if (grouped.length === 0) return []
+
+    const tickets = await db.ticket.findMany({
+      where: { id: { in: grouped.map((row) => row.ticketId) } },
+      select: { id: true, ticketNumber: true, summary: true, currentStatus: true },
+    })
+    return grouped.flatMap((row) => {
+      const ticket = tickets.find((candidate) => candidate.id === row.ticketId)
+      return ticket && row._max.changedAt ? [{ ...ticket, resolvedAt: row._max.changedAt }] : []
+    })
+  }
+}
+```
+
+- [ ] **Step 3: `metrics/staff-metrics.ts`:**
+
+```ts
+import type { Priority, Role, TicketStatus } from '@prisma/client'
+import { ACTIVE_STATUSES, PRIORITIES, TICKET_STATUSES } from '@toktickit/shared'
+import { LIST_SIZE, type Card, type DashboardContext, type DrillDown, type Metric } from '../metric.js'
+
+const ACTIVE = { currentStatus: { in: [...ACTIVE_STATUSES] as TicketStatus[] } }
+const OPEN_ACTION_STATUSES = ['PLANNED', 'IN_PROGRESS'] as const
+const queue = (query: Record<string, string>): DrillDown => ({ view: 'ticket-queue', query })
+
+/** BR-L4-18: Unassigned, Owned by me, Reported resolved (all active Tickets), and My open actions. */
+export class StaffCardsMetric implements Metric<Card[]> {
+  readonly key = 'cards'
+
+  async compute({ db, userId }: DashboardContext): Promise<Card[]> {
+    const [unassigned, mine, reported, myOpenActions] = await Promise.all([
+      db.ticket.count({ where: { ...ACTIVE, ticketOwnerId: null } }),
+      db.ticket.count({ where: { ...ACTIVE, ticketOwnerId: userId } }),
+      db.ticket.count({ where: { ...ACTIVE, requesterResolvedAt: { not: null } } }),
+      db.actionTaken.count({ where: { assigneeId: userId, status: { in: [...OPEN_ACTION_STATUSES] } } }),
+    ])
+    return [
+      { key: 'unassigned', label: 'Unassigned', count: unassigned, drillDown: queue({ unassignedOnly: 'true', statusGroup: 'active' }) },
+      { key: 'mine', label: 'Owned by me', count: mine, drillDown: queue({ ticketOwnerId: String(userId), statusGroup: 'active' }) },
+      {
+        key: 'reported-resolved',
+        label: 'Reported resolved by Requester',
+        count: reported,
+        drillDown: queue({ requesterReportedResolved: 'true', statusGroup: 'active' }),
+      },
+      { key: 'my-open-actions', label: 'My open actions', count: myOpenActions, drillDown: null },
+    ]
+  }
+}
+
+export type StatusRow = { status: TicketStatus; count: number; drillDown: DrillDown }
+
+/** All 8 statuses, zero counts included, over every Ticket. */
+export class ByStatusMetric implements Metric<StatusRow[]> {
+  readonly key = 'byStatus'
+
+  async compute({ db }: DashboardContext): Promise<StatusRow[]> {
+    const rows = await db.ticket.groupBy({ by: ['currentStatus'], _count: { _all: true } })
+    return TICKET_STATUSES.map((status) => ({
+      status,
+      count: rows.find((row) => row.currentStatus === status)?._count._all ?? 0,
+      drillDown: queue({ currentStatus: status }),
+    }))
+  }
+}
+
+export type PriorityRow = { priority: Priority; count: number; drillDown: DrillDown }
+
+/** LOW, MEDIUM, HIGH over active Tickets. */
+export class ByItPriorityMetric implements Metric<PriorityRow[]> {
+  readonly key = 'byItPriority'
+
+  async compute({ db }: DashboardContext): Promise<PriorityRow[]> {
+    const rows = await db.ticket.groupBy({ by: ['itPriority'], where: ACTIVE, _count: { _all: true } })
+    return PRIORITIES.map((priority) => ({
+      priority,
+      count: rows.find((row) => row.itPriority === priority)?._count._all ?? 0,
+      drillDown: queue({ itPriority: priority, statusGroup: 'active' }),
+    }))
+  }
+}
+
+export type MyAction = {
+  actionId: number
+  ticketId: number
+  ticketNumber: string
+  description: string
+  status: string
+  actionAt: Date
+}
+
+/** The caller's Planned and In Progress Actions, soonest first, at most 5; description cut at 80 characters. */
+export class MyActionsMetric implements Metric<MyAction[]> {
+  readonly key = 'myActions'
+
+  async compute({ db, userId }: DashboardContext): Promise<MyAction[]> {
+    const rows = await db.actionTaken.findMany({
+      where: { assigneeId: userId, status: { in: [...OPEN_ACTION_STATUSES] } },
+      orderBy: [{ actionAt: 'asc' }, { id: 'asc' }],
+      take: LIST_SIZE,
+      select: { id: true, ticketId: true, description: true, status: true, actionAt: true, ticket: { select: { ticketNumber: true } } },
+    })
+    return rows.map((row) => ({
+      actionId: row.id,
+      ticketId: row.ticketId,
+      ticketNumber: row.ticket.ticketNumber,
+      description: row.description.slice(0, 80),
+      status: row.status,
+      actionAt: row.actionAt,
+    }))
+  }
+}
+
+export type StaffRecent = {
+  id: number
+  ticketNumber: string
+  summary: string
+  currentStatus: TicketStatus
+  ticketOwnerName: string | null
+  updatedAt: Date
+}
+
+export class StaffRecentlyUpdatedMetric implements Metric<StaffRecent[]> {
+  readonly key = 'recentlyUpdated'
+
+  async compute({ db }: DashboardContext): Promise<StaffRecent[]> {
+    const rows = await db.ticket.findMany({
+      where: ACTIVE,
+      orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+      take: LIST_SIZE,
+      select: { id: true, ticketNumber: true, summary: true, currentStatus: true, updatedAt: true, ticketOwner: { select: { name: true } } },
+    })
+    return rows.map(({ ticketOwner, ...rest }) => ({ ...rest, ticketOwnerName: ticketOwner?.name ?? null }))
+  }
+}
+
+export type UserCounts = { active: number; inactive: number; byRole: Record<Role, number> }
+
+/** Administrator only: active and inactive users, and every user counted by role. */
+export class UserCountsMetric implements Metric<UserCounts> {
+  readonly key = 'users'
+
+  async compute({ db }: DashboardContext): Promise<UserCounts> {
+    const rows = await db.user.groupBy({ by: ['role', 'isActive'], _count: { _all: true } })
+    const sum = (predicate: (row: (typeof rows)[number]) => boolean) =>
+      rows.filter(predicate).reduce((total, row) => total + row._count._all, 0)
+    return {
+      active: sum((row) => row.isActive),
+      inactive: sum((row) => !row.isActive),
+      byRole: {
+        REQUESTER: sum((row) => row.role === 'REQUESTER'),
+        IT_STAFF: sum((row) => row.role === 'IT_STAFF'),
+        ADMINISTRATOR: sum((row) => row.role === 'ADMINISTRATOR'),
+      },
+    }
+  }
+}
+```
+
+- [ ] **Step 4: `dashboard-service.ts`:**
+
+```ts
+import type { PrismaClient } from '@prisma/client'
+import { WINDOW_DAYS, makeContext } from './metric.js'
+import {
+  RequesterCardsMetric,
+  RequesterRecentlyResolvedMetric,
+  RequesterRecentlyUpdatedMetric,
+} from './metrics/requester-metrics.js'
+import {
+  ByItPriorityMetric,
+  ByStatusMetric,
+  MyActionsMetric,
+  StaffCardsMetric,
+  StaffRecentlyUpdatedMetric,
+  UserCountsMetric,
+} from './metrics/staff-metrics.js'
+
+/** Assembles the dashboards from independent metric classes. Takes the client so tests can use a scratch schema. */
+export function createDashboardService(db: PrismaClient) {
+  return {
+    async requester(userId: number, now: Date = new Date()) {
+      const context = makeContext(db, userId, now)
+      const [cards, recentlyUpdated, recentlyResolved] = await Promise.all([
+        new RequesterCardsMetric().compute(context),
+        new RequesterRecentlyUpdatedMetric().compute(context),
+        new RequesterRecentlyResolvedMetric().compute(context),
+      ])
+      return { generatedAt: now.toISOString(), windowDays: WINDOW_DAYS, cards, recentlyUpdated, recentlyResolved }
+    },
+
+    async staff(userId: number, role: 'IT_STAFF' | 'ADMINISTRATOR', now: Date = new Date()) {
+      const context = makeContext(db, userId, now)
+      const [cards, byStatus, byItPriority, myActions, recentlyUpdated] = await Promise.all([
+        new StaffCardsMetric().compute(context),
+        new ByStatusMetric().compute(context),
+        new ByItPriorityMetric().compute(context),
+        new MyActionsMetric().compute(context),
+        new StaffRecentlyUpdatedMetric().compute(context),
+      ])
+      const base = { generatedAt: now.toISOString(), windowDays: WINDOW_DAYS, cards, byStatus, byItPriority, myActions, recentlyUpdated }
+      // `users` is omitted (not null) for IT Staff (api-spec §4).
+      return role === 'ADMINISTRATOR' ? { ...base, users: await new UserCountsMetric().compute(context) } : base
+    },
+  }
+}
+```
+
+- [ ] **Step 5: `dashboard-router.ts`:**
+
+```ts
+import { Router } from 'express'
+import { prisma } from '../prisma.js'
+import { requireSession, requirePasswordAlreadyChanged } from '../auth/require-session.js'
+import { requireRole } from '../authorization/require-role.js'
+import { createDashboardService } from './dashboard-service.js'
+
+export const dashboardRouter = Router()
+
+const service = createDashboardService(prisma)
+const requireRequester = [requireSession, requirePasswordAlreadyChanged, requireRole('REQUESTER')]
+const requireStaff = [requireSession, requirePasswordAlreadyChanged, requireRole('IT_STAFF', 'ADMINISTRATOR')]
+
+// Scoped by the session user id only; nothing in the request selects whose numbers are shown.
+dashboardRouter.get('/requester', ...requireRequester, async (_request, response, next) => {
+  try {
+    response.status(200).json(await service.requester(response.locals.userId as number))
+  } catch (error) {
+    next(error)
+  }
+})
+
+dashboardRouter.get('/staff', ...requireStaff, async (_request, response, next) => {
+  try {
+    const role = response.locals.userRole as 'IT_STAFF' | 'ADMINISTRATOR'
+    response.status(200).json(await service.staff(response.locals.userId as number, role))
+  } catch (error) {
+    next(error)
+  }
+})
+```
+
+- [ ] **Step 6: Mount.** In `app.ts` add `import { dashboardRouter } from './dashboard/dashboard-router.js'` and `app.use('/api/dashboard', dashboardRouter)` after the `/api/users` line.
+
+- [ ] **Step 7: Typecheck and smoke.** `npx tsc --noEmit -p .` → clean; `npx vitest run` → green.
+
+- [ ] **Step 8: Stage.** `git add server`
+
+---
+
+### Task 3: Server dashboard tests (RD-01 to RD-09, SD-01 to SD-09)
+
+**Files:**
+- Create: `server/tests/lab-04/requester-dashboard.api.test.ts`, `server/tests/lab-04/staff-dashboard.api.test.ts`
+
+- [ ] **Step 1: Requester tests** `requester-dashboard.api.test.ts`:
+
+```ts
+import request from 'supertest'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import type { TicketStatus } from '@prisma/client'
+import { ACTIVE_STATUSES } from '@toktickit/shared'
+import { app } from '../helpers/app.js'
+import { prisma } from '../../src/prisma.js'
+import { createDashboardService } from '../../src/dashboard/dashboard-service.js'
+import { loginAsNewUser } from '../helpers/users.js'
+import { createTicketRow } from '../helpers/tickets.js'
+import { MigrationSandbox, migrationNames } from '../helpers/migration-sandbox.js'
+
+const DAY = 86_400_000
+type Actor = Awaited<ReturnType<typeof loginAsNewUser>>
+const get = (actor: Actor) => actor.agent.get('/api/dashboard/requester')
+const byKey = (cards: Array<{ key: string; count: number }>) => Object.fromEntries(cards.map((card) => [card.key, card.count]))
+
+async function fill(actor: Actor, plan: Array<[TicketStatus, number]>) {
+  for (const [status, count] of plan) for (let i = 0; i < count; i += 1) await createTicketRow({ requesterId: actor.userId, status })
+}
+
+describe('Requester dashboard (RD-01 to RD-07, RD-09)', () => {
+  it('RD-01 each card equals a direct database query', async () => {
+    const me = await loginAsNewUser('REQUESTER')
+    await fill(me, [['NEW', 1], ['OPEN', 1], ['REOPENED', 1], ['IN_PROGRESS', 2], ['WAITING_FOR_REQUESTER', 1], ['RESOLVED', 2], ['CLOSED', 1], ['CANCELLED', 1]])
+
+    const response = await get(me)
+    expect(response.status).toBe(200)
+    expect(response.body.windowDays).toBe(7)
+    expect(typeof response.body.generatedAt).toBe('string')
+
+    const count = (statuses: readonly string[]) => prisma.ticket.count({ where: { requesterId: me.userId, currentStatus: { in: statuses as TicketStatus[] } } })
+    const cards = byKey(response.body.cards)
+    expect(cards).toEqual({
+      open: await count(ACTIVE_STATUSES),
+      'in-progress': await count(['IN_PROGRESS']),
+      waiting: await count(['WAITING_FOR_REQUESTER']),
+      resolved: await count(['RESOLVED']),
+    })
+    expect(cards).toEqual({ open: 6, 'in-progress': 2, waiting: 1, resolved: 2 })
+  })
+
+  it('RD-02 never counts or lists another Requester’s Tickets', async () => {
+    const me = await loginAsNewUser('REQUESTER')
+    const other = await loginAsNewUser('REQUESTER')
+    await fill(other, [['OPEN', 3], ['RESOLVED', 2]])
+    await createTicketRow({ requesterId: other.userId, status: 'RESOLVED', history: [{ from: null, to: 'RESOLVED', at: new Date() }] })
+
+    const response = await get(me)
+    expect(byKey(response.body.cards)).toEqual({ open: 0, 'in-progress': 0, waiting: 0, resolved: 0 })
+    expect(response.body.recentlyUpdated).toEqual([])
+    expect(response.body.recentlyResolved).toEqual([])
+  })
+
+  it('RD-03 lists have at most 5 items with only the documented fields, newest first', async () => {
+    const me = await loginAsNewUser('REQUESTER')
+    for (let i = 0; i < 7; i += 1) {
+      await createTicketRow({ requesterId: me.userId, status: 'OPEN', updatedAt: new Date(Date.now() - i * 3_600_000) })
+    }
+    const response = await get(me)
+    expect(response.body.recentlyUpdated).toHaveLength(5)
+    for (const item of response.body.recentlyUpdated) {
+      expect(Object.keys(item).sort()).toEqual(['currentStatus', 'id', 'summary', 'ticketNumber', 'updatedAt'])
+    }
+    const times = response.body.recentlyUpdated.map((item: { updatedAt: string }) => new Date(item.updatedAt).getTime())
+    expect(times).toEqual([...times].sort((a, b) => b - a))
+  })
+
+  it('RD-04 recently resolved follows the 7-day window, includes Closed, and drops a reopened Ticket', async () => {
+    const me = await loginAsNewUser('REQUESTER')
+    const now = Date.now()
+    const inside = await createTicketRow({ requesterId: me.userId, status: 'RESOLVED', history: [{ from: 'IN_PROGRESS', to: 'RESOLVED', at: new Date(now - 6 * DAY) }] })
+    const outside = await createTicketRow({ requesterId: me.userId, status: 'RESOLVED', history: [{ from: 'IN_PROGRESS', to: 'RESOLVED', at: new Date(now - 8 * DAY) }] })
+    const closed = await createTicketRow({
+      requesterId: me.userId,
+      status: 'CLOSED',
+      history: [
+        { from: 'IN_PROGRESS', to: 'RESOLVED', at: new Date(now - 2 * DAY) },
+        { from: 'RESOLVED', to: 'CLOSED', at: new Date(now - 1 * DAY) },
+      ],
+    })
+    const reopened = await createTicketRow({
+      requesterId: me.userId,
+      status: 'REOPENED',
+      history: [
+        { from: 'IN_PROGRESS', to: 'RESOLVED', at: new Date(now - 3 * DAY) },
+        { from: 'RESOLVED', to: 'REOPENED', at: new Date(now - 2 * DAY) },
+      ],
+    })
+
+    const listed = (await get(me)).body.recentlyResolved as Array<{ id: number; resolvedAt: string }>
+    const found = listed.map((item) => item.id)
+    expect(found).toContain(inside.id)
+    expect(found).toContain(closed.id)
+    expect(found).not.toContain(outside.id)
+    expect(found).not.toContain(reopened.id)
+    expect(found[0]).toBe(closed.id)
+    expect(Object.keys(listed[0]).sort()).toEqual(['currentStatus', 'id', 'resolvedAt', 'summary', 'ticketNumber'])
+  })
+
+  it('RD-05 a Requester with no Tickets sees zeros and empty lists', async () => {
+    const me = await loginAsNewUser('REQUESTER')
+    const response = await get(me)
+    expect(byKey(response.body.cards)).toEqual({ open: 0, 'in-progress': 0, waiting: 0, resolved: 0 })
+    expect(response.body.recentlyUpdated).toEqual([])
+    expect(response.body.recentlyResolved).toEqual([])
+  })
+
+  it('RD-06 refuses IT Staff and Administrator (403) and an anonymous caller (401)', async () => {
+    for (const role of ['IT_STAFF', 'ADMINISTRATOR'] as const) {
+      const actor = await loginAsNewUser(role)
+      expect((await get(actor)).status).toBe(403)
+    }
+    expect((await request(app).get('/api/dashboard/requester')).status).toBe(401)
+  })
+
+  it('RD-07 every card’s drill-down returns exactly as many Tickets as the card shows', async () => {
+    const me = await loginAsNewUser('REQUESTER')
+    await fill(me, [['NEW', 2], ['IN_PROGRESS', 2], ['WAITING_FOR_REQUESTER', 1], ['RESOLVED', 3], ['CLOSED', 1]])
+    const response = await get(me)
+    for (const card of response.body.cards) {
+      expect(card.drillDown.view).toBe('my-tickets')
+      const list = await me.agent.get(`/api/tickets?${new URLSearchParams(card.drillDown.query).toString()}&pageSize=50`)
+      expect(list.body.meta.totalItems, card.key).toBe(card.count)
+    }
+  })
+
+  it('RD-09 counts a legacy Ticket that has only its baseline history row like any other', async () => {
+    const me = await loginAsNewUser('REQUESTER')
+    const legacy = await createTicketRow({ requesterId: me.userId, status: 'RESOLVED', history: [{ from: null, to: 'RESOLVED', at: new Date(Date.now() - DAY) }] })
+    const response = await get(me)
+    expect(byKey(response.body.cards).resolved).toBe(1)
+    expect(response.body.recentlyResolved.map((item: { id: number }) => item.id)).toEqual([legacy.id])
+  })
+})
+
+describe('Requester dashboard on about 300 Tickets (RD-08, AC-L4-33)', () => {
+  let sandbox: MigrationSandbox
+  let requesterId: number
+
+  beforeAll(async () => {
+    sandbox = await MigrationSandbox.create()
+    sandbox.deploy(migrationNames())
+    const db = sandbox.client
+    const user = await db.user.create({ data: { email: 'perf.requester@mig.test', name: 'Perf Requester', passwordHash: 'x', role: 'REQUESTER' } })
+    requesterId = user.id
+    const category = await db.category.create({ data: { name: 'Perf Category' } })
+    const system = await db.relatedSystem.create({ data: { name: 'Perf System' } })
+    const statuses: TicketStatus[] = ['NEW', 'OPEN', 'IN_PROGRESS', 'WAITING_FOR_REQUESTER', 'RESOLVED', 'CLOSED', 'REOPENED', 'CANCELLED']
+    await db.ticket.createMany({
+      data: Array.from({ length: 300 }, (_, i) => ({
+        ticketNumber: `PERF-${i}`, requesterId, categoryId: category.id, relatedSystemId: system.id,
+        summary: `Perf ticket ${i}`, description: 'Performance fixture.', requestedPriority: 'MEDIUM' as const,
+        itPriority: 'MEDIUM' as const, currentStatus: statuses[i % statuses.length],
+      })),
+    })
+    const tickets = await db.ticket.findMany({ where: { currentStatus: 'RESOLVED' }, select: { id: true } })
+    await db.ticketStatusHistory.createMany({ data: tickets.map((ticket) => ({ ticketId: ticket.id, fromStatus: 'IN_PROGRESS' as const, toStatus: 'RESOLVED' as const })) })
+  }, 180_000)
+
+  afterAll(async () => {
+    await sandbox.dispose()
+  })
+
+  it('RD-08 answers in under one second', async () => {
+    const service = createDashboardService(sandbox.client)
+    const started = performance.now()
+    const result = await service.requester(requesterId)
+    const elapsed = performance.now() - started
+    expect(elapsed).toBeLessThan(1000)
+    // 300 Tickets over 8 statuses: 37 or 38 each, and five statuses are active.
+    expect(byKey(result.cards).open).toBeGreaterThan(150)
+    expect(byKey(result.cards).resolved).toBeGreaterThanOrEqual(37)
+    expect(result.recentlyUpdated).toHaveLength(5)
+  })
+})
+```
+
+
+- [ ] **Step 2: Staff tests** `staff-dashboard.api.test.ts`:
+
+```ts
+import request from 'supertest'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import type { Priority, TicketStatus } from '@prisma/client'
+import { ACTIVE_STATUSES, TICKET_STATUSES } from '@toktickit/shared'
+import { app } from '../helpers/app.js'
+import { prisma } from '../../src/prisma.js'
+import { createDashboardService } from '../../src/dashboard/dashboard-service.js'
+import { loginAsNewUser } from '../helpers/users.js'
+import { addActionRow, createTicketRow } from '../helpers/tickets.js'
+import { MigrationSandbox, migrationNames } from '../helpers/migration-sandbox.js'
+
+type Actor = Awaited<ReturnType<typeof loginAsNewUser>>
+const get = (actor: Actor) => actor.agent.get('/api/dashboard/staff')
+const active = { currentStatus: { in: [...ACTIVE_STATUSES] as TicketStatus[] } }
+const byKey = (cards: Array<{ key: string; count: number }>) => Object.fromEntries(cards.map((card) => [card.key, card.count]))
+
+let requester: Actor
+let staff: Actor
+let admin: Actor
+
+beforeAll(async () => {
+  ;[requester, staff, admin] = await Promise.all([loginAsNewUser('REQUESTER'), loginAsNewUser('IT_STAFF'), loginAsNewUser('ADMINISTRATOR')])
+  await createTicketRow({ requesterId: requester.userId, status: 'NEW' })
+  await createTicketRow({ requesterId: requester.userId, status: 'IN_PROGRESS', ownerId: staff.userId, itPriority: 'HIGH' })
+  await createTicketRow({ requesterId: requester.userId, status: 'IN_PROGRESS', ownerId: staff.userId, requesterResolvedAt: new Date() })
+  await createTicketRow({ requesterId: requester.userId, status: 'RESOLVED', ownerId: staff.userId, requesterResolvedAt: new Date() })
+  await createTicketRow({ requesterId: requester.userId, status: 'CLOSED' })
+  await createTicketRow({ requesterId: requester.userId, status: 'CANCELLED' })
+}, 90_000)
+
+describe('Staff dashboard (SD-01 to SD-03, SD-05 to SD-07, SD-09)', () => {
+  it('SD-01 every card, byStatus and byItPriority equals a direct query', async () => {
+    const response = await get(staff)
+    expect(response.status).toBe(200)
+
+    const ticketCount = (where: object) => prisma.ticket.count({ where })
+    const cards = byKey(response.body.cards)
+    expect(cards.unassigned).toBe(await ticketCount({ ...active, ticketOwnerId: null }))
+    expect(cards.mine).toBe(await ticketCount({ ...active, ticketOwnerId: staff.userId }))
+    expect(cards['reported-resolved']).toBe(await ticketCount({ ...active, requesterResolvedAt: { not: null } }))
+    expect(cards['my-open-actions']).toBe(await prisma.actionTaken.count({ where: { assigneeId: staff.userId, status: { in: ['PLANNED', 'IN_PROGRESS'] } } }))
+
+    expect(response.body.byStatus.map((row: { status: string }) => row.status)).toEqual([...TICKET_STATUSES])
+    for (const row of response.body.byStatus) {
+      expect(row.count, row.status).toBe(await ticketCount({ currentStatus: row.status }))
+    }
+    expect(response.body.byItPriority.map((row: { priority: string }) => row.priority)).toEqual(['LOW', 'MEDIUM', 'HIGH'])
+    for (const row of response.body.byItPriority) {
+      expect(row.count, row.priority).toBe(await ticketCount({ ...active, itPriority: row.priority as Priority }))
+    }
+  })
+
+  it('SD-02 only an Administrator receives user counts', async () => {
+    const asAdmin = await get(admin)
+    expect(asAdmin.status).toBe(200)
+    const users = asAdmin.body.users
+    expect(users.active).toBe(await prisma.user.count({ where: { isActive: true } }))
+    expect(users.inactive).toBe(await prisma.user.count({ where: { isActive: false } }))
+    expect(users.byRole.REQUESTER).toBe(await prisma.user.count({ where: { role: 'REQUESTER' } }))
+    expect(users.byRole.IT_STAFF + users.byRole.ADMINISTRATOR + users.byRole.REQUESTER).toBe(users.active + users.inactive)
+
+    const asStaff = await get(staff)
+    expect('users' in asStaff.body).toBe(false)
+  })
+
+  it('SD-03 refuses a Requester (403) and an anonymous caller (401)', async () => {
+    expect((await get(requester)).status).toBe(403)
+    expect((await request(app).get('/api/dashboard/staff')).status).toBe(401)
+  })
+
+  it('SD-05 every drill-down returns exactly as many Tickets as its count', async () => {
+    const response = await get(staff)
+    const targets = [
+      ...response.body.cards.map((card: { key: string; count: number; drillDown: { query: Record<string, string> } | null }) => ({ name: card.key, count: card.count, drillDown: card.drillDown })),
+      ...response.body.byStatus.map((row: { status: string; count: number; drillDown: unknown }) => ({ name: row.status, count: row.count, drillDown: row.drillDown })),
+      ...response.body.byItPriority.map((row: { priority: string; count: number; drillDown: unknown }) => ({ name: row.priority, count: row.count, drillDown: row.drillDown })),
+    ] as Array<{ name: string; count: number; drillDown: { view: string; query: Record<string, string> } | null }>
+
+    for (const target of targets) {
+      if (target.name === 'my-open-actions') {
+        expect(target.drillDown).toBeNull()
+        continue
+      }
+      expect(target.drillDown?.view).toBe('ticket-queue')
+      const list = await staff.agent.get(`/api/tickets?${new URLSearchParams(target.drillDown!.query).toString()}&pageSize=1`)
+      expect(list.status, target.name).toBe(200)
+      expect(list.body.meta.totalItems, target.name).toBe(target.count)
+    }
+  })
+
+  it('SD-06 myActions lists only the caller’s Planned and In Progress Actions, soonest first, at most 5', async () => {
+    const me = await loginAsNewUser('IT_STAFF')
+    const someone = await loginAsNewUser('IT_STAFF')
+    const ticket = await createTicketRow({ requesterId: requester.userId, status: 'IN_PROGRESS' })
+    for (let i = 0; i < 6; i += 1) {
+      await prisma.actionTaken.create({
+        data: { ticketId: ticket.id, createdById: me.userId, assigneeId: me.userId, actionAt: new Date(Date.now() + (6 - i) * 3_600_000), description: `Mine ${i} ${'x'.repeat(100)}`, status: i % 2 === 0 ? 'PLANNED' : 'IN_PROGRESS' },
+      })
+    }
+    await addActionRow(ticket.id, me.userId, 'COMPLETED')
+    await addActionRow(ticket.id, someone.userId, 'PLANNED')
+
+    const response = await get(me)
+    expect(byKey(response.body.cards)['my-open-actions']).toBe(6)
+    expect(response.body.myActions).toHaveLength(5)
+    const times = response.body.myActions.map((item: { actionAt: string }) => new Date(item.actionAt).getTime())
+    expect(times).toEqual([...times].sort((a, b) => a - b))
+    for (const item of response.body.myActions) {
+      expect(['PLANNED', 'IN_PROGRESS']).toContain(item.status)
+      expect(item.description.length).toBeLessThanOrEqual(80)
+      expect(Object.keys(item).sort()).toEqual(['actionAt', 'actionId', 'description', 'status', 'ticketId', 'ticketNumber'])
+    }
+  })
+
+  it('SD-07 reported-resolved counts only active Tickets with the indication', async () => {
+    const response = await get(staff)
+    const expected = await prisma.ticket.count({ where: { ...active, requesterResolvedAt: { not: null } } })
+    expect(byKey(response.body.cards)['reported-resolved']).toBe(expected)
+    const resolvedWithIndication = await prisma.ticket.count({ where: { currentStatus: 'RESOLVED', requesterResolvedAt: { not: null } } })
+    expect(resolvedWithIndication).toBeGreaterThan(0)
+  })
+
+  it('SD-09 Resolved, Closed and Cancelled are excluded from unassigned and mine', async () => {
+    const response = await get(staff)
+    const cards = byKey(response.body.cards)
+    expect(cards.unassigned).toBe(await prisma.ticket.count({ where: { ticketOwnerId: null, currentStatus: { in: ['NEW', 'OPEN', 'REOPENED', 'IN_PROGRESS', 'WAITING_FOR_REQUESTER'] } } }))
+    expect(cards.mine).toBe(2)
+    expect(response.body.recentlyUpdated.length).toBeLessThanOrEqual(5)
+    for (const item of response.body.recentlyUpdated) {
+      expect(['NEW', 'OPEN', 'REOPENED', 'IN_PROGRESS', 'WAITING_FOR_REQUESTER']).toContain(item.currentStatus)
+      expect(Object.keys(item).sort()).toEqual(['currentStatus', 'id', 'summary', 'ticketNumber', 'ticketOwnerName', 'updatedAt'])
+    }
+  })
+})
+
+describe('Staff dashboard on a clean schema and on about 300 Tickets (SD-04, SD-08)', () => {
+  let sandbox: MigrationSandbox
+
+  beforeAll(async () => {
+    sandbox = await MigrationSandbox.create()
+    sandbox.deploy(migrationNames())
+  }, 180_000)
+
+  afterAll(async () => {
+    await sandbox.dispose()
+  })
+
+  it('SD-04 an empty database gives zeros, 8 status rows at 0, and empty lists', async () => {
+    const db = sandbox.client
+    const user = await db.user.create({ data: { email: 'clean.admin@mig.test', name: 'Clean Admin', passwordHash: 'x', role: 'ADMINISTRATOR' } })
+    const result = await createDashboardService(db).staff(user.id, 'ADMINISTRATOR')
+
+    expect(result.cards.map((card) => card.count)).toEqual([0, 0, 0, 0])
+    expect(result.byStatus).toHaveLength(8)
+    expect(result.byStatus.every((row) => row.count === 0)).toBe(true)
+    expect(result.byItPriority.map((row) => row.count)).toEqual([0, 0, 0])
+    expect(result.myActions).toEqual([])
+    expect(result.recentlyUpdated).toEqual([])
+    expect('users' in result && result.users).toMatchObject({ active: 1, inactive: 0 })
+  })
+
+  it('SD-08 answers in under one second with about 300 Tickets', async () => {
+    const db = sandbox.client
+    const owner = await db.user.create({ data: { email: 'perf.staff@mig.test', name: 'Perf Staff', passwordHash: 'x', role: 'IT_STAFF' } })
+    const category = await db.category.create({ data: { name: 'Perf Category' } })
+    const system = await db.relatedSystem.create({ data: { name: 'Perf System' } })
+    const statuses: TicketStatus[] = ['NEW', 'OPEN', 'IN_PROGRESS', 'WAITING_FOR_REQUESTER', 'RESOLVED', 'CLOSED', 'REOPENED', 'CANCELLED']
+    await db.ticket.createMany({
+      data: Array.from({ length: 300 }, (_, i) => ({
+        ticketNumber: `SPERF-${i}`, requesterId: owner.id, ticketOwnerId: i % 3 === 0 ? owner.id : null, categoryId: category.id,
+        relatedSystemId: system.id, summary: `Perf ticket ${i}`, description: 'Performance fixture.', requestedPriority: 'MEDIUM' as const,
+        itPriority: (['LOW', 'MEDIUM', 'HIGH'] as const)[i % 3], currentStatus: statuses[i % statuses.length],
+      })),
+    })
+    const started = performance.now()
+    const result = await createDashboardService(db).staff(owner.id, 'IT_STAFF')
+    expect(performance.now() - started).toBeLessThan(1000)
+    expect(result.byStatus.reduce((sum, row) => sum + row.count, 0)).toBe(300)
+  })
+})
+```
+
+- [ ] **Step 3: Run.** `cd server && npx vitest run tests/lab-04/requester-dashboard.api.test.ts tests/lab-04/staff-dashboard.api.test.ts`. If SD-09's `cards.mine` is not 2, check the `beforeAll` rows (two active Tickets owned by `staff`). If a sandbox test fails to deploy, run the Prisma command it prints.
+
+- [ ] **Step 4: Mutation check.** Temporarily change `ACTIVE` in `staff-metrics.ts` to include `'RESOLVED'`; SD-01, SD-05 and SD-09 must fail; restore.
+
+- [ ] **Step 5: Full suite.** `npx vitest run` → green (five consecutive runs, as before).
+
+- [ ] **Step 6: Stage.** `git add server`
+
+---
+
+### Task 4: Client API, types and the navigation reducer
+
+**Files:**
+- Create: `client/src/api/dashboard.ts`, `client/src/nav/app-navigation.ts`
+- Modify: `client/src/api/tickets.ts`, `client/src/api/staffTickets.ts`, `client/src/types/ticket.ts`, `client/src/nav/role-navigation-factory.ts`
+- Test: `client/tests/lab-04/Navigation.test.tsx` (reducer part; the App part is Task 7)
+
+**Interfaces:**
+- Produces: `type ListFilters = Partial<Record<'statusGroup' | 'unassignedOnly' | 'ticketOwnerId' | 'requesterReportedResolved' | 'currentStatus' | 'itPriority', string>>`; `type NavState = { place: { key: string; filters: ListFilters }; placeSeq: number; openTicketId: number | null; listRefresh: number }`; `navReducer(state, action)`; `initialNavState(role)`; `fetchRequesterDashboard(signal?)`, `fetchStaffDashboard(signal?)` and their types.
+
+- [ ] **Step 1: Failing reducer test** `client/tests/lab-04/Navigation.test.tsx` (App tests are added in Task 7):
+
+```tsx
+import { describe, expect, it } from 'vitest'
+import { getNavItemsForRole } from '../../src/nav/role-navigation-factory.js'
+import { initialNavState, navReducer } from '../../src/nav/app-navigation.js'
+
+describe('Navigation items per role (UI4-24, BR-L4-23)', () => {
+  it('lists the right items with Dashboard first', () => {
+    expect(getNavItemsForRole('REQUESTER').map((item) => item.label)).toEqual(['Dashboard', 'My Tickets', 'Create Ticket'])
+    expect(getNavItemsForRole('IT_STAFF').map((item) => item.label)).toEqual(['Dashboard', 'Ticket Queue'])
+    expect(getNavItemsForRole('ADMINISTRATOR').map((item) => item.label)).toEqual(['Dashboard', 'Ticket Queue', 'User Management'])
+  })
+})
+
+describe('navReducer (UI4-24)', () => {
+  it('lands every role on the Dashboard with no filters and no open Ticket', () => {
+    for (const role of ['REQUESTER', 'IT_STAFF', 'ADMINISTRATOR'] as const) {
+      const state = initialNavState(role)
+      expect(state.place).toEqual({ key: 'dashboard', filters: {} })
+      expect(state.openTicketId).toBeNull()
+    }
+  })
+
+  it('goto sets the place and filters and gives the screen a new identity', () => {
+    const start = initialNavState('IT_STAFF')
+    const next = navReducer(start, { type: 'goto', key: 'ticket-queue', filters: { statusGroup: 'active', unassignedOnly: 'true' } })
+    expect(next.place).toEqual({ key: 'ticket-queue', filters: { statusGroup: 'active', unassignedOnly: 'true' } })
+    expect(next.placeSeq).toBe(start.placeSeq + 1)
+    const same = navReducer(next, { type: 'goto', key: 'ticket-queue' })
+    expect(same.place.filters).toEqual({})
+    expect(same.placeSeq).toBe(next.placeSeq + 1)
+  })
+
+  it('opening a Ticket keeps the place, and closing returns to it with a refresh', () => {
+    const queue = navReducer(initialNavState('IT_STAFF'), { type: 'goto', key: 'ticket-queue', filters: { statusGroup: 'active' } })
+    const opened = navReducer(queue, { type: 'open', ticketId: 42 })
+    expect(opened.openTicketId).toBe(42)
+    expect(opened.place).toEqual(queue.place)
+    expect(opened.placeSeq).toBe(queue.placeSeq)
+
+    const closed = navReducer(opened, { type: 'close' })
+    expect(closed.openTicketId).toBeNull()
+    expect(closed.place).toEqual(queue.place)
+    expect(closed.listRefresh).toBe(opened.listRefresh + 1)
+  })
+
+  it('navigating while a Ticket is open closes it', () => {
+    const opened = navReducer(initialNavState('REQUESTER'), { type: 'open', ticketId: 7 })
+    const moved = navReducer(opened, { type: 'goto', key: 'my-tickets' })
+    expect(moved.openTicketId).toBeNull()
+    expect(moved.place.key).toBe('my-tickets')
+  })
+})
+```
+
+- [ ] **Step 2: Run to verify it fails.** `cd client && npx vitest run tests/lab-04/Navigation.test.tsx` → FAIL (module not found).
+
+- [ ] **Step 3: `app-navigation.ts`:**
+
+```ts
+import type { CurrentUser } from '../api/auth.js'
+import { getNavItemsForRole } from './role-navigation-factory.js'
+
+/** Query values from a dashboard drill-down (the same names GET /api/tickets accepts). */
+export type ListFilters = Partial<
+  Record<'statusGroup' | 'unassignedOnly' | 'ticketOwnerId' | 'requesterReportedResolved' | 'currentStatus' | 'itPriority', string>
+>
+
+export type Place = { key: string; filters: ListFilters }
+
+export type NavState = {
+  place: Place
+  /** Changes on every `goto`, so a screen entered again starts fresh instead of keeping old state. */
+  placeSeq: number
+  openTicketId: number | null
+  /** Bumped when a Ticket closes, so the screens kept underneath refetch. */
+  listRefresh: number
+}
+
+export type NavAction =
+  | { type: 'goto'; key: string; filters?: ListFilters }
+  | { type: 'open'; ticketId: number }
+  | { type: 'close' }
+
+export function initialNavState(role: CurrentUser['role']): NavState {
+  return {
+    place: { key: getNavItemsForRole(role)[0]?.key ?? 'dashboard', filters: {} },
+    placeSeq: 0,
+    openTicketId: null,
+    listRefresh: 0,
+  }
+}
+
+export function navReducer(state: NavState, action: NavAction): NavState {
+  switch (action.type) {
+    case 'goto':
+      return { ...state, place: { key: action.key, filters: action.filters ?? {} }, placeSeq: state.placeSeq + 1, openTicketId: null }
+    case 'open':
+      return { ...state, openTicketId: action.ticketId }
+    case 'close':
+      return { ...state, openTicketId: null, listRefresh: state.listRefresh + 1 }
+  }
+}
+```
+
+- [ ] **Step 4: Navigation items.** In `role-navigation-factory.ts` replace `NAV_BY_ROLE` with:
+
+```ts
+const DASHBOARD: NavItem = { key: 'dashboard', label: 'Dashboard' }
+
+const NAV_BY_ROLE: Record<CurrentUser['role'], NavItem[]> = {
+  REQUESTER: [DASHBOARD, { key: 'my-tickets', label: 'My Tickets' }, { key: 'create-ticket', label: 'Create Ticket' }],
+  IT_STAFF: [DASHBOARD, { key: 'ticket-queue', label: 'Ticket Queue' }],
+  ADMINISTRATOR: [DASHBOARD, { key: 'ticket-queue', label: 'Ticket Queue' }, { key: 'user-management', label: 'User Management' }],
+}
+```
+
+- [ ] **Step 5: `api/dashboard.ts`:**
+
+```ts
+import type { Priority, TicketStatus } from '../types/ticket.js'
+
+export type DrillDown = { view: 'my-tickets' | 'ticket-queue'; query: Record<string, string> } | null
+export type Card = { key: string; label: string; count: number; drillDown: DrillDown }
+
+export type RequesterDashboard = {
+  generatedAt: string
+  windowDays: number
+  cards: Card[]
+  recentlyUpdated: Array<{ id: number; ticketNumber: string; summary: string; currentStatus: TicketStatus; updatedAt: string }>
+  recentlyResolved: Array<{ id: number; ticketNumber: string; summary: string; currentStatus: TicketStatus; resolvedAt: string }>
+}
+
+export type StaffDashboard = {
+  generatedAt: string
+  windowDays: number
+  cards: Card[]
+  byStatus: Array<{ status: TicketStatus; count: number; drillDown: DrillDown }>
+  byItPriority: Array<{ priority: Priority; count: number; drillDown: DrillDown }>
+  myActions: Array<{ actionId: number; ticketId: number; ticketNumber: string; description: string; status: string; actionAt: string }>
+  recentlyUpdated: Array<{ id: number; ticketNumber: string; summary: string; currentStatus: TicketStatus; ticketOwnerName: string | null; updatedAt: string }>
+  users?: { active: number; inactive: number; byRole: { REQUESTER: number; IT_STAFF: number; ADMINISTRATOR: number } }
+}
+
+async function load<T>(path: string, signal?: AbortSignal): Promise<T> {
+  const response = await fetch(path, { credentials: 'include', signal })
+  if (!response.ok) throw new Error('Unable to load the dashboard.')
+  return response.json() as Promise<T>
+}
+
+export const fetchRequesterDashboard = (signal?: AbortSignal) => load<RequesterDashboard>('/api/dashboard/requester', signal)
+export const fetchStaffDashboard = (signal?: AbortSignal) => load<StaffDashboard>('/api/dashboard/staff', signal)
+```
+
+- [ ] **Step 6: List API params.** In `types/ticket.ts` add to `TicketListQuery`: `statusGroup?: string; requesterReportedResolved?: boolean`. In `api/tickets.ts` `fetchTickets` add after the `currentStatus` line:
+
+```ts
+  if (query.statusGroup) params.set('statusGroup', query.statusGroup)
+  if (query.requesterReportedResolved) params.set('requesterReportedResolved', 'true')
+```
+and the same two lines in `staffTickets.ts` `fetchStaffTicketQueue` (`StaffTicketListQuery` extends `TicketListQuery`, so the type is inherited).
+
+- [ ] **Step 7: Run.** The reducer tests → PASS; `npx tsc --noEmit -p tsconfig.app.json` → errors only where `App.tsx` and screens still use the old nav (fixed in Task 5).
+
+- [ ] **Step 8: Stage.** `git add client`
+
+---
+
+### Task 5: List screens and App on the shared navigation
+
+**Files:**
+- Modify: `client/src/App.tsx`, `client/src/components/StaffTicketQueue.tsx`, `MyTicketsList.tsx`, `StaffTicketDetail.tsx`, `TicketDetail.tsx`
+
+**Interfaces:**
+- Consumes: Task 4. Produces:
+  - `StaffTicketQueue({ currentUserId, onOpenTicket, initialFilters?, refreshKey? })` (no longer renders Ticket Detail itself)
+  - `MyTicketsList({ onCreateTicket, onOpenTicket, initialFilters?, refreshKey? })`
+  - `StaffTicketDetail` and `TicketDetail` take optional `backLabel?: string`.
+  - Shared helper `describeFilters(filters, currentUserId?)` exported from `client/src/nav/app-navigation.ts`.
+
+- [ ] **Step 1: `describeFilters`.** Append to `app-navigation.ts`:
+
+```ts
+const GROUP_LABELS: Record<string, string> = {
+  active: 'Active tickets',
+  'in-progress': 'In progress',
+  waiting: 'Waiting for requester',
+  resolved: 'Resolved',
+}
+
+/** The drill-down parts that have no control of their own on the list screens, as readable text. */
+export function describeFilters(filters: { statusGroup?: string; ticketOwnerId?: string; requesterReportedResolved?: string }, currentUserId?: number): string[] {
+  const parts: string[] = []
+  if (filters.statusGroup) parts.push(GROUP_LABELS[filters.statusGroup] ?? filters.statusGroup)
+  if (filters.ticketOwnerId) parts.push(Number(filters.ticketOwnerId) === currentUserId ? 'Owned by me' : `Owner ${filters.ticketOwnerId}`)
+  if (filters.requesterReportedResolved) parts.push('Reported resolved by Requester')
+  return parts
+}
+```
+
+- [ ] **Step 2: `StaffTicketQueue.tsx`.**
+  - Signature: `export function StaffTicketQueue({ currentUserId, onOpenTicket, initialFilters = {}, refreshKey = 0 }: { currentUserId: number; onOpenTicket: (ticketId: number) => void; initialFilters?: ListFilters; refreshKey?: number })` (import `ListFilters`, `describeFilters` from `../nav/app-navigation.js`).
+  - Initial state from props: `useState<Priority | ''>((initialFilters.itPriority as Priority) ?? '')`, `currentStatus` from `initialFilters.currentStatus`, `unassignedOnly` from `initialFilters.unassignedOnly === 'true'`. Add three states that have no control: `const [statusGroup, setStatusGroup] = useState(initialFilters.statusGroup ?? '')`, `const [ownerId, setOwnerId] = useState(initialFilters.ticketOwnerId ?? '')`, `const [reportedResolved, setReportedResolved] = useState(initialFilters.requesterReportedResolved === 'true')`.
+  - Remove the `openTicket` state, the `if (openTicket) return <StaffTicketDetail ... />` block and the `StaffTicketDetail` import; row clicks and Enter handlers call `onOpenTicket(ticket.id)` instead of `setOpenTicket(ticket)`.
+  - In the fetch call add `statusGroup: statusGroup || undefined, ticketOwnerId: ownerId === '' ? undefined : Number(ownerId), requesterReportedResolved: reportedResolved || undefined`, and add `statusGroup, ownerId, reportedResolved, refreshKey` to the effect's dependency array.
+  - `hasActiveFilters` also true when `statusGroup !== '' || ownerId !== '' || reportedResolved`; `handleClearFilters` also calls `setStatusGroup(''); setOwnerId(''); setReportedResolved(false)`.
+  - Show the drill-down filter above the table (inside the header area, after the `<p>` that says "Tickets from every Requester."):
+
+```tsx
+          {describeFilters({ statusGroup, ticketOwnerId: ownerId, requesterReportedResolved: reportedResolved ? 'true' : '' }, currentUserId).length > 0 && (
+            <p className="small mb-0" role="status">
+              Showing: {describeFilters({ statusGroup, ticketOwnerId: ownerId, requesterReportedResolved: reportedResolved ? 'true' : '' }, currentUserId).join(' · ')}
+            </p>
+          )}
+```
+
+- [ ] **Step 3: `MyTicketsList.tsx`.**
+  - Props add `initialFilters?: ListFilters; refreshKey?: number`; `currentStatus` initial from `initialFilters.currentStatus`; add `const [statusGroup, setStatusGroup] = useState(initialFilters.statusGroup ?? '')`; `fetchTickets` call adds `statusGroup: statusGroup || undefined`; the effect dependency list adds `statusGroup, refreshKey`; `hasActiveFilters` also true when `statusGroup !== ''`; the existing clear handler also does `setStatusGroup('')`.
+  - Under the heading render `{statusGroup && <p className="small mb-0" role="status">Showing: {describeFilters({ statusGroup }).join(' · ')}</p>}`.
+
+- [ ] **Step 4: Back labels.** `StaffTicketDetail` gets `backLabel = '← Ticket Queue'` prop used for the breadcrumb button text; `TicketDetail` gets `backLabel = '← Back to My Tickets'`.
+
+- [ ] **Step 5: Rewrite `App.tsx`'s `AuthenticatedApp`:**
+
+```tsx
+import { useReducer } from 'react'
+// ...existing imports, plus:
+import { RequesterDashboard } from './components/RequesterDashboard.js'
+import { StaffDashboard } from './components/StaffDashboard.js'
+import { StaffTicketDetail } from './components/StaffTicketDetail.js'
+import { initialNavState, navReducer, type ListFilters } from './nav/app-navigation.js'
+
+const BACK_LABELS: Record<string, string> = {
+  dashboard: '← Back to Dashboard',
+  'ticket-queue': '← Ticket Queue',
+  'my-tickets': '← Back to My Tickets',
+}
+
+function AuthenticatedApp() {
+  const { currentUser } = useCurrentUser()
+  const [nav, dispatch] = useReducer(navReducer, undefined, () => initialNavState(currentUser!.role))
+
+  if (!currentUser) return null // unreachable -- caller only renders this once currentUser exists
+
+  const isRequester = currentUser.role === 'REQUESTER'
+  const { place, placeSeq, openTicketId, listRefresh } = nav
+  const goto = (key: string, filters?: ListFilters) => dispatch({ type: 'goto', key, filters })
+  const openTicket = (ticketId: number) => dispatch({ type: 'open', ticketId })
+
+  function renderPlace() {
+    switch (place.key) {
+      case 'ticket-queue':
+        return (
+          <StaffTicketQueue
+            currentUserId={currentUser!.id}
+            onOpenTicket={openTicket}
+            initialFilters={place.filters}
+            refreshKey={listRefresh}
+          />
+        )
+      case 'user-management':
+        return <UserManagement />
+      case 'create-ticket':
+        return <CreateTicketForm requesterName={currentUser!.name} onViewMyTickets={() => goto('my-tickets')} />
+      case 'my-tickets':
+        return (
+          <MyTicketsList
+            onCreateTicket={() => goto('create-ticket')}
+            onOpenTicket={openTicket}
+            initialFilters={place.filters}
+            refreshKey={listRefresh}
+          />
+        )
+      default:
+        return isRequester ? (
+          <RequesterDashboard
+            firstName={currentUser!.name.split(' ')[0]}
+            onNavigate={goto}
+            onOpenTicket={openTicket}
+            refreshKey={listRefresh}
+          />
+        ) : (
+          <StaffDashboard
+            role={currentUser!.role as 'IT_STAFF' | 'ADMINISTRATOR'}
+            firstName={currentUser!.name.split(' ')[0]}
+            onNavigate={goto}
+            onOpenTicket={openTicket}
+            refreshKey={listRefresh}
+          />
+        )
+    }
+  }
+
+  return (
+    <AppShell activeKey={place.key} onNavigate={(key) => goto(key)}>
+      {/* The place stays mounted (hidden) while a Ticket is open, so filters, page and search survive Back. */}
+      <div hidden={openTicketId !== null} key={placeSeq}>
+        {renderPlace()}
+      </div>
+      {openTicketId !== null &&
+        (isRequester ? (
+          <TicketDetail
+            ticketId={openTicketId}
+            onBackToMyTickets={() => dispatch({ type: 'close' })}
+            backLabel={BACK_LABELS[place.key]}
+          />
+        ) : (
+          <StaffTicketDetail
+            ticketId={openTicketId}
+            currentUserId={currentUser.id}
+            onBackToQueue={() => dispatch({ type: 'close' })}
+            backLabel={BACK_LABELS[place.key]}
+          />
+        ))}
+    </AppShell>
+  )
+}
+```
+  (Delete the old `useState` navigation code and the role-based `renderContent`. Keep `AppGate` and `App` as they are.)
+
+- [ ] **Step 6: Typecheck.** `npx tsc --noEmit -p tsconfig.app.json` → errors only about the two dashboard components, created next.
+
+- [ ] **Step 7: Stage.** `git add client/src`
+
+---
+
+### Task 6: Dashboard components
+
+**Files:**
+- Create: `client/src/components/DashboardParts.tsx`, `RequesterDashboard.tsx`, `StaffDashboard.tsx`
+
+**Interfaces:** Consumes Tasks 4 and 5. Produces `RequesterDashboard` and `StaffDashboard` with the props used in `App.tsx`: `{ firstName: string; onNavigate: (key: string, filters?: ListFilters) => void; onOpenTicket: (id: number) => void; refreshKey: number }` (`StaffDashboard` also `role`).
+
+- [ ] **Step 1: `DashboardParts.tsx`:**
+
+```tsx
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import type { Card, DrillDown } from '../api/dashboard.js'
+import type { ListFilters } from '../nav/app-navigation.js'
+
+export function formatDate(iso: string): string {
+  return new Date(iso).toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+}
+
+export type Navigate = (key: string, filters?: ListFilters) => void
+
+/** A drill-down target as the navigation call it stands for. */
+export function followDrillDown(drillDown: DrillDown, onNavigate: Navigate) {
+  if (drillDown) onNavigate(drillDown.view, drillDown.query as ListFilters)
+}
+
+/**
+ * Loads a dashboard and handles the feedback states of ui-spec §3: loading,
+ * safe failure with Retry, and Refresh that disables while loading and
+ * announces the result politely. The layout keeps its place while refreshing.
+ */
+export function useDashboard<T>(load: (signal: AbortSignal) => Promise<T>, refreshKey: number) {
+  const [data, setData] = useState<T | null>(null)
+  const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading')
+  const [announcement, setAnnouncement] = useState('')
+  const [token, setToken] = useState(0)
+
+  useEffect(() => {
+    const controller = new AbortController()
+    setState((current) => (current === 'ready' ? 'ready' : 'loading'))
+    load(controller.signal)
+      .then((loaded) => {
+        setData(loaded)
+        setState('ready')
+        setAnnouncement(token > 0 ? 'Dashboard updated' : '')
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setState('error')
+      })
+    return () => controller.abort()
+  }, [load, refreshKey, token])
+
+  const reload = useCallback(() => {
+    setState('loading')
+    setToken((value) => value + 1)
+  }, [])
+
+  return { data, state, announcement, reload }
+}
+
+export function DashboardShell({
+  title,
+  state,
+  announcement,
+  onReload,
+  children,
+}: {
+  title: string
+  state: 'loading' | 'ready' | 'error'
+  announcement: string
+  onReload: () => void
+  children: ReactNode
+}) {
+  return (
+    <div>
+      <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+        <h1 className="h4 fw-bold mb-0">{title}</h1>
+        <button type="button" className="btn btn-outline-secondary btn-sm" disabled={state === 'loading'} onClick={onReload}>
+          Refresh
+        </button>
+      </div>
+      <p className="visually-hidden" role="status">{announcement}</p>
+
+      {state === 'loading' && (
+        <p className="status-message text-body-secondary" role="status">
+          <span aria-hidden="true">⌛</span> Loading dashboard…
+        </p>
+      )}
+      {state === 'error' && (
+        <div className="alert alert-danger d-flex flex-wrap align-items-center gap-2" role="alert">
+          <span>Unable to load the dashboard.</span>
+          <button type="button" className="btn btn-outline-danger btn-sm" onClick={onReload}>Retry</button>
+        </div>
+      )}
+      {state === 'ready' && children}
+    </div>
+  )
+}
+
+/** One link holding label, large count and "View all"; the whole card is the click target (ui-spec §2). */
+export function MetricCard({ card, onNavigate }: { card: Card; onNavigate: Navigate }) {
+  const body = (
+    <>
+      <div className="small text-body-secondary">{card.label}</div>
+      <div className="display-6 fw-bold">{card.count}</div>
+    </>
+  )
+
+  if (!card.drillDown) {
+    return (
+      <div className="card h-100 shadow-sm">
+        <div className="card-body">
+          {body}
+          <div className="small text-body-secondary">See the list below</div>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <a
+      href={`#${card.key}`}
+      className="card h-100 shadow-sm text-decoration-none text-reset"
+      aria-label={`${card.label}, ${card.count} ${card.count === 1 ? 'ticket' : 'tickets'}`}
+      onClick={(event) => {
+        event.preventDefault()
+        followDrillDown(card.drillDown, onNavigate)
+      }}
+    >
+      <div className="card-body">
+        {body}
+        <div className="small fw-semibold" style={{ color: 'var(--zg-secondary)' }}>View all</div>
+      </div>
+    </a>
+  )
+}
+
+export function Section({ title, id, children }: { title: string; id: string; children: ReactNode }) {
+  return (
+    <section className="mb-4" aria-labelledby={id}>
+      <h2 id={id} className="h6 fw-bold mb-2">{title}</h2>
+      {children}
+    </section>
+  )
+}
+```
+
+- [ ] **Step 2: `RequesterDashboard.tsx`:**
+
+```tsx
+import { useCallback } from 'react'
+import { fetchRequesterDashboard } from '../api/dashboard.js'
+import { DashboardShell, MetricCard, Section, formatDate, useDashboard, type Navigate } from './DashboardParts.js'
+import { StatusBadge } from './TicketBadges.js'
+
+export function RequesterDashboard({
+  firstName,
+  onNavigate,
+  onOpenTicket,
+  refreshKey,
+}: {
+  firstName: string
+  onNavigate: Navigate
+  onOpenTicket: (ticketId: number) => void
+  refreshKey: number
+}) {
+  const load = useCallback((signal: AbortSignal) => fetchRequesterDashboard(signal), [])
+  const { data, state, announcement, reload } = useDashboard(load, refreshKey)
+
+  return (
+    <DashboardShell title={`Welcome, ${firstName}`} state={state} announcement={announcement} onReload={reload}>
+      {data && (
+        <>
+          <div className="row g-3 mb-4">
+            {data.cards.map((card) => (
+              <div key={card.key} className="col-12 col-sm-6 col-lg-3">
+                <MetricCard card={card} onNavigate={onNavigate} />
+              </div>
+            ))}
+          </div>
+
+          <div className="row g-4">
+            <div className="col-12 col-lg-6">
+              <Section title="Recently updated" id="recently-updated">
+                {data.recentlyUpdated.length === 0 ? (
+                  <p className="text-body-secondary">No recent tickets yet.</p>
+                ) : (
+                  <ul className="list-group">
+                    {data.recentlyUpdated.map((ticket) => (
+                      <li key={ticket.id} className="list-group-item">
+                        <button type="button" className="btn btn-link p-0 text-start" onClick={() => onOpenTicket(ticket.id)}>
+                          {ticket.ticketNumber}: {ticket.summary}
+                        </button>
+                        <div className="d-flex gap-2 align-items-center small text-body-secondary">
+                          <StatusBadge status={ticket.currentStatus} /> {formatDate(ticket.updatedAt)}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <button type="button" className="btn btn-link p-0 mt-2" onClick={() => onNavigate('my-tickets')}>View all</button>
+              </Section>
+            </div>
+
+            <div className="col-12 col-lg-6">
+              <Section title="Recently resolved" id="recently-resolved">
+                {data.recentlyResolved.length === 0 ? (
+                  <p className="text-body-secondary">No recent tickets yet.</p>
+                ) : (
+                  <ul className="list-group">
+                    {data.recentlyResolved.map((ticket) => (
+                      <li key={ticket.id} className="list-group-item">
+                        <button type="button" className="btn btn-link p-0 text-start" onClick={() => onOpenTicket(ticket.id)}>
+                          {ticket.ticketNumber}: {ticket.summary}
+                        </button>
+                        <div className="d-flex gap-2 align-items-center small text-body-secondary">
+                          <StatusBadge status={ticket.currentStatus} /> Resolved {formatDate(ticket.resolvedAt)}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </Section>
+            </div>
+          </div>
+
+          <div className="d-flex flex-wrap gap-2">
+            <button type="button" className="btn btn-primary" onClick={() => onNavigate('create-ticket')}>Create Ticket</button>
+            <button type="button" className="btn btn-outline-primary" onClick={() => onNavigate('my-tickets')}>View My Tickets</button>
+          </div>
+        </>
+      )}
+    </DashboardShell>
+  )
+}
+```
+
+- [ ] **Step 3: `StaffDashboard.tsx`:**
+
+```tsx
+import { useCallback } from 'react'
+import { PRIORITY_LABELS, ROLE_LABELS, STATUS_LABELS } from '@toktickit/shared'
+import { fetchStaffDashboard } from '../api/dashboard.js'
+import { DashboardShell, MetricCard, Section, followDrillDown, formatDate, useDashboard, type Navigate } from './DashboardParts.js'
+import { StatusBadge } from './TicketBadges.js'
+
+export function StaffDashboard({
+  role,
+  firstName,
+  onNavigate,
+  onOpenTicket,
+  refreshKey,
+}: {
+  role: 'IT_STAFF' | 'ADMINISTRATOR'
+  firstName: string
+  onNavigate: Navigate
+  onOpenTicket: (ticketId: number) => void
+  refreshKey: number
+}) {
+  const load = useCallback((signal: AbortSignal) => fetchStaffDashboard(signal), [])
+  const { data, state, announcement, reload } = useDashboard(load, refreshKey)
+
+  return (
+    <DashboardShell title={`Welcome, ${firstName}`} state={state} announcement={announcement} onReload={reload}>
+      {data && (
+        <>
+          <div className="row g-3 mb-4">
+            {data.cards.map((card) => (
+              <div key={card.key} className="col-12 col-sm-6 col-lg-3">
+                <MetricCard card={card} onNavigate={onNavigate} />
+              </div>
+            ))}
+          </div>
+
+          <div className="row g-4">
+            <div className="col-12 col-lg-6">
+              <Section title="By status" id="by-status">
+                <ul className="list-group">
+                  {data.byStatus.map((row) => (
+                    <li key={row.status} className="list-group-item p-0">
+                      <a
+                        href={`#status-${row.status}`}
+                        className="d-flex justify-content-between align-items-center px-3 py-2 text-decoration-none text-reset"
+                        aria-label={`${STATUS_LABELS[row.status]}, ${row.count} tickets`}
+                        onClick={(event) => {
+                          event.preventDefault()
+                          followDrillDown(row.drillDown, onNavigate)
+                        }}
+                      >
+                        <StatusBadge status={row.status} />
+                        <strong>{row.count}</strong>
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </Section>
+            </div>
+
+            <div className="col-12 col-lg-6">
+              <Section title="By IT Priority" id="by-priority">
+                <ul className="list-group">
+                  {data.byItPriority.map((row) => (
+                    <li key={row.priority} className="list-group-item p-0">
+                      <a
+                        href={`#priority-${row.priority}`}
+                        className="d-flex justify-content-between align-items-center px-3 py-2 text-decoration-none text-reset"
+                        aria-label={`${PRIORITY_LABELS[row.priority]} priority, ${row.count} tickets`}
+                        onClick={(event) => {
+                          event.preventDefault()
+                          followDrillDown(row.drillDown, onNavigate)
+                        }}
+                      >
+                        <span>{PRIORITY_LABELS[row.priority]}</span>
+                        <strong>{row.count}</strong>
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </Section>
+
+              {role === 'ADMINISTRATOR' && data.users && (
+                <Section title="Users" id="users-strip">
+                  <button type="button" className="btn btn-outline-secondary w-100 text-start" onClick={() => onNavigate('user-management')}>
+                    {data.users.active} active · {data.users.inactive} inactive ·{' '}
+                    {(['REQUESTER', 'IT_STAFF', 'ADMINISTRATOR'] as const).map((key) => `${data.users!.byRole[key]} ${ROLE_LABELS[key]}`).join(' · ')}
+                  </button>
+                </Section>
+              )}
+            </div>
+          </div>
+
+          <div className="row g-4">
+            <div className="col-12 col-lg-6">
+              <Section title="My open actions" id="my-open-actions">
+                {data.myActions.length === 0 ? (
+                  <p className="text-body-secondary">Nothing planned for you.</p>
+                ) : (
+                  <ul className="list-group">
+                    {data.myActions.map((action) => (
+                      <li key={action.actionId} className="list-group-item">
+                        <button type="button" className="btn btn-link p-0 text-start" onClick={() => onOpenTicket(action.ticketId)}>
+                          {action.ticketNumber}: {action.description}
+                        </button>
+                        <div className="small text-body-secondary">{action.status === 'IN_PROGRESS' ? 'In Progress' : 'Planned'} · {formatDate(action.actionAt)}</div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </Section>
+            </div>
+
+            <div className="col-12 col-lg-6">
+              <Section title="Recently updated" id="recently-updated">
+                {data.recentlyUpdated.length === 0 ? (
+                  <p className="text-body-secondary">No recent tickets yet.</p>
+                ) : (
+                  <ul className="list-group">
+                    {data.recentlyUpdated.map((ticket) => (
+                      <li key={ticket.id} className="list-group-item">
+                        <button type="button" className="btn btn-link p-0 text-start" onClick={() => onOpenTicket(ticket.id)}>
+                          {ticket.ticketNumber}: {ticket.summary}
+                        </button>
+                        <div className="d-flex flex-wrap gap-2 align-items-center small text-body-secondary">
+                          <StatusBadge status={ticket.currentStatus} />
+                          {ticket.ticketOwnerName ?? 'Unassigned'} · {formatDate(ticket.updatedAt)}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </Section>
+            </div>
+          </div>
+        </>
+      )}
+    </DashboardShell>
+  )
+}
+```
+
+- [ ] **Step 4: Typecheck and build.** `npx tsc --noEmit -p tsconfig.app.json` → clean; `npm run build` → OK.
+
+- [ ] **Step 5: Stage.** `git add client/src`
+
+---
+
+### Task 7: Client tests and old-test updates (UI4-01 to UI4-07, UI4-24)
+
+**Files:**
+- Modify: `client/tests/lab-02/test-helpers.ts`, `client/tests/lab-03/AppShell.test.tsx`, `client/tests/lab-03/StaffTicketQueue.test.tsx`
+- Modify: `client/tests/lab-04/Navigation.test.tsx` (append the App tests)
+- Create: `client/tests/lab-04/RequesterDashboard.test.tsx`, `client/tests/lab-04/StaffDashboard.test.tsx`, `client/tests/lab-04/dashboard-test-helpers.ts`
+
+- [ ] **Step 1: Dashboard fixtures** `dashboard-test-helpers.ts`:
+
+```ts
+export const requesterDashboard = {
+  generatedAt: '2026-10-31T09:00:00.000Z',
+  windowDays: 7,
+  cards: [
+    { key: 'open', label: 'Open tickets', count: 3, drillDown: { view: 'my-tickets', query: { statusGroup: 'active' } } },
+    { key: 'in-progress', label: 'In progress', count: 1, drillDown: { view: 'my-tickets', query: { statusGroup: 'in-progress' } } },
+    { key: 'waiting', label: 'Waiting for you', count: 1, drillDown: { view: 'my-tickets', query: { statusGroup: 'waiting' } } },
+    { key: 'resolved', label: 'Resolved', count: 2, drillDown: { view: 'my-tickets', query: { statusGroup: 'resolved' } } },
+  ],
+  recentlyUpdated: [{ id: 42, ticketNumber: 'TKT-2026-000042', summary: 'Laptop battery drains quickly', currentStatus: 'OPEN', updatedAt: '2026-10-30T09:00:00.000Z' }],
+  recentlyResolved: [{ id: 40, ticketNumber: 'TKT-2026-000040', summary: 'Docking station fixed', currentStatus: 'RESOLVED', resolvedAt: '2026-10-29T09:00:00.000Z' }],
+}
+
+export const emptyRequesterDashboard = {
+  ...requesterDashboard,
+  cards: requesterDashboard.cards.map((card) => ({ ...card, count: 0 })),
+  recentlyUpdated: [],
+  recentlyResolved: [],
+}
+
+const STATUSES = ['NEW', 'OPEN', 'IN_PROGRESS', 'WAITING_FOR_REQUESTER', 'RESOLVED', 'CLOSED', 'REOPENED', 'CANCELLED']
+
+export function staffDashboard(overrides: Record<string, unknown> = {}) {
+  return {
+    generatedAt: '2026-10-31T09:00:00.000Z',
+    windowDays: 7,
+    cards: [
+      { key: 'unassigned', label: 'Unassigned', count: 7, drillDown: { view: 'ticket-queue', query: { unassignedOnly: 'true', statusGroup: 'active' } } },
+      { key: 'mine', label: 'Owned by me', count: 4, drillDown: { view: 'ticket-queue', query: { ticketOwnerId: '9', statusGroup: 'active' } } },
+      { key: 'reported-resolved', label: 'Reported resolved by Requester', count: 2, drillDown: { view: 'ticket-queue', query: { requesterReportedResolved: 'true', statusGroup: 'active' } } },
+      { key: 'my-open-actions', label: 'My open actions', count: 1, drillDown: null },
+    ],
+    byStatus: STATUSES.map((status, index) => ({ status, count: index, drillDown: { view: 'ticket-queue', query: { currentStatus: status } } })),
+    byItPriority: ['LOW', 'MEDIUM', 'HIGH'].map((priority, index) => ({ priority, count: index + 1, drillDown: { view: 'ticket-queue', query: { itPriority: priority, statusGroup: 'active' } } })),
+    myActions: [{ actionId: 31, ticketId: 42, ticketNumber: 'TKT-2026-000042', description: 'Replace the docking station firmware.', status: 'PLANNED', actionAt: '2026-10-31T10:00:00.000Z' }],
+    recentlyUpdated: [{ id: 43, ticketNumber: 'TKT-2026-000043', summary: 'VPN keeps disconnecting', currentStatus: 'OPEN', ticketOwnerName: 'Alex Rivera', updatedAt: '2026-10-30T09:00:00.000Z' }],
+    ...overrides,
+  }
+}
+
+export const emptyStaffDashboard = staffDashboard({
+  cards: staffDashboard().cards.map((card) => ({ ...card, count: 0 })),
+  byStatus: STATUSES.map((status) => ({ status, count: 0, drillDown: { view: 'ticket-queue', query: { currentStatus: status } } })),
+  byItPriority: ['LOW', 'MEDIUM', 'HIGH'].map((priority) => ({ priority, count: 0, drillDown: { view: 'ticket-queue', query: { itPriority: priority } } })),
+  myActions: [],
+  recentlyUpdated: [],
+})
+```
+
+- [ ] **Step 2: Requester dashboard tests** `RequesterDashboard.test.tsx`:
+
+```tsx
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { RequesterDashboard } from '../../src/components/RequesterDashboard.js'
+import { emptyRequesterDashboard, requesterDashboard } from './dashboard-test-helpers.js'
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
+
+function stubDashboard(answers: Array<{ ok: boolean; body: unknown }>) {
+  let call = 0
+  const fetchStub = vi.fn(async () => {
+    const answer = answers[Math.min(call, answers.length - 1)]
+    call += 1
+    return { ok: answer.ok, status: answer.ok ? 200 : 500, json: async () => answer.body } as Response
+  })
+  vi.stubGlobal('fetch', fetchStub)
+  return fetchStub
+}
+
+function mount() {
+  const onNavigate = vi.fn()
+  const onOpenTicket = vi.fn()
+  render(<RequesterDashboard firstName="Jennifer" onNavigate={onNavigate} onOpenTicket={onOpenTicket} refreshKey={0} />)
+  return { onNavigate, onOpenTicket }
+}
+
+describe('Requester dashboard (UI4-01 to UI4-04)', () => {
+  it('UI4-01 shows the welcome line, four cards with counts, and both lists', async () => {
+    stubDashboard([{ ok: true, body: requesterDashboard }])
+    mount()
+
+    expect(await screen.findByRole('heading', { name: 'Welcome, Jennifer' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Open tickets, 3 tickets' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'In progress, 1 ticket' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Waiting for you, 1 ticket' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Resolved, 2 tickets' })).toBeInTheDocument()
+    expect(screen.getByText(/TKT-2026-000042: Laptop battery drains quickly/)).toBeInTheDocument()
+    expect(screen.getByText(/TKT-2026-000040: Docking station fixed/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Create Ticket' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'View My Tickets' })).toBeInTheDocument()
+  })
+
+  it('UI4-02 shows 0 on the cards and the empty messages, with the cards still links', async () => {
+    stubDashboard([{ ok: true, body: emptyRequesterDashboard }])
+    mount()
+
+    expect(await screen.findByRole('link', { name: 'Open tickets, 0 tickets' })).toBeInTheDocument()
+    expect(screen.getAllByText('No recent tickets yet.')).toHaveLength(2)
+  })
+
+  it('UI4-03 a card opens the filtered list and a row opens the Ticket', async () => {
+    stubDashboard([{ ok: true, body: requesterDashboard }])
+    const { onNavigate, onOpenTicket } = mount()
+
+    fireEvent.click(await screen.findByRole('link', { name: 'Waiting for you, 1 ticket' }))
+    expect(onNavigate).toHaveBeenCalledWith('my-tickets', { statusGroup: 'waiting' })
+
+    fireEvent.click(screen.getByRole('button', { name: /TKT-2026-000042/ }))
+    expect(onOpenTicket).toHaveBeenCalledWith(42)
+  })
+
+  it('UI4-04 shows Loading, then a safe failure whose Retry loads the data', async () => {
+    const fetchStub = stubDashboard([{ ok: false, body: { error: 'INTERNAL_ERROR' } }, { ok: true, body: requesterDashboard }])
+    mount()
+
+    expect(screen.getByText('Loading dashboard…')).toBeInTheDocument()
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('Unable to load the dashboard.')
+    expect(alert).not.toHaveTextContent(/500|INTERNAL/)
+
+    fireEvent.click(within(alert).getByRole('button', { name: 'Retry' }))
+    expect(await screen.findByRole('link', { name: 'Open tickets, 3 tickets' })).toBeInTheDocument()
+    expect(fetchStub).toHaveBeenCalledTimes(2)
+  })
+
+  it('Refresh refetches, announces the update politely, and is disabled while loading', async () => {
+    const fetchStub = stubDashboard([{ ok: true, body: requesterDashboard }])
+    mount()
+    await screen.findByRole('link', { name: 'Open tickets, 3 tickets' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }))
+    await waitFor(() => expect(fetchStub).toHaveBeenCalledTimes(2))
+    expect(await screen.findByText('Dashboard updated')).toBeInTheDocument()
+  })
+})
+```
+
+- [ ] **Step 3: Staff dashboard tests** `StaffDashboard.test.tsx`:
+
+```tsx
+import { fireEvent, render, screen, within } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { StaffDashboard } from '../../src/components/StaffDashboard.js'
+import { emptyStaffDashboard, staffDashboard } from './dashboard-test-helpers.js'
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
+
+function mount(role: 'IT_STAFF' | 'ADMINISTRATOR', body: unknown) {
+  vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, json: async () => body }) as Response))
+  const onNavigate = vi.fn()
+  const onOpenTicket = vi.fn()
+  render(<StaffDashboard role={role} firstName="Alex" onNavigate={onNavigate} onOpenTicket={onOpenTicket} refreshKey={0} />)
+  return { onNavigate, onOpenTicket }
+}
+
+describe('Staff dashboard (UI4-05 to UI4-07)', () => {
+  it('UI4-05 renders cards, breakdowns and lists, and each link opens the right drill-down', async () => {
+    const { onNavigate, onOpenTicket } = mount('IT_STAFF', staffDashboard())
+
+    fireEvent.click(await screen.findByRole('link', { name: 'Unassigned, 7 tickets' }))
+    expect(onNavigate).toHaveBeenLastCalledWith('ticket-queue', { unassignedOnly: 'true', statusGroup: 'active' })
+    fireEvent.click(screen.getByRole('link', { name: 'Owned by me, 4 tickets' }))
+    expect(onNavigate).toHaveBeenLastCalledWith('ticket-queue', { ticketOwnerId: '9', statusGroup: 'active' })
+    fireEvent.click(screen.getByRole('link', { name: 'Reported resolved by Requester, 2 tickets' }))
+    expect(onNavigate).toHaveBeenLastCalledWith('ticket-queue', { requesterReportedResolved: 'true', statusGroup: 'active' })
+
+    const byStatus = screen.getByRole('region', { name: 'By status' })
+    expect(within(byStatus).getAllByRole('link')).toHaveLength(8)
+    fireEvent.click(within(byStatus).getByRole('link', { name: 'Open, 1 tickets' }))
+    expect(onNavigate).toHaveBeenLastCalledWith('ticket-queue', { currentStatus: 'OPEN' })
+
+    const byPriority = screen.getByRole('region', { name: 'By IT Priority' })
+    fireEvent.click(within(byPriority).getByRole('link', { name: 'High priority, 3 tickets' }))
+    expect(onNavigate).toHaveBeenLastCalledWith('ticket-queue', { itPriority: 'HIGH', statusGroup: 'active' })
+
+    fireEvent.click(screen.getByRole('button', { name: /TKT-2026-000042: Replace the docking station firmware\./ }))
+    expect(onOpenTicket).toHaveBeenCalledWith(42)
+    fireEvent.click(screen.getByRole('button', { name: /TKT-2026-000043: VPN keeps disconnecting/ }))
+    expect(onOpenTicket).toHaveBeenLastCalledWith(43)
+  })
+
+  it('shows My open actions as a card that is not a link', async () => {
+    mount('IT_STAFF', staffDashboard())
+    await screen.findByRole('link', { name: 'Unassigned, 7 tickets' })
+    expect(screen.queryByRole('link', { name: /My open actions/ })).not.toBeInTheDocument()
+    expect(screen.getByText('See the list below')).toBeInTheDocument()
+  })
+
+  it('UI4-06 shows the users strip only to an Administrator', async () => {
+    const users = { active: 9, inactive: 2, byRole: { REQUESTER: 5, IT_STAFF: 4, ADMINISTRATOR: 2 } }
+    const { onNavigate } = mount('ADMINISTRATOR', staffDashboard({ users }))
+    const strip = await screen.findByRole('button', { name: /9 active · 2 inactive/ })
+    expect(strip).toHaveTextContent('5 Requester · 4 IT Staff · 2 Administrator')
+    fireEvent.click(strip)
+    expect(onNavigate).toHaveBeenCalledWith('user-management')
+  })
+
+  it('UI4-06 omits the users strip for IT Staff', async () => {
+    mount('IT_STAFF', staffDashboard())
+    await screen.findByRole('link', { name: 'Unassigned, 7 tickets' })
+    expect(screen.queryByText(/inactive/)).not.toBeInTheDocument()
+  })
+
+  it('UI4-07 shows zeros and the empty messages', async () => {
+    mount('IT_STAFF', emptyStaffDashboard)
+    expect(await screen.findByRole('link', { name: 'Unassigned, 0 tickets' })).toBeInTheDocument()
+    expect(screen.getByText('Nothing planned for you.')).toBeInTheDocument()
+    expect(screen.getByText('No recent tickets yet.')).toBeInTheDocument()
+    const byStatus = screen.getByRole('region', { name: 'By status' })
+    expect(within(byStatus).getAllByRole('link')).toHaveLength(8)
+  })
+})
+```
+
+- [ ] **Step 4: App navigation tests.** Append to `Navigation.test.tsx` (add imports `fireEvent, render, screen, waitFor, within` from `@testing-library/react`, `afterEach, vi` from vitest, `App` from `../../src/App.js`, and `requesterDashboard, staffDashboard` from `./dashboard-test-helpers.js`):
+
+```tsx
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
+
+type Account = { id: number; name: string; role: 'REQUESTER' | 'IT_STAFF' | 'ADMINISTRATOR' }
+
+function stubApp(user: Account) {
+  const requests: string[] = []
+  const queue = {
+    data: [{
+      id: 43, ticketNumber: 'TKT-2026-000043', summary: 'VPN keeps disconnecting', categoryId: 1, requestedPriority: 'HIGH', itPriority: 'HIGH',
+      currentStatus: 'OPEN', ticketOwnerId: null, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
+      requester: { id: 2, name: 'Sarah Johnson' }, ticketOwner: null, requesterResolvedAt: null,
+    }],
+    meta: { page: 1, pageSize: 10, totalItems: 1, totalPages: 1 },
+  }
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+    requests.push(url)
+    const reply = (json: unknown) => ({ ok: true, status: 200, json: async () => json }) as Response
+    if (url === '/api/auth/me') return reply({ ...user, email: 'x@toktickit.test', mustChangePassword: false })
+    if (url === '/api/dashboard/requester') return reply(requesterDashboard)
+    if (url === '/api/dashboard/staff') return reply(staffDashboard({ users: { active: 3, inactive: 1, byRole: { REQUESTER: 2, IT_STAFF: 1, ADMINISTRATOR: 1 } } }))
+    if (url === '/api/categories' || url === '/api/related-systems') return reply([])
+    if (url.startsWith('/api/tickets?')) return reply(queue)
+    if (url === '/api/users') return reply([])
+    return reply([])
+  }))
+  return requests
+}
+
+describe('App landing and navigation (UI4-24, AC-L4-30)', () => {
+  it('lands each role on its Dashboard with the right nav and marks the active item', async () => {
+    stubApp({ id: 1, name: 'Jennifer Anderson', role: 'REQUESTER' })
+    render(<App />)
+    expect(await screen.findByRole('heading', { name: 'Welcome, Jennifer' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Dashboard' })).toHaveAttribute('aria-current', 'page')
+    expect(screen.getByRole('button', { name: 'My Tickets' })).not.toHaveAttribute('aria-current')
+  })
+
+  it('gives the Administrator the Ticket Queue and User Management beside the Dashboard', async () => {
+    stubApp({ id: 20, name: 'Morgan Kim', role: 'ADMINISTRATOR' })
+    render(<App />)
+    await screen.findByRole('heading', { name: 'Welcome, Morgan' })
+    for (const label of ['Dashboard', 'Ticket Queue', 'User Management']) {
+      expect(screen.getByRole('button', { name: label })).toBeInTheDocument()
+    }
+  })
+
+  it('a staff card opens the queue with the filter applied and shown', async () => {
+    const requests = stubApp({ id: 9, name: 'Alex Rivera', role: 'IT_STAFF' })
+    render(<App />)
+    fireEvent.click(await screen.findByRole('link', { name: 'Unassigned, 7 tickets' }))
+
+    expect(await screen.findByRole('heading', { name: 'Ticket Queue' })).toBeInTheDocument()
+    expect(screen.getByText('Showing: Active tickets')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Ticket Queue' })).toHaveAttribute('aria-current', 'page')
+    await waitFor(() => {
+      expect(requests.some((url) => url.startsWith('/api/tickets?') && url.includes('statusGroup=active') && url.includes('unassignedOnly=true'))).toBe(true)
+    })
+  })
+
+  it('a dashboard row opens the Ticket and Back returns to the Dashboard', async () => {
+    stubApp({ id: 1, name: 'Jennifer Anderson', role: 'REQUESTER' })
+    render(<App />)
+    fireEvent.click(await screen.findByRole('button', { name: /TKT-2026-000042/ }))
+
+    expect(await screen.findByRole('button', { name: '← Back to Dashboard' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '← Back to Dashboard' }))
+    expect(await screen.findByRole('heading', { name: 'Welcome, Jennifer' })).toBeVisible()
+  })
+})
+```
+(The Ticket Detail fetches `/api/tickets/42` and others; the stub returns `[]` for them, so the detail shows its safe "Unable to load this ticket" state, which is enough for this test; the back button is only present in the loaded state, so make the stub return a minimal Requester Ticket for `/api/tickets/42`: add `if (url === '/api/tickets/42') return reply({ id: 42, ticketNumber: 'TKT-2026-000042', requesterId: 1, categoryId: 1, relatedSystemId: 1, requestedPriority: 'MEDIUM', currentStatus: 'OPEN', summary: 'Laptop battery drains quickly', description: 'Battery drains fast.', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z', version: 1, requesterResolvedAt: null, actionsSummary: { total: 0, planned: 0, inProgress: 0, completed: 0, cancelled: 0, openFollowUps: 0 } })` above the `/api/tickets?` line.)
+
+- [ ] **Step 5: Update the old tests.**
+  - `client/tests/lab-02/test-helpers.ts` `stubAppFetch`: before the `/api/tickets` branch add `if (url.startsWith('/api/dashboard')) return { ok: true, json: async () => ({ cards: [], recentlyUpdated: [], recentlyResolved: [], byStatus: [], byItPriority: [], myActions: [] }) } as Response`.
+  - `client/tests/lab-03/AppShell.test.tsx`: the Logout test's inline stub returns `[]` for unknown URLs; add a `/api/dashboard` branch returning the same empty object as above. The first test's expectation (`My Tickets` button present) still holds.
+  - `client/tests/lab-03/StaffTicketQueue.test.tsx`: replace every `<StaffTicketQueue currentUserId={1} />` with `<StaffTicketQueue currentUserId={1} onOpenTicket={() => {}} />`, and rewrite the test "opens the real Staff Ticket Detail screen when a row is clicked" to pass `const onOpenTicket = vi.fn()` and assert `expect(onOpenTicket).toHaveBeenCalledWith(1)` after clicking the row (the Detail screen is rendered by `App` now and covered by the Navigation tests).
+  - `client/tests/lab-02/MyTicketsList.test.tsx`: no change expected (props unchanged); fix only if it fails.
+
+- [ ] **Step 6: Run.** `cd client && npx vitest run` → all green; `npx tsc --noEmit -p tsconfig.app.json`; `npm run build`.
+
+- [ ] **Step 7: Mutation checks.** (a) In `MetricCard`, drop `event.preventDefault()` follow-up (`followDrillDown` call) and confirm UI4-03 fails; (b) in `navReducer` make `open` also reset `place` and confirm the Back test fails; restore both.
+
+- [ ] **Step 8: Stage.** `git add client`
+
+---
+
+### Task 8: E2E, landing-page fixes, real-browser check, docs
+
+**Files:**
+- Modify: `e2e/lab-03/staff-ticket-flow.spec.ts`, `e2e/lab-03/user-administration.spec.ts`, `e2e/lab-04/actions-taken-flow.spec.ts`, `e2e/lab-04/ticket-resolution.spec.ts`, `docs/lab-04/tests.md`
+- Create: `e2e/lab-04/dashboards.spec.ts`
+
+- [ ] **Step 1: Fix the landing assumption.** Every login now lands on the Dashboard. In each spec, directly before an assertion on the `Ticket Queue` heading that follows a staff login, add `await page.getByRole('button', { name: 'Ticket Queue' }).click()`: `staff-ticket-flow.spec.ts` (before the heading assertion after the Alex login), and the `openQueueTicket` helper in `actions-taken-flow.spec.ts` and `ticket-resolution.spec.ts` (first line of the helper). In `user-administration.spec.ts` add `await page.getByRole('button', { name: 'User Management' }).click()` before the `Users` heading assertion (line near 18). Requester specs already click `Create Ticket` and `My Tickets` explicitly; `authentication.spec.ts` only expects the `My Tickets` nav button, which still exists.
+
+- [ ] **Step 2: New spec** `e2e/lab-04/dashboards.spec.ts` (E2E4-03, E2E4-04):
+
+```ts
+import { expect, test, type Page } from '@playwright/test'
+
+const ACCOUNTS = {
+  requester: 'sarah.johnson@toktickit.test',
+  staff: 'alex.rivera@toktickit.test',
+  admin: 'morgan.kim@toktickit.test',
+}
+
+async function login(page: Page, email: string) {
+  await page.goto('/')
+  await page.getByLabel('Email *').fill(email)
+  await page.getByLabel('Password *').fill('DevPass123!')
+  await page.getByRole('button', { name: 'Login' }).click()
+}
+
+/** Click a card and return the list total the server reported for the drill-down. */
+async function openCardAndReadTotal(page: Page, name: RegExp): Promise<{ count: number; total: number }> {
+  const card = page.getByRole('link', { name })
+  const label = (await card.getAttribute('aria-label')) ?? ''
+  const count = Number(label.match(/, (\d+) tickets?$/)?.[1])
+  const [response] = await Promise.all([
+    page.waitForResponse((r) => r.url().includes('/api/tickets?') && r.request().method() === 'GET'),
+    card.click(),
+  ])
+  const body = (await response.json()) as { meta: { totalItems: number } }
+  return { count, total: body.meta.totalItems }
+}
+
+test.describe('Dashboards', () => {
+  test('E2E4-03 each role lands on its Dashboard and a card opens a list as long as its count', async ({ page }) => {
+    await login(page, ACCOUNTS.requester)
+    await expect(page.getByRole('heading', { name: 'Welcome, Sarah' })).toBeVisible()
+    const requesterCard = await openCardAndReadTotal(page, /^Open tickets, \d+ tickets?$/)
+    expect(requesterCard.total).toBe(requesterCard.count)
+    await expect(page.getByText('Showing: Active tickets')).toBeVisible()
+    await page.getByRole('button', { name: 'Logout' }).click()
+
+    await login(page, ACCOUNTS.staff)
+    await expect(page.getByRole('heading', { name: 'Welcome, Alex' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Dashboard' })).toHaveAttribute('aria-current', 'page')
+    const staffCard = await openCardAndReadTotal(page, /^Unassigned, \d+ tickets?$/)
+    expect(staffCard.total).toBe(staffCard.count)
+    await expect(page.getByRole('heading', { name: 'Ticket Queue' })).toBeVisible()
+    await page.getByRole('button', { name: 'Logout' }).click()
+
+    await login(page, ACCOUNTS.admin)
+    await expect(page.getByRole('heading', { name: 'Welcome, Morgan' })).toBeVisible()
+    await expect(page.getByRole('button', { name: /active · \d+ inactive/ })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Ticket Queue' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'User Management' })).toBeVisible()
+  })
+
+  test('E2E4-04 walking every screen of every role shows no console errors or failed requests', async ({ page }) => {
+    const problems: string[] = []
+    page.on('console', (message) => {
+      if (message.type() === 'error') problems.push(`console: ${message.text()}`)
+    })
+    page.on('pageerror', (error) => problems.push(`pageerror: ${error.message}`))
+    page.on('response', (response) => {
+      const url = response.url()
+      // The login screen asks /api/auth/me before there is a session, so one 401 there is expected.
+      if (response.status() >= 400 && !(url.endsWith('/api/auth/me') && response.status() === 401)) {
+        problems.push(`${response.status()} ${url}`)
+      }
+    })
+
+    const screens: Record<string, string[]> = {
+      [ACCOUNTS.requester]: ['Dashboard', 'My Tickets', 'Create Ticket'],
+      [ACCOUNTS.staff]: ['Dashboard', 'Ticket Queue'],
+      [ACCOUNTS.admin]: ['Dashboard', 'Ticket Queue', 'User Management'],
+    }
+    for (const [email, items] of Object.entries(screens)) {
+      await login(page, email)
+      for (const item of items) {
+        await page.getByRole('button', { name: item, exact: true }).first().click()
+        await page.waitForLoadState('networkidle')
+      }
+      await page.getByRole('button', { name: 'Logout' }).click()
+      await expect(page.getByRole('heading', { name: 'TokTickIT' })).toBeVisible()
+    }
+
+    expect(problems).toEqual([])
+  })
+})
+```
+
+- [ ] **Step 3: Run E2E.** `npx playwright test` from the repo root: all specs (Labs 2 to 4) pass. Fix locators to the real screens, not assertions. The E2E4-04 walk is the guard for "no console errors, broken links" on every role's screens.
+
+- [ ] **Step 4: Real-browser check** (`.claude/launch.json`: `toktickit-server`, `toktickit-client`). Log in as each role: Dashboard layout at 1280, 768 and 390 px (cards 4 across, 2 by 2, one column; lists stack on narrow widths; no horizontal scroll), card focus ring, a drill-down shows its "Showing: ..." line and Clear Filters works, a row opens the Ticket and Back returns to the Dashboard (then the numbers refresh), Administrator users strip. Note any visual issue for the hardening Issue rather than redesigning here.
+
+- [ ] **Step 5: Docs.** In `docs/lab-04/tests.md` mark Pass: WF-16, RD-01 to RD-09, SD-01 to SD-09, UI4-01 to UI4-07, UI4-24, E2E4-03, E2E4-04 (same script as before: match by ID, replace the trailing `Planned |`; remove the "WF-16 ships with the dashboards Issue" note line). Add notes: `users.byRole` counts all users of a role; the Lab 3 E2E and client tests were adjusted only for the new landing page and for the Ticket Detail now rendered by `App`.
+
+- [ ] **Step 6: Final runs and stage.** Server: `npx tsc --noEmit -p . && npx vitest run` five times; client: `npx tsc --noEmit -p tsconfig.app.json && npx vitest run && npm run build`; E2E all green. `git add -A && git status --short`. Report counts, anything not run, and wait for "commit".
+
+---
+
+## Self-Review
+
+**Spec coverage.** FR-L4-12/13 (scoped Requester, staff and Administrator dashboards) → Tasks 2, 3, 6. FR-L4-14 (every card has a query, an empty state and a drill-down) → Tasks 2, 3, 6, 7. FR-L4-19 and BR-L4-23 (Dashboard landing, nav per role, active item marked in text) → Tasks 4, 5, 7, 8. BR-L4-17 (Requester cards, recently updated, recently resolved from history) → RD-01 to RD-05, RD-09. BR-L4-18 (staff metrics, active definition, Administrator counts) → SD-01, SD-02, SD-06, SD-07, SD-09. BR-L4-19 (at most 5 items of at most 6 fields, rolling UTC window) → RD-03, RD-04, SD-06. BR-L4-20 and AC-L4-25 (count equals drill-down rows) → RD-07, SD-05, E2E4-03, and WF-16 filters in Task 1. AC-L4-21 to 24, 30, 33 → RD/SD/UI4/E2E rows above. WF-16 → Task 1. ui-spec §1 (single navigation state, rows open Ticket Detail, Back returns) → Tasks 4, 5, 7. ui-spec §2/§3 (cards 4/2/1 columns, "View all", quick actions, feedback states, Retry, Refresh announcements) → Tasks 6, 7. Not here on purpose: removing the health-check panel and other cleanup, the accessibility sweep, screenshots (hardening and release Issues).
+
+**Placeholders.** None. One instruction in Task 3 replaces a deliberately flagged weak assertion with two concrete ones, written out in the step. The sandbox helper (`MigrationSandbox`, `migrationNames`) comes from feature 25.
+
+**Type consistency.** `Card`/`DrillDown` shapes are defined once on the server (Task 2) and mirrored in `api/dashboard.ts` (Task 4). `ListFilters` keys equal the `GET /api/tickets` parameter names and the drill-down `query` keys. `navReducer` actions (`goto`, `open`, `close`) match their uses in `App.tsx` and the tests. Component props for the two dashboards match the call sites in `App.tsx`. `createDashboardService(db).requester/staff` signatures match both the router and the sandbox tests.
+</script>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
+<script>
+  try {
+    var md = document.getElementById('plan-md').textContent;
+    document.getElementById('plan').innerHTML = marked.parse(md);
+  } catch (e) {
+    document.getElementById('plan').innerHTML = '<pre></pre>';
+    document.querySelector('#plan pre').textContent = document.getElementById('plan-md').textContent;
+  }
+  try {
+    var dark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    mermaid.initialize({ startOnLoad: false, theme: dark ? 'dark' : 'neutral' });
+    mermaid.run({ querySelector: '.mermaid' });
+  } catch (e) {}
+</script>
+</body>
+</html>

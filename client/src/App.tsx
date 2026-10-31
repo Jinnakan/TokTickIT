@@ -1,50 +1,116 @@
-import { useState } from 'react'
+import { useReducer, useRef } from 'react'
 import { AppShell } from './components/AppShell.js'
 import { ChangePassword } from './components/ChangePassword.js'
 import { CreateTicketForm } from './components/CreateTicketForm.js'
 import { Login } from './components/Login.js'
-import { MyTicketsList } from './components/MyTicketsList.js'
-import { StaffTicketQueue } from './components/StaffTicketQueue.js'
+import { MyTicketsList, type MyTicketsSnapshot } from './components/MyTicketsList.js'
+import { StaffTicketQueue, type QueueSnapshot } from './components/StaffTicketQueue.js'
 import { TicketDetail } from './components/TicketDetail.js'
 import { UserManagement } from './components/UserManagement.js'
 import { CurrentUserProvider, useCurrentUser } from './current-user-context.js'
 import { getNavItemsForRole } from './nav/role-navigation-factory.js'
+import { RequesterDashboard } from './components/RequesterDashboard.js'
+import { StaffDashboard } from './components/StaffDashboard.js'
+import { StaffTicketDetail } from './components/StaffTicketDetail.js'
+import { initialNavState, navReducer, type ListFilters } from './nav/app-navigation.js'
+
+const BACK_LABELS: Record<string, string> = {
+  dashboard: '← Back to Dashboard',
+  'ticket-queue': '← Ticket Queue',
+  'my-tickets': '← Back to My Tickets',
+}
 
 function AuthenticatedApp() {
   const { currentUser } = useCurrentUser()
-  const [activeKey, setActiveKey] = useState(() => getNavItemsForRole(currentUser!.role)[0]?.key ?? '')
-  const [openTicketId, setOpenTicketId] = useState<number | null>(null)
+  const [nav, dispatch] = useReducer(navReducer, undefined, () => initialNavState(currentUser!.role))
+  // What the open list looked like, so Back restores filters, page and search after the list was unmounted.
+  const snapshot = useRef<{ seq: number; value: unknown } | null>(null)
 
   if (!currentUser) return null // unreachable -- caller only renders this once currentUser exists
 
-  function navigate(key: string) {
-    setOpenTicketId(null)
-    setActiveKey(key)
+  const isRequester = currentUser.role === 'REQUESTER'
+  const { place, placeSeq, openTicketId, listRefresh } = nav
+  const goto = (key: string, filters?: ListFilters) => dispatch({ type: 'goto', key, filters })
+  const openTicket = (ticketId: number) => dispatch({ type: 'open', ticketId })
+  const savedFor = <T,>(): T | undefined => (snapshot.current?.seq === nav.placeSeq ? (snapshot.current.value as T) : undefined)
+  const save = (value: unknown) => {
+    snapshot.current = { seq: nav.placeSeq, value }
   }
 
-  function renderContent() {
-    if (currentUser!.role === 'IT_STAFF') {
-      return <StaffTicketQueue currentUserId={currentUser!.id} />
+  function renderPlace() {
+    // A screen the role's navigation never offers (for example a direct call) is refused in words (ui-spec §3).
+    if (!getNavItemsForRole(currentUser!.role).some((item) => item.key === place.key)) {
+      return (
+        <div className="alert alert-warning" role="alert">
+          You do not have access to this page.
+        </div>
+      )
     }
-
-    if (currentUser!.role === 'ADMINISTRATOR') {
-      return <UserManagement />
+    switch (place.key) {
+      case 'ticket-queue':
+        return (
+          <StaffTicketQueue
+            currentUserId={currentUser!.id}
+            onOpenTicket={openTicket}
+            initialFilters={place.filters}
+            refreshKey={listRefresh}
+            snapshot={savedFor<QueueSnapshot>()}
+            onSnapshot={save}
+          />
+        )
+      case 'user-management':
+        return <UserManagement />
+      case 'create-ticket':
+        return <CreateTicketForm requesterName={currentUser!.name} onViewMyTickets={() => goto('my-tickets')} />
+      case 'my-tickets':
+        return (
+          <MyTicketsList
+            onCreateTicket={() => goto('create-ticket')}
+            onOpenTicket={openTicket}
+            initialFilters={place.filters}
+            refreshKey={listRefresh}
+            snapshot={savedFor<MyTicketsSnapshot>()}
+            onSnapshot={save}
+          />
+        )
+      default:
+        return isRequester ? (
+          <RequesterDashboard
+            firstName={currentUser!.name.split(' ')[0]}
+            onNavigate={goto}
+            onOpenTicket={openTicket}
+            refreshKey={listRefresh}
+          />
+        ) : (
+          <StaffDashboard
+            role={currentUser!.role as 'IT_STAFF' | 'ADMINISTRATOR'}
+            firstName={currentUser!.name.split(' ')[0]}
+            onNavigate={goto}
+            onOpenTicket={openTicket}
+            refreshKey={listRefresh}
+          />
+        )
     }
-
-    if (openTicketId !== null) {
-      return <TicketDetail ticketId={openTicketId} onBackToMyTickets={() => setOpenTicketId(null)} />
-    }
-
-    if (activeKey === 'create-ticket') {
-      return <CreateTicketForm requesterName={currentUser!.name} onViewMyTickets={() => navigate('my-tickets')} />
-    }
-
-    return <MyTicketsList onCreateTicket={() => navigate('create-ticket')} onOpenTicket={setOpenTicketId} />
   }
 
   return (
-    <AppShell activeKey={activeKey} onNavigate={navigate}>
-      {renderContent()}
+    <AppShell activeKey={place.key} onNavigate={(key) => goto(key)}>
+      {openTicketId === null && <div key={placeSeq}>{renderPlace()}</div>}
+      {openTicketId !== null &&
+        (isRequester ? (
+          <TicketDetail
+            ticketId={openTicketId}
+            onBackToMyTickets={() => dispatch({ type: 'close' })}
+            backLabel={BACK_LABELS[place.key]}
+          />
+        ) : (
+          <StaffTicketDetail
+            ticketId={openTicketId}
+            currentUserId={currentUser.id}
+            onBackToQueue={() => dispatch({ type: 'close' })}
+            backLabel={BACK_LABELS[place.key]}
+          />
+        ))}
     </AppShell>
   )
 }

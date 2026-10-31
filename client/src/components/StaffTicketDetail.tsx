@@ -27,10 +27,12 @@ export function StaffTicketDetail({
   ticketId,
   currentUserId,
   onBackToQueue,
+  backLabel = '← Ticket Queue',
 }: {
   ticketId: number
   currentUserId: number
   onBackToQueue: () => void
+  backLabel?: string
 }) {
   const [status, setStatus] = useState<Status>('loading')
   const [ticket, setTicket] = useState<StaffTicketDetailType | null>(null)
@@ -95,7 +97,7 @@ export function StaffTicketDetail({
     <div>
       <nav aria-label="breadcrumb" className="mb-3">
         <button type="button" className="btn btn-link p-0" onClick={onBackToQueue}>
-          ← Ticket Queue
+          {backLabel}
         </button>
       </nav>
 

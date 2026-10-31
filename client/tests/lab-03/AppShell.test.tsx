@@ -63,6 +63,9 @@ describe('App auth gate and role-based shell (Issue 16)', () => {
       if (url.startsWith('/api/tickets')) {
         return { ok: true, json: async () => ({ data: [], meta: { page: 1, pageSize: 10, totalItems: 0, totalPages: 0 } }) } as Response
       }
+      if (url.startsWith('/api/dashboard')) {
+        return { ok: true, json: async () => ({ cards: [], recentlyUpdated: [], recentlyResolved: [], byStatus: [], byItPriority: [], myActions: [] }) } as Response
+      }
       return { ok: true, json: async () => [] } as Response
     }))
 

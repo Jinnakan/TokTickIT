@@ -9,6 +9,7 @@ import { commentsRouter } from './comments.js'
 import { notesRouter } from './notes.js'
 import { actionsRouter } from './actions/actions-router.js'
 import { ticketWorkflowRouter } from './tickets/ticket-workflow-router.js'
+import { dashboardRouter } from './dashboard/dashboard-router.js'
 import { usersRouter } from './users/users-router.js'
 import { registerSessionInvalidationListener } from './users/session-invalidation-listener.js'
 
@@ -68,3 +69,4 @@ app.use('/api/tickets/:ticketId', ticketWorkflowRouter)
 app.use('/api/attachments', attachmentsRouter)
 app.use('/api/tickets', ticketsRouter)
 app.use('/api/users', usersRouter)
+app.use('/api/dashboard', dashboardRouter)

@@ -32,6 +32,9 @@ export function stubAppFetch(overrides: AppFetchOverrides = {}) {
     if (url === '/api/related-systems') {
       return { ok: true, json: async () => overrides.relatedSystems ?? [] } as Response
     }
+    if (url.startsWith('/api/dashboard')) {
+      return { ok: true, json: async () => ({ cards: [], recentlyUpdated: [], recentlyResolved: [], byStatus: [], byItPriority: [], myActions: [] }) } as Response
+    }
     if (url.startsWith('/api/tickets')) {
       return { ok: true, json: async () => overrides.ticketsList ?? EMPTY_TICKET_LIST } as Response
     }

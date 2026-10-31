@@ -14,6 +14,7 @@ async function logout(page: Page) {
   await expect(page.getByRole('heading', { name: 'TokTickIT' })).toBeVisible()
 }
 async function openQueueTicket(page: Page, summary: string) {
+  await page.getByRole('button', { name: 'Ticket Queue' }).click()
   await expect(page.getByRole('heading', { name: 'Ticket Queue' })).toBeVisible()
   await page.getByPlaceholder('Search by ticket number or summary…').fill(summary)
   await page.getByText(summary).first().click()

@@ -32,6 +32,7 @@ test.describe('IT Staff ticket workflow', () => {
     await page.getByLabel('Email *').fill('alex.rivera@toktickit.test')
     await page.getByLabel('Password *').fill('DevPass123!')
     await page.getByRole('button', { name: 'Login' }).click()
+    await page.getByRole('button', { name: 'Ticket Queue' }).click()
     await expect(page.getByRole('heading', { name: 'Ticket Queue' })).toBeVisible()
 
     await page.getByPlaceholder('Search by ticket number or summary…').fill(uniqueSummary)
@@ -69,6 +70,7 @@ test.describe('IT Staff ticket workflow', () => {
     await requesterPage.getByLabel('Email *').fill('sarah.johnson@toktickit.test')
     await requesterPage.getByLabel('Password *').fill('DevPass123!')
     await requesterPage.getByRole('button', { name: 'Login' }).click()
+    await requesterPage.getByRole('button', { name: 'My Tickets', exact: true }).click()
     await requesterPage.getByPlaceholder('Search by ticket number or summary…').fill(uniqueSummary)
     await requesterPage.getByText(uniqueSummary).first().click()
     await expect(requesterPage.getByText('Looked into this, investigating further.')).toBeVisible()

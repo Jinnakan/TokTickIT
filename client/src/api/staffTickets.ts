@@ -10,6 +10,8 @@ export async function fetchStaffTicketQueue(
   if (query.requestedPriority) params.set('requestedPriority', query.requestedPriority)
   if (query.itPriority) params.set('itPriority', query.itPriority)
   if (query.currentStatus) params.set('currentStatus', query.currentStatus)
+  if (query.statusGroup) params.set('statusGroup', query.statusGroup)
+  if (query.requesterReportedResolved) params.set('requesterReportedResolved', 'true')
   if (query.ticketOwnerId !== undefined) params.set('ticketOwnerId', String(query.ticketOwnerId))
   if (query.unassignedOnly) params.set('unassignedOnly', 'true')
   if (query.sortBy) params.set('sortBy', query.sortBy)
