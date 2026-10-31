@@ -30,6 +30,7 @@ function stubFetch(overrides: { ticket?: typeof baseTicket; comments?: unknown[]
     if (url === '/api/related-systems') return { ok: true, json: async () => relatedSystems } as Response
     if (url === '/api/tickets/42') return { ok: true, json: async () => overrides.ticket ?? baseTicket } as Response
     if (url === '/api/tickets/42/attachments') return { ok: true, json: async () => [] } as Response
+    if (url === '/api/tickets/42/actions') return { ok: true, json: async () => [] } as Response
     if (url === '/api/tickets/42/comments') return { ok: true, json: async () => overrides.comments ?? [] } as Response
     if (url === '/api/tickets/42/notes') return { ok: true, json: async () => overrides.notes ?? [] } as Response
     if (url === '/api/users/assignable') return { ok: true, json: async () => [] } as Response
@@ -112,6 +113,7 @@ describe('StaffTicketDetail', () => {
       if (url === '/api/categories') return { ok: true, json: async () => categories } as Response
       if (url === '/api/related-systems') return { ok: true, json: async () => relatedSystems } as Response
       if (url === '/api/tickets/42/attachments') return { ok: true, json: async () => [] } as Response
+      if (url === '/api/tickets/42/actions') return { ok: true, json: async () => [] } as Response
       if (url === '/api/tickets/42/comments') return { ok: true, json: async () => [] } as Response
       if (url === '/api/tickets/42/notes') return { ok: true, json: async () => [] } as Response
       if (url === '/api/tickets/42/claim' && init?.method === 'POST') {

@@ -1,4 +1,4 @@
-import { PRIORITY_LABELS, STATUS_LABELS } from '@toktickit/shared'
+import { ACTION_STATUS_LABELS, PRIORITY_LABELS, STATUS_LABELS, type ActionStatusValue } from '@toktickit/shared'
 import type { Priority, TicketStatus } from '../types/ticket.js'
 
 const PRIORITY_BADGE_CLASS: Record<Priority, string> = {
@@ -26,4 +26,15 @@ export function PriorityBadge({ priority }: { priority: Priority }) {
 
 export function StatusBadge({ status }: { status: TicketStatus }) {
   return <span className={`badge rounded-pill ${STATUS_BADGE_CLASS[status]}`}>{STATUS_LABELS[status]}</span>
+}
+
+const ACTION_BADGE_CLASS: Record<ActionStatusValue, string> = {
+  PLANNED: 'bg-info-subtle text-info-emphasis',
+  IN_PROGRESS: 'bg-warning-subtle text-warning-emphasis',
+  COMPLETED: 'bg-success-subtle text-success-emphasis',
+  CANCELLED: 'bg-secondary-subtle text-secondary-emphasis text-decoration-line-through',
+}
+
+export function ActionStatusBadge({ status }: { status: ActionStatusValue }) {
+  return <span className={`badge rounded-pill ${ACTION_BADGE_CLASS[status]}`}>{ACTION_STATUS_LABELS[status]}</span>
 }
