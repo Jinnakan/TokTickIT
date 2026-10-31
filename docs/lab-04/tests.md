@@ -130,11 +130,11 @@ File: `staff-dashboard.api.test.ts`
 
 | Test ID | Requirement/AC | What It Tests | Expected Result | File | Final |
 |---|---|---|---|---|---|
-| CO-01 | AC-L4-27, FR-L4-15 | `GET /api/users/assignable` by role and content | Staff and Administrator 200, active staff and Administrators only, minimal fields; Requester 403 | `carry-overs.api.test.ts` | Planned |
-| CO-02 | FR-L4-15 | Reassign to an Administrator; to an inactive user and a Requester | 200; 400 | `carry-overs.api.test.ts` | Planned |
-| CO-03 | AC-L4-27, FR-L4-16 | Administrator edits email; duplicate; bad format; own unchanged email | 200; 400 `EMAIL_TAKEN`; 400; 200 | `carry-overs.api.test.ts` | Planned |
-| CO-04 | AC-L4-27 | Attachment upload and remove as IT Staff; list and download | 403, 403; 200, 200 | `carry-overs.api.test.ts` | Planned |
-| CO-05 | FR-L4-17 | Self-deactivation and last-Administrator codes | 409 `SELF_DEACTIVATION`, 409 `LAST_ADMINISTRATOR` | `carry-overs.api.test.ts` | Planned |
+| CO-01 | AC-L4-27, FR-L4-15 | `GET /api/users/assignable` by role and content | Staff and Administrator 200, active staff and Administrators only, minimal fields; Requester 403 | `carry-overs.api.test.ts` | Pass |
+| CO-02 | FR-L4-15 | Reassign to an Administrator; to an inactive user and a Requester | 200; 400 | `carry-overs.api.test.ts` | Pass |
+| CO-03 | AC-L4-27, FR-L4-16 | Administrator edits email; duplicate; bad format; own unchanged email | 200; 400 `EMAIL_TAKEN`; 400; 200 | `carry-overs.api.test.ts` | Pass |
+| CO-04 | AC-L4-27 | Attachment upload and remove as IT Staff; list and download | 403, 403; 200, 200 | `carry-overs.api.test.ts` | Pass |
+| CO-05 | FR-L4-17 | Self-deactivation and last-Administrator codes | 409 `SELF_DEACTIVATION`, 409 `LAST_ADMINISTRATOR` | `carry-overs.api.test.ts` | Pass |
 | SEC4-01 | BR-L4-22 | IDOR sweep over Actions, history, appears-resolved, dashboards across roles and owners | Only permitted combinations succeed | `security.api.test.ts` | Planned |
 | SEC4-02 | §10 | Mass assignment on Action create and edit and on Ticket mutations | Disallowed fields ignored | `security.api.test.ts` | Planned |
 | SEC4-03 | §10 | Every new mutating route with a wrong or missing Origin | 403 `ORIGIN_MISMATCH` | `security.api.test.ts` | Planned |
@@ -182,7 +182,7 @@ File: `staff-dashboard.api.test.ts`
 | UI4-20 | AC-L4-16 | Requester button and text; staff badge | Button then text; badge for staff only | `TicketWorkflow.test.tsx` | Planned |
 | UI4-21 | AC-L4-18 | History list | Ordered rows | `TicketWorkflow.test.tsx` | Planned |
 | UI4-22 | AC-L4-08 | A stale ticket update | Message and Reload; nothing overwritten | `TicketWorkflow.test.tsx` | Planned |
-| UI4-23 | AC-L4-27 | Reassign control, email field, specific messages, attachment controls | As specified; no Add or Remove for staff | `CarryOvers.test.tsx` | Planned |
+| UI4-23 | AC-L4-27 | Reassign control, email field, specific messages, attachment controls | As specified; no Add or Remove for staff | `CarryOvers.test.tsx` | Pass |
 | UI4-24 | AC-L4-30, BR-L4-23 | Navigation per role, landing page, active-item marking | Right items, Dashboard first, `aria-current` on the active one | `Navigation.test.tsx` | Planned |
 
 ### UI Style, Responsive, and Accessibility
@@ -272,7 +272,7 @@ File: `staff-dashboard.api.test.ts`
 Tracks `ui-spec.md` §9. Each box is ticked in the Issue that ships the screen
 and rechecked in the hardening Issue, not backfilled at the end.
 
-- [ ] Carry-over screens (carry-overs Issue)
+- [x] Carry-over screens (carry-overs Issue): reassign selector, editable email, specific messages, and attachment controls checked by component tests and the E2E; the three-width visual pass is rechecked in the hardening Issue
 - [ ] Actions Taken, all modes (Actions UI Issue)
 - [ ] Ticket workflow controls and history (workflow Issue)
 - [ ] Requester and Staff dashboards and navigation (dashboards Issue)
@@ -299,3 +299,10 @@ above exists.
 - Accessibility is checked with keyboard walk-throughs and accessible-name
   assertions; no screen-reader testing is done.
 - The demo seed is exercised by the MIG rows; every other test builds its own data.
+- **Server suite stability (REG-04).** The Lab 3 suite failed about 1 run in 8
+  (`socket hang up`, `Parse Error: Expected HTTP/`, 20 s timeouts). Cause:
+  supertest listened on a random port on all interfaces, and other programs
+  on the machine hold 127.0.0.1 ports in the same range, so a request could
+  reach the wrong process. `server/tests/helpers/app.ts` now binds the test
+  server to 127.0.0.1, and every test imports `app` from it. After the fix the
+  full suite passed 40 of 40 consecutive runs.

@@ -1,6 +1,6 @@
 import request from 'supertest'
 import type { Role } from '@prisma/client'
-import { app } from '../../src/app.js'
+import { app } from './app.js'
 import { prisma } from '../../src/prisma.js'
 import { SEED_PASSWORD } from '../../prisma/seed-data.js'
 
@@ -31,6 +31,19 @@ function withDefaultOrigin(agent: AuthenticatedAgent): AuthenticatedAgent {
  * session cookie across requests) plus that user's id. Replaces Lab 2's
  * raw `X-Dev-Requester-Id` header now that the header is gone (Issue 16).
  */
+export async function loginAsEmail(
+  email: string,
+  password: string = SEED_PASSWORD,
+): Promise<{ agent: AuthenticatedAgent; userId: number }> {
+  const agent = withDefaultOrigin(request.agent(app))
+  const response = await agent.post('/api/auth/login').send({ email, password })
+  if (response.status !== 200) {
+    throw new Error(`Test login failed for ${email}: ${response.status} ${JSON.stringify(response.body)}`)
+  }
+
+  return { agent, userId: response.body.id as number }
+}
+
 export async function loginAsRole(role: Role, index = 0): Promise<{ agent: AuthenticatedAgent; userId: number }> {
   const user = await prisma.user.findFirstOrThrow({
     where: { role, isActive: true },
@@ -38,13 +51,7 @@ export async function loginAsRole(role: Role, index = 0): Promise<{ agent: Authe
     skip: index,
   })
 
-  const agent = withDefaultOrigin(request.agent(app))
-  const response = await agent.post('/api/auth/login').send({ email: user.email, password: SEED_PASSWORD })
-  if (response.status !== 200) {
-    throw new Error(`Test login failed for ${user.email}: ${response.status} ${JSON.stringify(response.body)}`)
-  }
-
-  return { agent, userId: user.id }
+  return loginAsEmail(user.email)
 }
 
 export function loginAsRequester(index = 0) {

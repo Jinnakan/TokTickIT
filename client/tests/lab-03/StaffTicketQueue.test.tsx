@@ -51,6 +51,7 @@ function stubFetch(overrides: { onTicketsRequest?: (url: string) => void } = {})
     if (url === '/api/categories') return { ok: true, json: async () => categories } as Response
     if (url === '/api/related-systems') return { ok: true, json: async () => relatedSystems } as Response
     if (url === '/api/tickets/1') return { ok: true, json: async () => ticketOneDetail } as Response
+    if (url === '/api/users/assignable') return { ok: true, json: async () => [] } as Response
     if (url.startsWith('/api/tickets?')) {
       overrides.onTicketsRequest?.(url)
       return { ok: true, json: async () => twoRequesterTickets } as Response

@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import type { TicketStatus } from '@prisma/client'
+import type { Role, TicketStatus } from '@prisma/client'
 import { PRIORITIES } from '@toktickit/shared'
 import { prisma } from '../prisma.js'
 import { requireSession, requirePasswordAlreadyChanged } from '../auth/require-session.js'
@@ -7,6 +7,8 @@ import { requireRole } from '../authorization/require-role.js'
 import { getTicketState } from '../tickets/ticket-state/ticket-state-factory.js'
 
 export const staffTicketActionsRouter = Router({ mergeParams: true })
+
+const OWNER_ROLES: readonly Role[] = ['IT_STAFF', 'ADMINISTRATOR']
 
 const requireStaff = [requireSession, requirePasswordAlreadyChanged, requireRole('IT_STAFF', 'ADMINISTRATOR')]
 
@@ -65,10 +67,10 @@ staffTicketActionsRouter.post('/reassign', ...requireStaff, async (request, resp
     }
 
     const targetStaff = await prisma.user.findUnique({ where: { id: ticketOwnerId } })
-    if (!targetStaff || targetStaff.role !== 'IT_STAFF' || !targetStaff.isActive) {
+    if (!targetStaff || !OWNER_ROLES.includes(targetStaff.role) || !targetStaff.isActive) {
       response.status(400).json({
         error: 'VALIDATION_FAILED',
-        fields: { ticketOwnerId: 'ticketOwnerId must reference an active IT Staff user.' },
+        fields: { ticketOwnerId: 'ticketOwnerId must reference an active IT Staff or Administrator user.' },
       })
       return
     }
