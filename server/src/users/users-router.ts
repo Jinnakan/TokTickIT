@@ -1,9 +1,9 @@
+import { guardFor } from '../http/guards.js'
+import { parseId } from '../http/params.js'
 import { Router } from 'express'
 import type { Role } from '@prisma/client'
 import { ASSIGNABLE_ROLES } from './assignable-roles.js'
 import { prisma } from '../prisma.js'
-import { requireSession, requirePasswordAlreadyChanged } from '../auth/require-session.js'
-import { requireRole } from '../authorization/require-role.js'
 import {
   DEFAULT_PAGE,
   DEFAULT_PAGE_SIZE,
@@ -15,8 +15,8 @@ import { UserService } from './user-service.js'
 
 export const usersRouter = Router()
 
-const requireAdmin = [requireSession, requirePasswordAlreadyChanged, requireRole('ADMINISTRATOR')]
-const requireStaff = [requireSession, requirePasswordAlreadyChanged, requireRole('IT_STAFF', 'ADMINISTRATOR')]
+const requireAdmin = guardFor('ADMINISTRATOR')
+const requireStaff = guardFor('IT_STAFF', 'ADMINISTRATOR')
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const EMAIL_MAX_LENGTH = 254
 const userService = new UserService(prisma)
@@ -27,11 +27,6 @@ function isValidEmail(email: string): boolean {
 
 function isUniqueViolation(error: unknown): boolean {
   return typeof error === 'object' && error !== null && (error as { code?: string }).code === 'P2002'
-}
-
-function toInteger(value: unknown): number | null {
-  const parsed = typeof value === 'number' ? value : Number(value)
-  return Number.isInteger(parsed) ? parsed : null
 }
 
 function toUserResponse(user: {
@@ -90,8 +85,8 @@ usersRouter.get('/', ...requireAdmin, async (request, response, next) => {
     const role = typeof query.role === 'string' && (ROLES as readonly string[]).includes(query.role) ? (query.role as Role) : undefined
     const isActive = query.isActive === 'true' ? true : query.isActive === 'false' ? false : undefined
 
-    const pageRaw = toInteger(query.page)
-    const pageSizeRaw = toInteger(query.pageSize)
+    const pageRaw = parseId(query.page)
+    const pageSizeRaw = parseId(query.pageSize)
     const page = Math.max(DEFAULT_PAGE, pageRaw ?? DEFAULT_PAGE)
     const pageSize = Math.min(MAX_PAGE_SIZE, Math.max(1, pageSizeRaw ?? DEFAULT_PAGE_SIZE))
 
@@ -158,7 +153,7 @@ usersRouter.post('/', ...requireAdmin, async (request, response, next) => {
 
 usersRouter.patch('/:id', ...requireAdmin, async (request, response, next) => {
   try {
-    const userId = toInteger(request.params.id)
+    const userId = parseId(request.params.id)
     if (userId === null) {
       response.status(404).json({ error: 'USER_NOT_FOUND' })
       return
@@ -234,7 +229,7 @@ usersRouter.patch('/:id', ...requireAdmin, async (request, response, next) => {
 
 usersRouter.post('/:id/reset-password', ...requireAdmin, async (request, response, next) => {
   try {
-    const userId = toInteger(request.params.id)
+    const userId = parseId(request.params.id)
     if (userId === null) {
       response.status(404).json({ error: 'USER_NOT_FOUND' })
       return
@@ -255,7 +250,7 @@ usersRouter.post('/:id/reset-password', ...requireAdmin, async (request, respons
 
 usersRouter.post('/:id/deactivate', ...requireAdmin, async (request, response, next) => {
   try {
-    const userId = toInteger(request.params.id)
+    const userId = parseId(request.params.id)
     const callerId = response.locals.userId as number
 
     if (userId === null) {
@@ -292,7 +287,7 @@ usersRouter.post('/:id/deactivate', ...requireAdmin, async (request, response, n
 
 usersRouter.post('/:id/activate', ...requireAdmin, async (request, response, next) => {
   try {
-    const userId = toInteger(request.params.id)
+    const userId = parseId(request.params.id)
     if (userId === null) {
       response.status(404).json({ error: 'USER_NOT_FOUND' })
       return

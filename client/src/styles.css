@@ -99,17 +99,6 @@ body {
   font-size: 0.875rem;
 }
 
-.system-result {
-  padding: 1.25rem;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 0.75rem;
-}
-
-.system-result li + li {
-  margin-top: 0.35rem;
-}
-
 /* Read-only field styling (ui-spec.md §3): visibly distinct from an editable input. */
 .field-readonly {
   background-color: var(--zg-field-readonly-bg);
@@ -130,6 +119,16 @@ body {
   --bs-btn-active-border-color: #004526;
   --bs-btn-disabled-bg: var(--zg-primary);
   --bs-btn-disabled-border-color: var(--zg-primary);
+}
+
+.btn-outline-secondary {
+  /* Bootstrap's grey (#6c757d) is under 4.5:1 on the page background; a darker text keeps the same look. */
+  --bs-btn-color: #495057;
+  --bs-btn-border-color: #6c757d;
+  --bs-btn-hover-bg: #495057;
+  --bs-btn-hover-border-color: #495057;
+  --bs-btn-active-bg: #343a40;
+  --bs-btn-active-border-color: #343a40;
 }
 
 .btn-outline-primary {

@@ -1,14 +1,18 @@
 # TokTickIT
 
-An IT support ticketing app. Lab 2 delivered the Requester-facing MVP with
-a temporary Development Requester selector standing in for login. Lab 3
-replaces that with real session-based authentication, three roles
-(Requester, IT Staff, Administrator), and the workflows each role needs:
-Requesters create and track their own tickets and comment on them; IT
-Staff work a shared ticket queue, claim/reassign/prioritize/transition
-tickets through their full status lifecycle, and leave Internal Notes not
-visible to Requesters; Administrators manage user accounts. See
-`docs/lab-03/specification.md` for the full engineering contract.
+An IT support ticketing app with three roles.
+
+- **Requesters** create tickets, follow them, comment, attach files, see the
+  Actions Taken on their tickets and the status history, and can say "problem
+  appears resolved" without changing the status.
+- **IT Staff** work a shared queue: claim, reassign and prioritize tickets, record
+  Actions Taken (planned, in progress, completed, cancelled, with follow-ups), and
+  move tickets through their lifecycle. A ticket cannot be resolved while work is
+  unfinished (the resolution gate), and stale or simultaneous edits are rejected.
+- **Administrators** manage user accounts and can do everything IT Staff can.
+
+Every role lands on a Dashboard with counts that link to the matching list.
+`docs/architecture.md` explains how the code is organized and where new code goes.
 
 ## Requirements
 
@@ -31,14 +35,14 @@ visible to Requesters; Administrators manage user accounts. See
    cp .env.example server/.env
    ```
 
-3. Set `DATABASE_URL` in `server/.env` if your PostgreSQL credentials differ from the supplied Docker defaults.
-4. Install dependencies. This is an npm workspace (`client`, `server`, and `packages/shared`), so run install **once from the repo root** — this also links `packages/shared` into both `client` and `server`. Running `npm install` inside `client/` or `server/` individually will not create that link.
+3. Set `DATABASE_URL` in `server/.env` if your PostgreSQL credentials differ from the supplied Docker defaults. The server checks `DATABASE_URL`, `PORT` and `APP_ORIGIN` at startup and names anything that is wrong.
+4. Install dependencies. This is an npm workspace (`client`, `server`, `packages/shared`), so run install **once from the repo root**; running it inside `client/` or `server/` does not link `packages/shared`.
 
    ```bash
    npm install
    ```
 
-5. Generate Prisma Client and apply the tracked migrations, from `server/`:
+5. Generate Prisma Client, apply the migrations, and seed the base data, from `server/`:
 
    ```bash
    cd server
@@ -47,37 +51,28 @@ visible to Requesters; Administrators manage user accounts. See
    npm run prisma:seed
    ```
 
-   `prisma:seed` is idempotent — running it again does not create
-   duplicates or reset the shared dev password below. It seeds the 4
-   required Categories, 7 Related Systems, and a set of Users across all
-   three roles (active and inactive/deactivated accounts, plus one account
-   with a pending forced password change, to exercise every login-path
-   edge case).
+   `prisma:seed` is idempotent. It seeds the 4 Categories, 7 Related Systems and
+   users in every role, including inactive accounts and one account that must
+   change its password on first login.
 
-Optional demo data (24 realistic tickets across Requesters, statuses,
-priorities and owners, with example Public Comments and Internal Notes),
-for reviewing the Ticket Queue with realistic content. Safe to re-run:
+Optional demo data (realistic tickets, comments, notes, Actions Taken with
+follow-ups, and a Requester with no tickets), safe to re-run and never
+overwriting an edit:
 
 ```bash
 npm run prisma:seed:demo
 ```
 
-The automated test suites pass with or without the demo data.
-
 ## Logging in
 
-All seeded accounts share the password `DevPass123!` (dev/course use
-only — see `server/prisma/seed-data.ts` for the full account list and
-their roles). A few starting points:
+All seeded accounts share the password `DevPass123!` (development only; see
+`server/prisma/seed-data.ts` for the account list). Starting points:
 
 - Requester: `jennifer.anderson@toktickit.test`
 - IT Staff: `alex.rivera@toktickit.test`
 - Administrator: `morgan.kim@toktickit.test`
 
-Real Administrator-created accounts never use this shared password — an
-Administrator creating or resetting a user's password gets a
-system-generated one-time password shown exactly once in the response,
-per `docs/lab-03/specification.md` BR-L3-19.
+Accounts created by an Administrator get a generated one-time password shown once.
 
 ## Run the applications
 
@@ -88,57 +83,32 @@ cd client && npm run dev
 cd server && npm run dev
 ```
 
-The frontend runs at `http://localhost:5173`. On first load it shows the
-Login screen; the app shell, navigation, and default view after login
-depend on the signed-in user's role (see `docs/lab-03/ui-spec.md` §1 for
-the per-role shell and §4–7 for the Requester, IT Staff, and Administrator
-screens). The API health endpoint is available at
-`http://localhost:3000/api/health`.
+The app is at `http://localhost:5173` and the API health check at
+`http://localhost:3000/api/health`. Uploaded files are stored under
+`server/uploads/` (not committed) and are only served through the
+access-checked download endpoint.
 
-Uploaded attachments are stored on the local filesystem under
-`server/uploads/` (gitignored — metadata lives in Postgres, not git). That
-directory is created automatically on first upload and is never served
-statically; the only way to retrieve a file is through the
-access-checked `GET /api/attachments/:id/download` endpoint.
+## Checks
 
-## Verification commands
+From the repo root:
 
 ```bash
-cd server && npm run typecheck && npm test
-cd client && npx tsc -b --noEmit && npm test && npm run build
-cd server && npm run db:check
+npm run check          # typecheck, all server and client tests, build
+npm run test:repeat    # the server suite ten times; log in artifacts/lab-04/regression/
+npm run prisma:seed --workspace server   # before the end-to-end specs
+npm run test:e2e       # Playwright; starts both dev servers if they are not running
 ```
 
-End-to-end (from the repo root; starts both dev servers itself via
-Playwright's `webServer` config if they aren't already running — Postgres
-must already be up and seeded):
+Server tests are integration tests against the real PostgreSQL. They run in their
+own schema (`test_suite`), rebuilt every run, so they never touch your development
+data. End-to-end specs use the development database and run one at a time.
 
-```bash
-npx playwright test
-```
-
-`db:check` confirms that the PostgreSQL database in `server/.env` is
-reachable. Server tests are integration tests against the real database
-configured above (not mocked) and run with Vitest's file-level parallelism
-disabled, since parallel test files would otherwise race each other's
-inserts against the one shared database — see `docs/lab-03/tests.md` §6
-for current pass counts.
-
-To stop the local database while retaining its data, run:
-
-```bash
-docker compose stop
-```
+To stop the local database while keeping its data: `docker compose stop`.
 
 ## Documentation
 
-- `docs/lab-03/specification.md` — functional requirements, business
-  rules, data model, security requirements, and Definition of Done
-- `docs/lab-03/api-spec.md` — full REST API contract
-- `docs/lab-03/ui-spec.md` — Zen Green theme tokens and per-screen UI spec
-- `docs/lab-03/tests.md` — test plan, acceptance-criterion traceability, and results
-- `docs/lab-03/reviewer.md` — PR review log
-- `docs/lab-03/ai-use.md` — AI-assistant use and reflection
-
-Lab 2's equivalent documents remain under `docs/lab-02/` for reference;
-Lab 3 supersedes them for anything session/role/staff/admin-related.
+- `docs/architecture.md`: code layout, request flow, patterns, how to add a feature, known limits
+- `docs/adr/`: short decision records
+- `docs/lab-04/`: the current contract: `specification.md`, `api-spec.md`, `ui-spec.md`, `tests.md`
+- `docs/lab-03/`, `docs/lab-02/`: earlier labs, kept for reference; Lab 4 supersedes
+  them wherever they differ

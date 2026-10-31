@@ -1,8 +1,8 @@
+import { guardFor } from '../http/guards.js'
+import { parseId } from '../http/params.js'
 import { Router } from 'express'
-import { requireSession, requirePasswordAlreadyChanged } from '../auth/require-session.js'
-import { requireRole } from '../authorization/require-role.js'
 import { checkTicketAccess } from '../authorization/ticket-access.js'
-import { resolveOwnedTicket, respondOwnershipFailure } from '../ticket-ownership.js'
+import { resolveOwnedTicket, respondOwnershipFailure } from '../authorization/ticket-ownership.js'
 import {
   changePriority,
   changeStatus,
@@ -14,18 +14,13 @@ import {
 
 export const ticketWorkflowRouter = Router({ mergeParams: true })
 
-const requireStaff = [requireSession, requirePasswordAlreadyChanged, requireRole('IT_STAFF', 'ADMINISTRATOR')]
-const requireRequester = [requireSession, requirePasswordAlreadyChanged, requireRole('REQUESTER')]
-const requireAnyRole = [requireSession, requirePasswordAlreadyChanged, requireRole('REQUESTER', 'IT_STAFF', 'ADMINISTRATOR')]
-
-function toInteger(value: unknown): number | null {
-  const parsed = typeof value === 'number' ? value : Number(value)
-  return Number.isInteger(parsed) ? parsed : null
-}
+const requireStaff = guardFor('IT_STAFF', 'ADMINISTRATOR')
+const requireRequester = guardFor('REQUESTER')
+const requireAnyRole = guardFor('REQUESTER', 'IT_STAFF', 'ADMINISTRATOR')
 
 ticketWorkflowRouter.post('/claim', ...requireStaff, async (request, response, next) => {
   try {
-    const ticketId = toInteger(request.params.ticketId)
+    const ticketId = parseId(request.params.ticketId)
     if (ticketId === null) return void response.status(404).json({ error: 'TICKET_NOT_FOUND' })
     const result = await claim(ticketId, response.locals.userId as number)
     response.status(result.httpStatus).json(result.body)
@@ -36,7 +31,7 @@ ticketWorkflowRouter.post('/claim', ...requireStaff, async (request, response, n
 
 ticketWorkflowRouter.post('/reassign', ...requireStaff, async (request, response, next) => {
   try {
-    const ticketId = toInteger(request.params.ticketId)
+    const ticketId = parseId(request.params.ticketId)
     if (ticketId === null) return void response.status(404).json({ error: 'TICKET_NOT_FOUND' })
     const result = await reassign(ticketId, request.body?.ticketOwnerId, request.body?.expectedVersion)
     response.status(result.httpStatus).json(result.body)
@@ -47,7 +42,7 @@ ticketWorkflowRouter.post('/reassign', ...requireStaff, async (request, response
 
 ticketWorkflowRouter.patch('/priority', ...requireStaff, async (request, response, next) => {
   try {
-    const ticketId = toInteger(request.params.ticketId)
+    const ticketId = parseId(request.params.ticketId)
     if (ticketId === null) return void response.status(404).json({ error: 'TICKET_NOT_FOUND' })
     const result = await changePriority(ticketId, request.body?.itPriority, request.body?.expectedVersion)
     response.status(result.httpStatus).json(result.body)
@@ -58,7 +53,7 @@ ticketWorkflowRouter.patch('/priority', ...requireStaff, async (request, respons
 
 ticketWorkflowRouter.patch('/status', ...requireStaff, async (request, response, next) => {
   try {
-    const ticketId = toInteger(request.params.ticketId)
+    const ticketId = parseId(request.params.ticketId)
     if (ticketId === null) return void response.status(404).json({ error: 'TICKET_NOT_FOUND' })
     const result = await changeStatus(
       ticketId,
@@ -75,7 +70,7 @@ ticketWorkflowRouter.patch('/status', ...requireStaff, async (request, response,
 // Requester only, own Ticket only (BR-L4-12). Role is checked before ownership.
 ticketWorkflowRouter.post('/appears-resolved', ...requireRequester, async (request, response, next) => {
   try {
-    const ticketId = toInteger(request.params.ticketId)
+    const ticketId = parseId(request.params.ticketId)
     if (ticketId === null) return void response.status(404).json({ error: 'TICKET_NOT_FOUND' })
 
     const ownership = await resolveOwnedTicket(ticketId, response.locals.userId as number)
@@ -92,7 +87,7 @@ ticketWorkflowRouter.post('/appears-resolved', ...requireRequester, async (reque
 
 ticketWorkflowRouter.get('/history', ...requireAnyRole, async (request, response, next) => {
   try {
-    const ticketId = toInteger(request.params.ticketId)
+    const ticketId = parseId(request.params.ticketId)
     if (ticketId === null) return void response.status(404).json({ error: 'TICKET_NOT_FOUND' })
     if (!(await checkTicketAccess(ticketId, response.locals.userId as number, response.locals.userRole as string, response))) return
 

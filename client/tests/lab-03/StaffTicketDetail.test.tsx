@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { StaffTicketDetail } from '../../src/components/StaffTicketDetail.js'
+import { StaffTicketDetail } from '../../src/components/tickets/StaffTicketDetail.js'
 
 const categories = [{ id: 1, name: 'Hardware' }]
 const relatedSystems = [{ id: 7, name: 'Corporate Laptop' }]

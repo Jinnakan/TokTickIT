@@ -3,6 +3,8 @@ import { defineConfig } from 'vitest/config'
 export default defineConfig({
   test: {
     include: ['tests/**/*.test.ts'],
+    // Runs the tests in their own schema, rebuilt every run, so test data never lands in the development database.
+    globalSetup: ['tests/setup/global-setup.ts'],
     // These are integration tests against one shared Postgres database, not
     // isolated unit tests -- running test files in parallel (Vitest's
     // default) lets them race each other's inserts/counts. Sequential file

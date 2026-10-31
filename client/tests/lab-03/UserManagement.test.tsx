@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { UserManagement } from '../../src/components/UserManagement.js'
+import { UserManagement } from '../../src/components/admin/UserManagement.js'
 
 const oneUser = {
   data: [

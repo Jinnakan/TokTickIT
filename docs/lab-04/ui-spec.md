@@ -198,20 +198,20 @@ Ticket status and priority badges are unchanged.
 
 ## 9. Visual and Accessibility Checklist (completed in the hardening Issue)
 
-- [ ] Role navigation shows the right items and the active page is clear
-- [ ] Requester Dashboard: cards, lists, empty and zero states, three widths
-- [ ] Staff Dashboard: cards, breakdowns, my actions, Administrator user strip
-- [ ] Every dashboard count opens a list with the same number of rows
-- [ ] Actions Taken: list, create, edit, locked, and read-only (Requester) modes
-- [ ] Validation messages sit under their fields; focus lands on the first error
-- [ ] A failed save keeps typed text; repeated Save clicks send one request
-- [ ] The workflow control shows only permitted transitions and readable blockers
-- [ ] All four Action badges and all 8 status badges stay legible and distinct
-- [ ] Read-only and editable fields look different
-- [ ] Keyboard-only walk-through of each new screen, focus ring always visible
-- [ ] No clipped text, overlap, or horizontal scroll at three widths
-- [ ] Loading, empty, forbidden, conflict, and failure states exist on each new screen
-- [ ] No console errors, placeholders, or obsolete elements left from Labs 1 to 3
+- [x] Role navigation shows the right items and the active page is clear
+- [x] Requester Dashboard: cards, lists, empty and zero states, three widths
+- [x] Staff Dashboard: cards, breakdowns, my actions, Administrator user strip
+- [x] Every dashboard count opens a list with the same number of rows
+- [x] Actions Taken: list, create, edit, locked, and read-only (Requester) modes
+- [x] Validation messages sit under their fields; focus lands on the first error
+- [x] A failed save keeps typed text; repeated Save clicks send one request
+- [x] The workflow control shows only permitted transitions and readable blockers
+- [x] All four Action badges and all 8 status badges stay legible and distinct
+- [x] Read-only and editable fields look different
+- [x] Keyboard-only walk-through of each new screen, focus ring always visible
+- [x] No clipped text, overlap, or horizontal scroll at three widths
+- [x] Loading, empty, forbidden, conflict, and failure states exist on each new screen (forbidden is the server's 403 plus the screen guard; the guard's page is unreachable from the navigation, so SEC4-01 is its proof)
+- [x] No console errors, placeholders, or obsolete elements left from Labs 1 to 3
 
 ## 10. Screenshot Paths
 

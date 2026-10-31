@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from 'vitest'
 import { prisma } from '../../src/prisma.js'
-import { TicketQueryBuilder } from '../../src/staff/ticket-query-builder.js'
+import { TicketQueryBuilder } from '../../src/tickets/ticket-query-builder.js'
 import { loginAsItStaff, loginAsRequester, type AuthenticatedAgent } from '../helpers/session.js'
 
 let staffAgent: AuthenticatedAgent

@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { MyTicketsList } from '../../src/components/MyTicketsList.js'
+import { MyTicketsList } from '../../src/components/tickets/MyTicketsList.js'
 import { stubAppFetch } from './test-helpers.js'
 
 const categories = [{ id: 1, name: 'Hardware' }]

@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { StaffDashboard } from '../../src/components/StaffDashboard.js'
+import { StaffDashboard } from '../../src/components/dashboard/StaffDashboard.js'
 import { emptyStaffDashboard, staffDashboard } from './dashboard-test-helpers.js'
 
 afterEach(() => {
@@ -75,5 +75,25 @@ describe('Staff dashboard (UI4-05 to UI4-07)', () => {
     expect(screen.getByText('No recent tickets yet.')).toBeInTheDocument()
     const byStatus = screen.getByRole('region', { name: 'By status' })
     expect(within(byStatus).getAllByRole('link')).toHaveLength(8)
+  })
+})
+
+describe('Accessible names and non-color state (A11Y4-02, ST4-01, AC-L4-29)', () => {
+  it('every card and breakdown link names its label and its count', async () => {
+    mount('IT_STAFF', staffDashboard())
+    await screen.findByRole('link', { name: 'Unassigned, 7 tickets' })
+    const links = screen.getAllByRole('link')
+    expect(links.length).toBeGreaterThanOrEqual(14)
+    for (const link of links) {
+      expect(link.getAttribute('aria-label')).toMatch(/.+, \d+ tickets?$/)
+    }
+  })
+
+  it('shows each status as words, not only as a color', async () => {
+    mount('IT_STAFF', staffDashboard())
+    const byStatus = await screen.findByRole('region', { name: 'By status' })
+    for (const label of ['New', 'Open', 'In Progress', 'Waiting for Requester', 'Resolved', 'Closed', 'Reopened', 'Cancelled']) {
+      expect(within(byStatus).getByText(label)).toBeInTheDocument()
+    }
   })
 })

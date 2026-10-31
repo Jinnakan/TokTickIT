@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { ChangePassword } from '../../src/components/ChangePassword.js'
+import { ChangePassword } from '../../src/components/auth/ChangePassword.js'
 
 afterEach(() => {
   vi.unstubAllGlobals()

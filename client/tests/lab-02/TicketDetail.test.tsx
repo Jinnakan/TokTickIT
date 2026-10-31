@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { TicketDetail } from '../../src/components/TicketDetail.js'
+import { TicketDetail } from '../../src/components/tickets/TicketDetail.js'
 
 const categories = [{ id: 1, name: 'Hardware' }]
 const relatedSystems = [{ id: 7, name: 'Corporate Laptop' }]

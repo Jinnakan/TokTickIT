@@ -1,6 +1,6 @@
 import type { Response } from 'express'
 import { prisma } from '../prisma.js'
-import { resolveOwnedTicket, respondOwnershipFailure } from '../ticket-ownership.js'
+import { resolveOwnedTicket, respondOwnershipFailure } from './ticket-ownership.js'
 
 /**
  * The one access rule for every Ticket sub-resource a Requester may read:

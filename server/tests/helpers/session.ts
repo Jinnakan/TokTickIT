@@ -65,3 +65,11 @@ export function loginAsItStaff(index = 0) {
 export function loginAsAdministrator(index = 0) {
   return loginAsRole('ADMINISTRATOR', index)
 }
+
+/** An agent that does NOT add an Origin header, for tests of the Origin check itself (BR-L3-09). */
+export async function loginWithoutOrigin(email: string, password: string = SEED_PASSWORD) {
+  const agent = request.agent(app)
+  const response = await agent.post('/api/auth/login').send({ email, password })
+  if (response.status !== 200) throw new Error(`Test login failed for ${email}: ${response.status}`)
+  return { agent, userId: response.body.id as number }
+}

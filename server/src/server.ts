@@ -1,8 +1,9 @@
 import 'dotenv/config'
 import { app } from './app.js'
+import { loadConfig } from './config.js'
 
-const port = Number(process.env.PORT ?? 3000)
+const config = loadConfig(process.env)
 
-app.listen(port, '127.0.0.1', () => {
-  console.log(`API listening at http://127.0.0.1:${port}`)
+app.listen(config.port, '127.0.0.1', () => {
+  console.log(`API listening at http://127.0.0.1:${config.port}`)
 })

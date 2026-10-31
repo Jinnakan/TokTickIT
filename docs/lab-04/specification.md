@@ -226,7 +226,7 @@ Full shapes, statuses, and errors are in `api-spec.md`. Added or changed:
 | Facade | `server/src/tickets/ticket-workflow-service.ts` | One entry point does lock, state check, gate, version check, history, and side effects in one transaction, so the route handlers stay thin and none can skip a step. |
 | State (reused) | `server/src/tickets/ticket-state/*` | The existing per-status classes keep owning the transition matrix; the gate is a separate policy the facade calls, so the matrix stays pure. |
 | Strategy | `server/src/dashboard/metrics/*` | Each dashboard metric is one class with the same `compute(user, now)` shape, so a metric can be added or tested without touching the route or the others. |
-| Builder (extended) | `server/src/staff/ticket-query-builder.ts` | `withStatusGroup()` and `reportedResolved()` are two more chained steps; the Requester list moves onto the same Builder so drill-down filters take one allowlisted path. |
+| Builder (extended) | `server/src/tickets/ticket-query-builder.ts` | `withStatusGroup()` and `reportedResolved()` are two more chained steps; the Requester list moves onto the same Builder so drill-down filters take one allowlisted path. |
 | Mediator (extended) | client `staff/ticket-detail-mediator.ts` | An Action or status change refreshes the Actions list, the status control, and the summary through the existing single refresh point. |
 | Factory (reused) | client `nav/role-navigation-factory.ts` | Gains the Dashboard item and the Administrator queue item. |
 
