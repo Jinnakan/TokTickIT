@@ -2,6 +2,7 @@ import { Router } from 'express'
 import { prisma } from './prisma.js'
 import { requireSession, requirePasswordAlreadyChanged } from './auth/require-session.js'
 import { requireRole } from './authorization/require-role.js'
+import { touchTicket } from './tickets/touch-ticket.js'
 import { checkTicketAccess } from './authorization/ticket-access.js'
 
 export const commentsRouter = Router({ mergeParams: true })
@@ -82,9 +83,13 @@ commentsRouter.post('/', ...requireCommentAccess, async (request, response, next
     // Stored and returned verbatim (BR-L3-12) -- the client renders it as
     // plain text only, never dangerouslySetInnerHTML, so no server-side
     // sanitization/transformation is needed or done here.
-    const comment = await prisma.publicComment.create({
-      data: { ticketId, authorId: userId, body },
-      include: { author: { select: { name: true } } },
+    const comment = await prisma.$transaction(async (tx) => {
+      const created = await tx.publicComment.create({
+        data: { ticketId, authorId: userId, body },
+        include: { author: { select: { name: true } } },
+      })
+      await touchTicket(tx, ticketId)
+      return created
     })
 
     response.status(201).json(toCommentResponse(comment))

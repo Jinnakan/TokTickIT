@@ -38,9 +38,9 @@ Test files:
 
 | Test ID | Requirement/AC | What It Tests | Expected Result | File | Final |
 |---|---|---|---|---|---|
-| ACT-U01 | BR-L4-06, BR-L4-07 | Action field validation on create: required text, limits at and over, follow-up note pairing, `actionAt` format and future rule | Exact messages per field; at-limit accepted | `action-rules.unit.test.ts` | Planned |
-| ACT-U02 | BR-L4-05 | Action status moves and locks for every from and to pair, Cancelled and Completed edit locks | Matches the BR-L4-05 table exactly | `action-rules.unit.test.ts` | Planned |
-| ACT-U03 | BR-L4-04 | Unknown and protected fields in the body | Ignored, never copied into the result | `action-rules.unit.test.ts` | Planned |
+| ACT-U01 | BR-L4-06, BR-L4-07 | Action field validation on create: required text, limits at and over, follow-up note pairing, `actionAt` format and future rule | Exact messages per field; at-limit accepted | `action-rules.unit.test.ts` | Pass |
+| ACT-U02 | BR-L4-05 | Action status moves and locks for every from and to pair, Cancelled and Completed edit locks | Matches the BR-L4-05 table exactly | `action-rules.unit.test.ts` | Pass |
+| ACT-U03 | BR-L4-04 | Unknown and protected fields in the body | Ignored, never copied into the result | `action-rules.unit.test.ts` | Pass |
 | WF-U01 | BR-L4-10 | Resolution gate over every combination of Action statuses and follow-ups, no database | Correct blocker list each time | `workflow-rules.unit.test.ts` | Planned |
 | WF-U02 | BR-L4-09 | Ticket transition matrix through the State classes | Matches the table exactly | `workflow-rules.unit.test.ts` | Planned |
 
@@ -50,24 +50,24 @@ File: `actions-taken.api.test.ts`
 
 | Test ID | Requirement/AC | What It Tests | Expected Result | Final |
 |---|---|---|---|---|
-| ACT-01 | AC-L4-01, BR-L4-01 | IT Staff and Administrator create a valid Action | 201; under the Ticket; creator is the session user; Ticket `updatedAt` refreshed; Ticket `version` unchanged | Planned |
-| ACT-02 | AC-L4-02, BR-L4-04 | Body with `createdById`, `ticketId`, `version`, unknown fields | Ignored; session user and URL Ticket used | Planned |
-| ACT-03 | AC-L4-03, BR-L4-03 | Assignee inactive, a Requester, unknown id, on create and edit | 400 each; nothing saved | Planned |
-| ACT-04 | AC-L4-04, BR-L4-07 | Follow-up required with no note; a note without follow-up | 400 each | Planned |
-| ACT-05 | AC-L4-05 | Requester lists own Ticket; creates; edits; lists another Requester's | 200; 403; 403; 403 | Planned |
-| ACT-06 | AC-L4-06 | Action id used through another Ticket, and an unknown id | 404 `ACTION_NOT_FOUND` | Planned |
-| ACT-07 | AC-L4-07, BR-L4-02 | A staff member who is not the owner creates and edits; assignee is a third person | Accepted | Planned |
-| ACT-08 | AC-L4-08, BR-L4-14 | Two edits with the same `version`, in order and at the same moment | One 200, one 409 `STALE_UPDATE`; first change kept | Planned |
-| ACT-09 | AC-L4-09, BR-L4-05 | Edit a Cancelled Action; change description of a Completed one; change follow-up on a Completed one | 409 `ACTION_LOCKED` twice; follow-up change 200 | Planned |
-| ACT-10 | AC-L4-10, BR-L4-21 | Same `requestId` posted twice, and twice at once; same id on another Ticket; unsafe id | One row; 201 then 200; separate per Ticket; 400 | Planned |
-| ACT-11 | AC-L4-11, BR-L4-08 | Create and edit on Closed and Cancelled Tickets; create on Resolved | 409 `TICKET_LOCKED`; Resolved accepted | Planned |
-| ACT-12 | BR-L4-06 | Result required on Completed; future Completed time; length limits | 400 with field messages | Planned |
-| ACT-13 | BR-L4-08 | `DELETE` on an Action | 404; row remains | Planned |
-| ACT-14 | AC-L4-05 | No session; a session that must change its password | 401; 403 `PASSWORD_CHANGE_REQUIRED` | Planned |
-| ACT-15 | Security | Description containing `<script>` | Stored and returned verbatim as data | Planned |
-| ACT-16 | BR-L4-19 | List order with equal `actionAt` | Stable by `id` | Planned |
-| ACT-17 | AC-L4-09, BR-L4-05 | Every Action status move through the API (Start, Complete, Cancel, and refused ones) | Allowed moves 200; others 409 `INVALID_ACTION_TRANSITION` | Planned |
-| ACT-18 | FR-L4-04 | Mark a follow-up done, repeat, and reopen it | `followUpDoneAt` set once, kept on repeat, cleared on false | Planned |
+| ACT-01 | AC-L4-01, BR-L4-01 | IT Staff and Administrator create a valid Action | 201; under the Ticket; creator is the session user; Ticket `updatedAt` refreshed; Ticket `version` unchanged | Pass |
+| ACT-02 | AC-L4-02, BR-L4-04 | Body with `createdById`, `ticketId`, `version`, unknown fields | Ignored; session user and URL Ticket used | Pass |
+| ACT-03 | AC-L4-03, BR-L4-03 | Assignee inactive, a Requester, unknown id, on create and edit | 400 each; nothing saved | Pass |
+| ACT-04 | AC-L4-04, BR-L4-07 | Follow-up required with no note; a note without follow-up | 400 each | Pass |
+| ACT-05 | AC-L4-05 | Requester lists own Ticket; creates; edits; lists another Requester's | 200; 403; 403; 403 | Pass |
+| ACT-06 | AC-L4-06 | Action id used through another Ticket, and an unknown id | 404 `ACTION_NOT_FOUND` | Pass |
+| ACT-07 | AC-L4-07, BR-L4-02 | A staff member who is not the owner creates and edits; assignee is a third person | Accepted | Pass |
+| ACT-08 | AC-L4-08, BR-L4-14 | Two edits with the same `version`, in order and at the same moment | One 200, one 409 `STALE_UPDATE`; first change kept | Pass |
+| ACT-09 | AC-L4-09, BR-L4-05 | Edit a Cancelled Action; change description of a Completed one; change follow-up on a Completed one | 409 `ACTION_LOCKED` twice; follow-up change 200 | Pass |
+| ACT-10 | AC-L4-10, BR-L4-21 | Same `requestId` posted twice, and twice at once; same id on another Ticket; unsafe id | One row; 201 then 200; separate per Ticket; 400 | Pass |
+| ACT-11 | AC-L4-11, BR-L4-08 | Create and edit on Closed and Cancelled Tickets; create on Resolved | 409 `TICKET_LOCKED`; Resolved accepted | Pass |
+| ACT-12 | BR-L4-06 | Result required on Completed; future Completed time; length limits | 400 with field messages | Pass |
+| ACT-13 | BR-L4-08 | `DELETE` on an Action | 404; row remains | Pass |
+| ACT-14 | AC-L4-05 | No session; a session that must change its password | 401; 403 `PASSWORD_CHANGE_REQUIRED` | Pass |
+| ACT-15 | Security | Description containing `<script>` | Stored and returned verbatim as data | Pass |
+| ACT-16 | BR-L4-19 | List order with equal `actionAt` | Stable by `id` | Pass |
+| ACT-17 | AC-L4-09, BR-L4-05 | Every Action status move through the API (Start, Complete, Cancel, and refused ones) | Allowed moves 200; others 409 `INVALID_ACTION_TRANSITION` | Pass |
+| ACT-18 | FR-L4-04 | Mark a follow-up done, repeat, and reopen it | `followUpDoneAt` set once, kept on repeat, cleared on false | Pass |
 
 ### API: Ticket Workflow
 
@@ -145,12 +145,12 @@ File: `staff-dashboard.api.test.ts`
 
 | Test ID | Requirement/AC | What It Tests | Expected Result | File | Final |
 |---|---|---|---|---|---|
-| MIG-01 | AC-L4-26 | Row counts and key fields of Users, Tickets, Comments, Notes, Attachments | Unchanged by the migration | `migration.test.ts` | Planned |
-| MIG-02 | AC-L4-26, §7 | Baseline history | One row per existing Ticket with the documented values | `migration.test.ts` | Planned |
-| MIG-03 | AC-L4-26 | Legacy defaults | `version` 1, no indication, zero Actions | `migration.test.ts` | Planned |
-| MIG-04 | §7 | `rollback.sql` inside a transaction that is then discarded | New objects dropped, earlier data intact | `migration.test.ts` | Planned |
-| MIG-05 | §7 | Demo seed run twice | Same row counts; zero, one, and many Actions; a Requester with no Tickets | `migration.test.ts` | Planned |
-| MIG-06 | §7 | Re-running the seed after staff edited a seeded Action | The edit is kept | `migration.test.ts` | Planned |
+| MIG-01 | AC-L4-26 | Row counts and key fields of Users, Tickets, Comments, Notes, Attachments | Unchanged by the migration | `migration.test.ts` | Pass |
+| MIG-02 | AC-L4-26, §7 | Baseline history | One row per existing Ticket with the documented values | `migration.test.ts` | Pass |
+| MIG-03 | AC-L4-26 | Legacy defaults | `version` 1, no indication, zero Actions | `migration.test.ts` | Pass |
+| MIG-04 | §7 | `rollback.sql` inside a transaction that is then discarded | New objects dropped, earlier data intact | `migration.test.ts` | Pass |
+| MIG-05 | §7 | Demo seed run twice | Same row counts; zero, one, and many Actions; a Requester with no Tickets | `migration.test.ts` | Pass |
+| MIG-06 | §7 | Re-running the seed after staff edited a seeded Action | The edit is kept | `migration.test.ts` | Pass |
 | REG-01 | AC-L4-31 | All Lab 1 to Lab 3 server suites | Pass | whole server suite | Planned |
 | REG-02 | AC-L4-31 | All Lab 1 to Lab 3 client suites | Pass | whole client suite | Planned |
 | REG-03 | AC-L4-31 | All Lab 2 and Lab 3 E2E specs | Pass | `e2e/` | Planned |
@@ -306,3 +306,5 @@ above exists.
   reach the wrong process. `server/tests/helpers/app.ts` now binds the test
   server to 127.0.0.1, and every test imports `app` from it. After the fix the
   full suite passed 40 of 40 consecutive runs.
+- Feature 25 also adds `ticket-history.api.test.ts` (first history row on create) and `touch-ticket.api.test.ts` (BR-L4-15 for Comments, Notes, Attachments), covered by AC-L4-18 and AC-L4-20.
+- Status-change history rows are written by the workflow Issue (the Lab 3 `PATCH /status` route is rewritten there), so until then only the baseline and creation rows exist.

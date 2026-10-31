@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { prisma } from './prisma.js'
 import { requireSession, requirePasswordAlreadyChanged } from './auth/require-session.js'
+import { touchTicket } from './tickets/touch-ticket.js'
 import { requireRole } from './authorization/require-role.js'
 
 export const notesRouter = Router({ mergeParams: true })
@@ -81,9 +82,13 @@ notesRouter.post('/', ...requireStaff, async (request, response, next) => {
       return
     }
 
-    const note = await prisma.internalNote.create({
-      data: { ticketId, authorId, body },
-      include: { author: { select: { name: true } } },
+    const note = await prisma.$transaction(async (tx) => {
+      const created = await tx.internalNote.create({
+        data: { ticketId, authorId, body },
+        include: { author: { select: { name: true } } },
+      })
+      await touchTicket(tx, ticketId)
+      return created
     })
 
     response.status(201).json(toNoteResponse(note))

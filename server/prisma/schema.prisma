@@ -14,19 +14,22 @@ enum Role {
 }
 
 model User {
-  id                 Int             @id @default(autoincrement())
-  email              String          @unique
+  id                 Int                   @id @default(autoincrement())
+  email              String                @unique
   name               String
   passwordHash       String
-  role               Role            @default(REQUESTER)
-  isActive           Boolean         @default(true)
-  mustChangePassword Boolean         @default(false)
-  createdAt          DateTime        @default(now())
+  role               Role                  @default(REQUESTER)
+  isActive           Boolean               @default(true)
+  mustChangePassword Boolean               @default(false)
+  createdAt          DateTime              @default(now())
   sessions           Session[]
-  ticketsRequested   Ticket[]        @relation("TicketRequester")
-  ticketsOwned       Ticket[]        @relation("TicketOwner")
+  ticketsRequested   Ticket[]              @relation("TicketRequester")
+  ticketsOwned       Ticket[]              @relation("TicketOwner")
   comments           PublicComment[]
   notes              InternalNote[]
+  actionsCreated     ActionTaken[]         @relation("ActionCreatedBy")
+  actionsAssigned    ActionTaken[]         @relation("ActionAssignee")
+  statusChanges      TicketStatusHistory[] @relation("HistoryChangedBy")
 
   @@index([role])
   @@index([isActive])
@@ -80,32 +83,39 @@ enum TicketStatus {
 }
 
 model Ticket {
-  id                Int             @id @default(autoincrement())
-  ticketNumber      String          @unique
-  requesterId       Int
-  requester         User            @relation("TicketRequester", fields: [requesterId], references: [id])
-  ticketOwnerId     Int?
-  ticketOwner       User?           @relation("TicketOwner", fields: [ticketOwnerId], references: [id])
-  categoryId        Int
-  category          Category        @relation(fields: [categoryId], references: [id])
-  relatedSystemId   Int
-  relatedSystem     RelatedSystem   @relation(fields: [relatedSystemId], references: [id])
-  summary           String
-  description       String
-  requestedPriority Priority
-  itPriority        Priority
-  currentStatus     TicketStatus    @default(NEW)
-  createdAt         DateTime        @default(now())
-  updatedAt         DateTime        @updatedAt
-  attachments       Attachment[]
-  comments          PublicComment[]
-  notes             InternalNote[]
+  id                  Int                   @id @default(autoincrement())
+  ticketNumber        String                @unique
+  requesterId         Int
+  requester           User                  @relation("TicketRequester", fields: [requesterId], references: [id])
+  ticketOwnerId       Int?
+  ticketOwner         User?                 @relation("TicketOwner", fields: [ticketOwnerId], references: [id])
+  categoryId          Int
+  category            Category              @relation(fields: [categoryId], references: [id])
+  relatedSystemId     Int
+  relatedSystem       RelatedSystem         @relation(fields: [relatedSystemId], references: [id])
+  summary             String
+  description         String
+  requestedPriority   Priority
+  itPriority          Priority
+  currentStatus       TicketStatus          @default(NEW)
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+  version             Int                   @default(1)
+  requesterResolvedAt DateTime?
+  attachments         Attachment[]
+  comments            PublicComment[]
+  notes               InternalNote[]
+  actions             ActionTaken[]
+  statusHistory       TicketStatusHistory[]
 
   @@index([requesterId])
   @@index([ticketOwnerId])
   @@index([categoryId])
   @@index([relatedSystemId])
   @@index([createdAt])
+  @@index([currentStatus])
+  @@index([updatedAt])
+  @@index([requesterId, currentStatus])
 }
 
 model PublicComment {
@@ -146,4 +156,50 @@ model Attachment {
   removedReason    String?
 
   @@index([ticketId, isRemoved])
+}
+
+enum ActionStatus {
+  PLANNED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+model ActionTaken {
+  id               Int          @id @default(autoincrement())
+  ticketId         Int
+  ticket           Ticket       @relation(fields: [ticketId], references: [id])
+  createdById      Int
+  createdBy        User         @relation("ActionCreatedBy", fields: [createdById], references: [id])
+  assigneeId       Int
+  assignee         User         @relation("ActionAssignee", fields: [assigneeId], references: [id])
+  actionAt         DateTime
+  description      String
+  result           String?
+  status           ActionStatus @default(PLANNED)
+  followUpRequired Boolean      @default(false)
+  followUpNote     String?
+  followUpDoneAt   DateTime?
+  attachmentNotes  String?
+  requestId        String?
+  version          Int          @default(1)
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  @@unique([ticketId, requestId])
+  @@index([ticketId])
+  @@index([assigneeId, status])
+}
+
+model TicketStatusHistory {
+  id          Int           @id @default(autoincrement())
+  ticketId    Int
+  ticket      Ticket        @relation(fields: [ticketId], references: [id])
+  fromStatus  TicketStatus?
+  toStatus    TicketStatus
+  changedById Int?
+  changedBy   User?         @relation("HistoryChangedBy", fields: [changedById], references: [id])
+  changedAt   DateTime      @default(now())
+
+  @@index([ticketId, changedAt])
 }

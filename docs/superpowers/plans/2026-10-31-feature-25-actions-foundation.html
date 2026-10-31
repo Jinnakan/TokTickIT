@@ -1,0 +1,2308 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Feature 25: Actions Taken foundation (plan)</title>
+<style>
+  :root { --bg:#f6faf7; --fg:#1b2a22; --muted:#5b6b62; --card:#fff; --line:#cfe0d5; --accent:#2f7d52; --warn:#b4540a; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#101a14; --fg:#e4efe8; --muted:#9db3a5; --card:#18261e; --line:#2b4034; --accent:#6fcf97; --warn:#f0a35e; } }
+  body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.55 system-ui,sans-serif; }
+  main { max-width:1080px; margin:0 auto; padding:24px 16px 80px; }
+  h1 { font-size:1.7rem; margin:.2em 0; } h2 { margin-top:2em; border-bottom:2px solid var(--line); padding-bottom:.2em; }
+  .meta { color:var(--muted); }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px 18px; margin:14px 0; }
+  .pair { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  @media (max-width:760px) { .pair { grid-template-columns:1fr; } }
+  .pair h4 { margin:0 0 6px; } .before h4 { color:var(--warn); } .after h4 { color:var(--accent); }
+  table { border-collapse:collapse; width:100%; font-size:.93rem; } th,td { border:1px solid var(--line); padding:6px 9px; text-align:left; vertical-align:top; }
+  code, pre { font-family:ui-monospace,Menlo,monospace; font-size:.85rem; } pre { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:10px 12px; overflow:auto; }
+  #plan h3 { margin-top:2em; padding-top:.4em; border-top:1px dashed var(--line); } #plan ul { padding-left:1.2em; }
+  .mermaid { text-align:center; overflow:auto; }
+</style>
+</head>
+<body>
+<main>
+<h1>Feature 25: Actions Taken foundation</h1>
+<p class="meta">Issue #48 · branch <code>feature/25-actions-foundation</code> into <code>lab4-staging</code> · server only (no UI, no workflow, no dashboards)</p>
+
+<h2>A. Read this</h2>
+
+<div class="card">
+<p><strong>Goal.</strong> Give every Ticket a durable record of the work done on it. After this feature the API can create, list and edit Actions Taken with validation, assignee rules, a per-Action version, idempotent create, and a Ticket-row lock. The one additive database migration for the whole sprint lands here, including the status-history table and the Ticket <code>version</code> column that later Issues use.</p>
+<p><strong>Not in this feature.</strong> Transition matrix changes, resolution gate, <code>expectedVersion</code> on Ticket writes, <code>appears-resolved</code>, history endpoint, dashboards, any client code. Those are #49 to #52.</p>
+</div>
+
+<div class="card">
+<p><strong>Decisions the plan makes (veto any of them before "Ready for feature 25").</strong></p>
+<ol>
+<li><strong>Pure rules live in <code>packages/shared</code></strong> (<code>action-rules.ts</code>): validation, the status table, and the edit-lock verdict. The server service is thin and the Actions UI (#49) reuses the same functions. No database in the unit tests.</li>
+<li><strong>The lock does the concurrency work.</strong> Every create/edit runs in one transaction that first does <code>SELECT ... FOR UPDATE</code> on the Ticket row (the pattern <code>attachments.ts</code> already uses). The Action <code>version</code> is then compared inside that lock and also in the <code>UPDATE ... WHERE</code>.</li>
+<li><strong>Idempotency = lock + unique.</strong> A repeated <code>requestId</code> is looked up under the lock and returns the original (200). The <code>(ticketId, requestId)</code> unique index is the backstop.</li>
+<li><strong>Ticket creation also writes its first history row now</strong> (api-spec §3 says so, and the table ships here). Otherwise Tickets created between #48 and #50 would have no history. This is the only change to Lab 2/3 route code besides the child-activity touch.</li>
+<li><strong>Child activity touches <code>Ticket.updatedAt</code></strong> (BR-L4-15) for Actions, and for Comments, Notes and Attachment upload/removal, through one <code>touchTicket</code> helper. Small, tested, and the dashboards need it.</li>
+<li><strong>Demo seed becomes testable:</strong> logic moves to <code>seed-demo-data.ts</code> (<code>runDemoSeed(client)</code>), the script is a thin runner like <code>seed.ts</code>. Demo Actions are matched by a stable <code>requestId</code> so a re-run never overwrites a staff edit. One new demo Requester has no Tickets.</li>
+<li><strong>Migration and seed tests run in a throwaway Postgres schema</strong> (<code>CREATE SCHEMA mig_...</code> and <code>prisma migrate deploy</code> against it), so they can insert legacy rows, apply the Lab 4 migration on top, run the rollback in a discarded transaction, and run the demo seed twice without touching the shared test data.</li>
+<li><strong>Edge choices:</strong> an edit that changes nothing still bumps the Action <code>version</code>; switching <code>followUpRequired</code> off without sending a note clears the note and the done time; a repeated <code>followUpDone: true</code> keeps the first time.</li>
+</ol>
+</div>
+
+<h3>Before and after: data model</h3>
+<div class="pair">
+<div class="card before"><h4>Now (Lab 3)</h4>
+<pre class="mermaid">
+erDiagram
+  USER ||--o{ TICKET : requests
+  USER ||--o{ TICKET : owns
+  TICKET ||--o{ PUBLICCOMMENT : has
+  TICKET ||--o{ INTERNALNOTE : has
+  TICKET ||--o{ ATTACHMENT : has
+</pre></div>
+<div class="card after"><h4>After feature 25</h4>
+<pre class="mermaid">
+erDiagram
+  USER ||--o{ TICKET : requests
+  USER ||--o{ TICKET : owns
+  TICKET ||--o{ PUBLICCOMMENT : has
+  TICKET ||--o{ INTERNALNOTE : has
+  TICKET ||--o{ ATTACHMENT : has
+  TICKET ||--o{ ACTIONTAKEN : "records work"
+  TICKET ||--o{ TICKETSTATUSHISTORY : "append-only"
+  USER ||--o{ ACTIONTAKEN : "creates / is assigned"
+  TICKET { int version  datetime requesterResolvedAt }
+</pre></div>
+</div>
+
+<h3>Before and after: how an Action is written</h3>
+<div class="pair">
+<div class="card before"><h4>Now: no Actions; child writes ignore the Ticket</h4>
+<pre class="mermaid">
+sequenceDiagram
+  participant S as IT Staff
+  participant API
+  participant DB
+  S->>API: POST comment
+  API->>DB: insert comment
+  Note over DB: Ticket.updatedAt unchanged
+</pre></div>
+<div class="card after"><h4>After: one locked transaction</h4>
+<pre class="mermaid">
+sequenceDiagram
+  participant S as IT Staff
+  participant R as actions router
+  participant V as shared rules
+  participant DB
+  S->>R: POST /tickets/:id/actions
+  R->>V: pickActionBody + parseActionBody (pure)
+  R->>DB: BEGIN; SELECT Ticket FOR UPDATE
+  DB-->>R: row (or 404)
+  R->>DB: requestId seen? then 200 original
+  R->>DB: Ticket locked? 409 / assignee ok? 400
+  R->>DB: insert ActionTaken; touch Ticket.updatedAt
+  R-->>S: 201 Action; COMMIT
+</pre></div>
+</div>
+
+<h3>What changes</h3>
+<table>
+<tr><th>Added</th><th>Modified</th></tr>
+<tr><td>
+<code>prisma/migrations/&lt;ts&gt;_lab4_actions_history_versioning/{migration,rollback}.sql</code><br>
+<code>packages/shared/src/action-rules.ts</code><br>
+<code>server/src/actions/{action-service,actions-router}.ts</code><br>
+<code>server/src/users/assignable-roles.ts</code><br>
+<code>server/src/tickets/touch-ticket.ts</code><br>
+<code>server/prisma/seed-demo-data.ts</code> (moved from <code>seed-demo.ts</code>)<br>
+tests: <code>tests/helpers/{tickets,migration-sandbox}.ts</code>, <code>tests/lab-04/{action-rules.unit,actions-taken.api,ticket-history.api,touch-ticket.api,migration}.test.ts</code>
+</td><td>
+<code>prisma/schema.prisma</code>, <code>prisma/seed-demo.ts</code> (thin runner)<br>
+<code>packages/shared/src/index.ts</code><br>
+<code>server/src/app.ts</code> (mount router)<br>
+<code>server/src/tickets.ts</code> (first history row)<br>
+<code>server/src/comments.ts</code>, <code>notes.ts</code>, <code>attachments.ts</code> (touch)<br>
+<code>server/src/staff/staff-ticket-actions.ts</code> (shared role list)<br>
+<code>docs/lab-04/tests.md</code>
+</td></tr>
+</table>
+
+<h3>Parallelization analysis</h3>
+<table>
+<tr><th>Batch</th><th>Tasks (disjoint files, safe together)</th><th>Why</th></tr>
+<tr><td>1</td><td>T1 schema + migration, T2 shared rules</td><td>No shared files; T2 needs no database</td></tr>
+<tr><td>2</td><td>T3 plumbing (touchTicket, assignable roles, ticket-creation history), T6 demo seed refactor</td><td>Both need T1 only; T3 edits <code>src/</code>, T6 edits <code>prisma/seed*</code></td></tr>
+<tr><td>3</td><td>T4 service + router + mount, T8 touch wiring</td><td>T4 adds new files and edits <code>app.ts</code>; T8 edits comments/notes/attachments; needs T3</td></tr>
+<tr><td>4</td><td>T5 API tests, T7 migration tests</td><td>New test files only; T5 needs T4, T7 needs T1 + T6</td></tr>
+<tr><td>5</td><td>T9 docs, full runs, review</td><td>Needs everything</td></tr>
+</table>
+<p class="meta">Critical path: T1 → T3 → T4 → T5 → T9. Nothing here edits the same file in two tasks. Files with two editors across the whole plan: none.</p>
+
+<h2>B. Implementation plan</h2>
+<div id="plan">Loading plan...</div>
+</main>
+
+<script type="text/plain" id="plan-md">
+# Feature 25: Actions Taken Foundation Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Ship the Actions Taken API (list, create, edit), the single Lab 4 migration with rollback, the shared Action rules, and an idempotent demo seed with Actions.
+
+**Architecture:** Pure validation/status/lock rules in `packages/shared/src/action-rules.ts`; a thin `action-service.ts` that runs each write in one transaction that first locks the Ticket row; a router mounted at `/api/tickets/:ticketId/actions`. One additive Prisma migration creates `ActionTaken`, `TicketStatusHistory` and the Ticket columns/indexes, and backfills one baseline history row per Ticket.
+
+**Tech Stack:** Express 5, Prisma 6.19 (PostgreSQL, docker `toktickit-postgres` on 5434), Vitest + supertest, npm workspaces (`@toktickit/shared`).
+
+**Spec:** `docs/lab-04/specification.md` (BR-L4-01 to 08, 14 to 16, 21, 22; AC-L4-01 to 11, 26), `docs/lab-04/api-spec.md` §0, §1, §3 (POST /api/tickets), `docs/lab-04/tests.md` (ACT-*, MIG-*).
+
+## Global Constraints
+
+- Working directory for every command: `/Users/jinnakanchaviengpob/Desktop/3rd Year/CPE_334/ToKTickIT`; server commands run in `server/`.
+- Branch `feature/25-actions-foundation` is created by the user from `feature/24-Lab3-carry-overs`'s lineage. Do not create branches, push, open PRs, or close issues. Stage only; commit only when the user says so.
+- Prisma `migrate reset` is forbidden unless the user types explicit consent. `migrate dev --create-only` and `migrate deploy` are allowed.
+- All raw SQL in `server/src` is the tagged-template form `tx.$queryRaw\`...\`` (the Lab 3 static guard in `security-audit.api.test.ts` forbids `$queryRawUnsafe`/`$executeRawUnsafe` and `child_process` under `server/src`; test files may use them).
+- Request bodies are read through the allowlist `pickActionBody`; `createdById`, `ticketId`, `version` (on create) and unknown fields never reach Prisma.
+- Tests own their data: use `loginAsNewUser`, `createUser`, `createTicketVia`. Never pick seeded accounts by position, never mutate seeded accounts.
+- Error codes and bodies are exactly those in `api-spec.md` §0 and §1 (`TICKET_NOT_FOUND`, `ACTION_NOT_FOUND`, `VALIDATION_FAILED`, `STALE_UPDATE`, `TICKET_LOCKED`, `ACTION_LOCKED`, `INVALID_ACTION_TRANSITION`).
+- Server suite must stay green: after each task run `cd server && npx vitest run` (about 15 s). The test server is `tests/helpers/app.ts` (bound to 127.0.0.1); import `app` from there.
+
+## File Structure
+
+| File | Responsibility |
+|---|---|
+| `server/prisma/schema.prisma` | New models/enum/columns/indexes |
+| `server/prisma/migrations/<ts>_lab4_actions_history_versioning/migration.sql` | Generated DDL + hand-written baseline backfill |
+| same folder `rollback.sql` | Drops only what the migration added; never run automatically |
+| `packages/shared/src/action-rules.ts` | Statuses, limits, `pickActionBody`, `parseActionBody`, `evaluateActionEdit` |
+| `server/src/users/assignable-roles.ts` | `ASSIGNABLE_ROLES`, `findAssignableUser` |
+| `server/src/tickets/touch-ticket.ts` | `touchTicket(client, ticketId)` |
+| `server/src/actions/action-service.ts` | `listActions`, `createAction`, `updateAction`, `toActionResponse` |
+| `server/src/actions/actions-router.ts` | Routes, auth chain, DELETE → 404 |
+| `server/prisma/seed-demo-data.ts` | `runDemoSeed(client)` (moved + Actions + history + zero-ticket Requester) |
+| `server/tests/helpers/tickets.ts` | `createTicketVia`, `setTicketStatus` |
+| `server/tests/helpers/migration-sandbox.ts` | Throwaway-schema migration runner |
+
+---
+
+### Task 1: Schema, migration, rollback
+
+**Files:**
+- Modify: `server/prisma/schema.prisma`
+- Create: `server/prisma/migrations/<generated>_lab4_actions_history_versioning/migration.sql` (generated, then appended)
+- Create: same folder, `rollback.sql`
+
+**Interfaces:**
+- Produces: Prisma models `ActionTaken`, `TicketStatusHistory`, enum `ActionStatus`; `Ticket.version Int @default(1)`, `Ticket.requesterResolvedAt DateTime?`; relation names used later: `Ticket.actions`, `Ticket.statusHistory`, `User.actionsCreated`, `User.actionsAssigned`, `User.statusChanges`; unique key name `ticketId_requestId`.
+
+- [ ] **Step 1: Edit the schema.** In `schema.prisma` add to `model User` (after `notes InternalNote[]`):
+
+```prisma
+  actionsCreated  ActionTaken[]         @relation("ActionCreatedBy")
+  actionsAssigned ActionTaken[]         @relation("ActionAssignee")
+  statusChanges   TicketStatusHistory[] @relation("HistoryChangedBy")
+```
+
+Add to `model Ticket` (after `updatedAt`), and index lines at the bottom of the model:
+
+```prisma
+  version             Int                   @default(1)
+  requesterResolvedAt DateTime?
+  actions             ActionTaken[]
+  statusHistory       TicketStatusHistory[]
+```
+```prisma
+  @@index([currentStatus])
+  @@index([updatedAt])
+  @@index([requesterId, currentStatus])
+```
+
+Append at the end of the file:
+
+```prisma
+enum ActionStatus {
+  PLANNED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+model ActionTaken {
+  id               Int          @id @default(autoincrement())
+  ticketId         Int
+  ticket           Ticket       @relation(fields: [ticketId], references: [id])
+  createdById      Int
+  createdBy        User         @relation("ActionCreatedBy", fields: [createdById], references: [id])
+  assigneeId       Int
+  assignee         User         @relation("ActionAssignee", fields: [assigneeId], references: [id])
+  actionAt         DateTime
+  description      String
+  result           String?
+  status           ActionStatus @default(PLANNED)
+  followUpRequired Boolean      @default(false)
+  followUpNote     String?
+  followUpDoneAt   DateTime?
+  attachmentNotes  String?
+  requestId        String?
+  version          Int          @default(1)
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  @@unique([ticketId, requestId])
+  @@index([ticketId])
+  @@index([assigneeId, status])
+}
+
+model TicketStatusHistory {
+  id          Int           @id @default(autoincrement())
+  ticketId    Int
+  ticket      Ticket        @relation(fields: [ticketId], references: [id])
+  fromStatus  TicketStatus?
+  toStatus    TicketStatus
+  changedById Int?
+  changedBy   User?         @relation("HistoryChangedBy", fields: [changedById], references: [id])
+  changedAt   DateTime      @default(now())
+
+  @@index([ticketId, changedAt])
+}
+```
+
+- [ ] **Step 2: Generate the migration without applying it.**
+
+Run (in `server/`): `npx prisma migrate dev --create-only --name lab4_actions_history_versioning`
+Expected: a new folder `prisma/migrations/<timestamp>_lab4_actions_history_versioning/migration.sql` containing `CREATE TYPE "ActionStatus"`, `ALTER TABLE "Ticket" ADD COLUMN ... "version"`, `CREATE TABLE "ActionTaken"`, `CREATE TABLE "TicketStatusHistory"`, and the indexes. If Prisma reports drift or asks to reset, STOP and report; do not reset.
+
+- [ ] **Step 3: Append the baseline backfill** to the end of that `migration.sql`:
+
+```sql
+
+-- Baseline history: one row per existing Ticket (BR-L4-16, AC-L4-26).
+-- fromStatus is NULL, toStatus is the current status, changedAt is the Ticket's updatedAt, actor unknown.
+INSERT INTO "TicketStatusHistory" ("ticketId", "fromStatus", "toStatus", "changedById", "changedAt")
+SELECT "id", NULL, "currentStatus", NULL, "updatedAt" FROM "Ticket";
+```
+
+(`version` already backfills to 1 through its column default; `requesterResolvedAt` is NULL.)
+
+- [ ] **Step 4: Write `rollback.sql`** in the same folder (statements end with `;` at line end, no `;` anywhere else, comments start with `--`; Task 7 splits on `;`):
+
+```sql
+-- Rollback for the Lab 4 migration. Not run automatically.
+-- Drops only what the migration added; earlier data is untouched.
+DROP TABLE "ActionTaken";
+DROP TABLE "TicketStatusHistory";
+DROP TYPE "ActionStatus";
+DROP INDEX "Ticket_currentStatus_idx";
+DROP INDEX "Ticket_updatedAt_idx";
+DROP INDEX "Ticket_requesterId_currentStatus_idx";
+ALTER TABLE "Ticket" DROP COLUMN "requesterResolvedAt";
+ALTER TABLE "Ticket" DROP COLUMN "version";
+```
+
+- [ ] **Step 5: Apply and regenerate the client.**
+
+Run: `npx prisma migrate deploy && npx prisma generate`
+Expected: "1 migration applied" (or the new one listed), then "Generated Prisma Client".
+
+- [ ] **Step 6: Verify the backfill matches.**
+
+Run: `npx tsx -e "import {prisma} from './src/prisma.ts'; const t=await prisma.ticket.count(); const h=await prisma.ticketStatusHistory.count(); console.log({t,h}); await prisma.\$disconnect()"`
+Expected: `t` equals `h` (the dev DB may have 0 Tickets; then both are 0 and Task 7 covers the real check).
+
+- [ ] **Step 7: Run the existing server suite** (`npx vitest run`): expect all 144 pass. (New Ticket columns have defaults; Lab 3 code is unaffected.)
+
+- [ ] **Step 8: Stage.** `git add server/prisma` (no commit).
+
+---
+
+### Task 2: Shared Action rules (pure, unit-tested)
+
+**Files:**
+- Create: `packages/shared/src/action-rules.ts`
+- Modify: `packages/shared/src/index.ts`
+- Test: `server/tests/lab-04/action-rules.unit.test.ts`
+
+**Interfaces:**
+- Produces (all exported from `@toktickit/shared`):
+  - `ACTION_STATUSES`, `ACTION_CREATE_STATUSES`, `ActionStatusValue`, `ACTION_STATUS_LABELS`
+  - limits `ACTION_DESCRIPTION_MAX`(2000) `ACTION_RESULT_MAX`(2000) `ACTION_FOLLOW_UP_NOTE_MAX`(1000) `ACTION_ATTACHMENT_NOTES_MAX`(500), `ACTION_REQUEST_ID_PATTERN`, `COMPLETED_FUTURE_SKEW_MS`(60000), `ASSIGNEE_ERROR_MESSAGE`
+  - `allowedActionMoves(from): ActionStatusValue[]`, `canMoveAction(from, to): boolean`
+  - `ActionBody`, `pickActionBody(body: unknown): ActionBody`
+  - `ActionDraft`, `ParsedAction`, `parseActionBody(body: ActionBody, existing: ActionDraft | null, now: Date): ParsedAction`
+  - `COMPLETED_LOCKED_FIELDS`, `ActionEditProblem`, `evaluateActionEdit(current: ActionStatusValue, body: ActionBody): ActionEditProblem | null`
+
+- [ ] **Step 1: Write the failing tests** `server/tests/lab-04/action-rules.unit.test.ts`:
+
+```ts
+import { describe, expect, it } from 'vitest'
+import {
+  ACTION_STATUSES,
+  allowedActionMoves,
+  canMoveAction,
+  evaluateActionEdit,
+  parseActionBody,
+  pickActionBody,
+  type ActionDraft,
+  type ActionStatusValue,
+} from '@toktickit/shared'
+
+const NOW = new Date('2026-10-31T10:00:00.000Z')
+const existing: ActionDraft = {
+  description: 'Checked the dock.',
+  status: 'PLANNED',
+  result: null,
+  actionAt: new Date('2026-10-31T09:00:00.000Z'),
+  followUpRequired: false,
+  followUpNote: null,
+  attachmentNotes: null,
+}
+
+describe('Action field validation (ACT-U01, BR-L4-06, BR-L4-07)', () => {
+  it('accepts a minimal create and applies defaults', () => {
+    const { draft, fields } = parseActionBody({ description: '  Replaced the dock.  ' }, null, NOW)
+    expect(fields).toEqual({})
+    expect(draft).toMatchObject({
+      description: 'Replaced the dock.',
+      status: 'PLANNED',
+      result: null,
+      followUpRequired: false,
+      followUpNote: null,
+      attachmentNotes: null,
+    })
+    expect(draft.actionAt).toEqual(NOW)
+  })
+
+  it('requires a description of 1 to 2000 characters and accepts exactly 2000', () => {
+    expect(parseActionBody({}, null, NOW).fields.description).toBe('Description must be 1-2000 characters.')
+    expect(parseActionBody({ description: '   ' }, null, NOW).fields.description).toBe('Description must be 1-2000 characters.')
+    expect(parseActionBody({ description: 'x'.repeat(2001) }, null, NOW).fields.description).toBe('Description must be 1-2000 characters.')
+    expect(parseActionBody({ description: 'x'.repeat(2000) }, null, NOW).fields).toEqual({})
+  })
+
+  it('requires a result when Completed and limits it to 2000 characters', () => {
+    expect(parseActionBody({ description: 'd', status: 'COMPLETED' }, null, NOW).fields.result).toBe(
+      'Result is required when the action is completed.',
+    )
+    expect(parseActionBody({ description: 'd', status: 'COMPLETED', result: 'Done' }, null, NOW).fields).toEqual({})
+    expect(parseActionBody({ description: 'd', result: 'x'.repeat(2001) }, null, NOW).fields.result).toBe(
+      'Result must be at most 2000 characters.',
+    )
+  })
+
+  it('stores an empty optional text as null', () => {
+    const { draft } = parseActionBody({ description: 'd', result: '  ', attachmentNotes: '' }, null, NOW)
+    expect(draft.result).toBeNull()
+    expect(draft.attachmentNotes).toBeNull()
+  })
+
+  it('limits attachment notes to 500 characters', () => {
+    expect(parseActionBody({ description: 'd', attachmentNotes: 'x'.repeat(501) }, null, NOW).fields.attachmentNotes).toBe(
+      'Attachment notes must be at most 500 characters.',
+    )
+    expect(parseActionBody({ description: 'd', attachmentNotes: 'x'.repeat(500) }, null, NOW).fields).toEqual({})
+  })
+
+  it('pairs the follow-up note with followUpRequired', () => {
+    expect(parseActionBody({ description: 'd', followUpRequired: true }, null, NOW).fields.followUpNote).toBe(
+      'Follow-up note is required when follow-up is needed.',
+    )
+    expect(parseActionBody({ description: 'd', followUpNote: 'Later' }, null, NOW).fields.followUpNote).toBe(
+      'Follow-up note must be empty when no follow-up is needed.',
+    )
+    expect(parseActionBody({ description: 'd', followUpRequired: true, followUpNote: 'x'.repeat(1001) }, null, NOW).fields.followUpNote).toBe(
+      'Follow-up note must be at most 1000 characters.',
+    )
+    expect(parseActionBody({ description: 'd', followUpRequired: true, followUpNote: 'Check Friday' }, null, NOW).fields).toEqual({})
+  })
+
+  it('clears the note when follow-up is switched off without a new note', () => {
+    const withFollowUp: ActionDraft = { ...existing, followUpRequired: true, followUpNote: 'Check Friday' }
+    const { draft, fields } = parseActionBody({ followUpRequired: false }, withFollowUp, NOW)
+    expect(fields).toEqual({})
+    expect(draft.followUpNote).toBeNull()
+  })
+
+  it('rejects non-text, non-boolean and non-integer values', () => {
+    const { fields } = parseActionBody(
+      { description: 5, status: 'DONE', result: 7, followUpRequired: 'yes', assigneeId: '9', followUpDone: 1 },
+      null,
+      NOW,
+    )
+    expect(fields.description).toBe('Description must be 1-2000 characters.')
+    expect(fields.status).toBe('Status is invalid.')
+    expect(fields.result).toBe('Result must be text.')
+    expect(fields.followUpRequired).toBe('Follow-up required must be true or false.')
+    expect(fields.assigneeId).toBe('Assignee must be an active IT Staff or Administrator.')
+    expect(fields.followUpDone).toBe('Follow-up done must be true or false.')
+  })
+
+  it('parses actionAt only as an ISO time with a UTC offset', () => {
+    expect(parseActionBody({ description: 'd', actionAt: '2026-11-02T09:00:00Z' }, null, NOW).fields).toEqual({})
+    expect(parseActionBody({ description: 'd', actionAt: '2026-11-02T09:00:00+07:00' }, null, NOW).fields).toEqual({})
+    for (const bad of ['2026-11-02', '2026-11-02T09:00:00', 'tomorrow', 12345, '2026-13-45T00:00:00Z']) {
+      expect(parseActionBody({ description: 'd', actionAt: bad }, null, NOW).fields.actionAt).toBe(
+        'Action date and time must be an ISO time with a UTC offset.',
+      )
+    }
+  })
+
+  it('allows a Planned or In Progress action in the future but not a Completed one beyond one minute', () => {
+    const future = '2026-11-30T09:00:00Z'
+    expect(parseActionBody({ description: 'd', actionAt: future }, null, NOW).fields).toEqual({})
+    expect(parseActionBody({ description: 'd', status: 'IN_PROGRESS', actionAt: future }, null, NOW).fields).toEqual({})
+    expect(
+      parseActionBody({ description: 'd', status: 'COMPLETED', result: 'r', actionAt: future }, null, NOW).fields.actionAt,
+    ).toBe('A completed action cannot be dated in the future.')
+    expect(
+      parseActionBody({ description: 'd', status: 'COMPLETED', result: 'r', actionAt: '2026-10-31T10:00:30Z' }, null, NOW).fields,
+    ).toEqual({})
+  })
+
+  it('lets a create start only as Planned, In Progress or Completed', () => {
+    expect(parseActionBody({ description: 'd', status: 'CANCELLED' }, null, NOW).fields.status).toBe(
+      'A new action can start as Planned, In Progress or Completed.',
+    )
+  })
+
+  it('validates requestId only on create', () => {
+    expect(parseActionBody({ description: 'd', requestId: 'abc' }, null, NOW).fields.requestId).toBe(
+      'Request id must be 8-64 letters, digits, "-" or "_".',
+    )
+    expect(parseActionBody({ description: 'd', requestId: 'bad id!!!' }, null, NOW).fields.requestId).toBeDefined()
+    expect(parseActionBody({ description: 'd', requestId: 'req-12345678' }, null, NOW).requestId).toBe('req-12345678')
+    expect(parseActionBody({ requestId: 'abc' }, existing, NOW).fields).toEqual({})
+  })
+
+  it('merges a partial edit onto the existing action', () => {
+    const { draft, fields } = parseActionBody({ result: 'Fixed', status: 'COMPLETED' }, existing, NOW)
+    expect(fields).toEqual({})
+    expect(draft).toMatchObject({ description: 'Checked the dock.', status: 'COMPLETED', result: 'Fixed' })
+  })
+
+  it('refuses followUpDone true when no follow-up is required', () => {
+    expect(parseActionBody({ followUpDone: true }, existing, NOW).fields.followUpDone).toBe(
+      'There is no follow-up to mark as done.',
+    )
+  })
+})
+
+describe('Action status moves and locks (ACT-U02, BR-L4-05)', () => {
+  const allowed: Record<ActionStatusValue, ActionStatusValue[]> = {
+    PLANNED: ['IN_PROGRESS', 'COMPLETED', 'CANCELLED'],
+    IN_PROGRESS: ['COMPLETED', 'CANCELLED'],
+    COMPLETED: [],
+    CANCELLED: [],
+  }
+
+  it('matches the BR-L4-05 table for every from/to pair', () => {
+    for (const from of ACTION_STATUSES) {
+      expect(allowedActionMoves(from)).toEqual(allowed[from])
+      for (const to of ACTION_STATUSES) {
+        expect(canMoveAction(from, to)).toBe(allowed[from].includes(to))
+      }
+    }
+  })
+
+  it('locks a Cancelled action against every edit', () => {
+    expect(evaluateActionEdit('CANCELLED', {})).toEqual({ error: 'ACTION_LOCKED', reason: 'CANCELLED' })
+    expect(evaluateActionEdit('CANCELLED', { followUpDone: true })).toEqual({ error: 'ACTION_LOCKED', reason: 'CANCELLED' })
+  })
+
+  it('lets a Completed action change only follow-up fields and attachment notes', () => {
+    expect(evaluateActionEdit('COMPLETED', { followUpRequired: true, followUpNote: 'n', followUpDone: true, attachmentNotes: 'a' })).toBeNull()
+    expect(evaluateActionEdit('COMPLETED', { description: 'x', result: 'y', actionAt: 'z', assigneeId: 1 })).toEqual({
+      error: 'ACTION_LOCKED',
+      reason: 'COMPLETED',
+      fields: ['description', 'result', 'actionAt', 'assigneeId'],
+    })
+  })
+
+  it('reports an illegal status move with from and to', () => {
+    expect(evaluateActionEdit('COMPLETED', { status: 'PLANNED' })).toEqual({
+      error: 'INVALID_ACTION_TRANSITION',
+      from: 'COMPLETED',
+      to: 'PLANNED',
+    })
+    expect(evaluateActionEdit('IN_PROGRESS', { status: 'PLANNED' })).toEqual({
+      error: 'INVALID_ACTION_TRANSITION',
+      from: 'IN_PROGRESS',
+      to: 'PLANNED',
+    })
+  })
+
+  it('treats the current status as no change and lets a legal move through', () => {
+    expect(evaluateActionEdit('PLANNED', { status: 'PLANNED' })).toBeNull()
+    expect(evaluateActionEdit('COMPLETED', { status: 'COMPLETED' })).toBeNull()
+    expect(evaluateActionEdit('PLANNED', { status: 'IN_PROGRESS' })).toBeNull()
+  })
+})
+
+describe('Body allowlist (ACT-U03, BR-L4-04)', () => {
+  it('keeps only allowlisted fields and never copies protected ones', () => {
+    const picked = pickActionBody({
+      description: 'd',
+      createdById: 99,
+      ticketId: 98,
+      id: 97,
+      createdAt: 'x',
+      bogus: true,
+    })
+    expect(picked).toEqual({ description: 'd' })
+  })
+
+  it('returns an empty object for a non-object body', () => {
+    expect(pickActionBody(null)).toEqual({})
+    expect(pickActionBody('text')).toEqual({})
+    expect(pickActionBody([1, 2])).toEqual({})
+  })
+
+  it('does not copy protected fields into a parsed draft', () => {
+    const { draft } = parseActionBody(pickActionBody({ description: 'd', createdById: 5, ticketId: 6, version: 7 }), null, NOW)
+    expect(Object.keys(draft).sort()).toEqual(
+      ['actionAt', 'attachmentNotes', 'description', 'followUpNote', 'followUpRequired', 'result', 'status'],
+    )
+  })
+})
+```
+
+- [ ] **Step 2: Run to verify it fails.**
+
+Run (in `server/`): `npx vitest run tests/lab-04/action-rules.unit.test.ts`
+Expected: FAIL (`parseActionBody`/exports are not defined).
+
+- [ ] **Step 3: Implement `packages/shared/src/action-rules.ts`:**
+
+```ts
+import type { FieldErrors } from './ticket-rules.js'
+
+export const ACTION_STATUSES = ['PLANNED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'] as const
+export type ActionStatusValue = (typeof ACTION_STATUSES)[number]
+
+export const ACTION_CREATE_STATUSES = ['PLANNED', 'IN_PROGRESS', 'COMPLETED'] as const
+
+export const ACTION_STATUS_LABELS: Record<ActionStatusValue, string> = {
+  PLANNED: 'Planned',
+  IN_PROGRESS: 'In Progress',
+  COMPLETED: 'Completed',
+  CANCELLED: 'Cancelled',
+}
+
+export const ACTION_DESCRIPTION_MAX = 2000
+export const ACTION_RESULT_MAX = 2000
+export const ACTION_FOLLOW_UP_NOTE_MAX = 1000
+export const ACTION_ATTACHMENT_NOTES_MAX = 500
+export const ACTION_REQUEST_ID_PATTERN = /^[A-Za-z0-9_-]{8,64}$/
+export const COMPLETED_FUTURE_SKEW_MS = 60_000
+export const ASSIGNEE_ERROR_MESSAGE = 'Assignee must be an active IT Staff or Administrator.'
+
+const NEXT_STATUSES: Record<ActionStatusValue, readonly ActionStatusValue[]> = {
+  PLANNED: ['IN_PROGRESS', 'COMPLETED', 'CANCELLED'],
+  IN_PROGRESS: ['COMPLETED', 'CANCELLED'],
+  COMPLETED: [],
+  CANCELLED: [],
+}
+
+export function allowedActionMoves(from: ActionStatusValue): ActionStatusValue[] {
+  return [...NEXT_STATUSES[from]]
+}
+
+export function canMoveAction(from: ActionStatusValue, to: ActionStatusValue): boolean {
+  return NEXT_STATUSES[from].includes(to)
+}
+
+export const ACTION_BODY_FIELDS = [
+  'description',
+  'status',
+  'result',
+  'actionAt',
+  'assigneeId',
+  'followUpRequired',
+  'followUpNote',
+  'followUpDone',
+  'attachmentNotes',
+  'requestId',
+  'version',
+] as const
+export type ActionBody = Partial<Record<(typeof ACTION_BODY_FIELDS)[number], unknown>>
+
+/** Field allowlist (BR-L4-04): anything not listed, including createdById and ticketId, is dropped. */
+export function pickActionBody(body: unknown): ActionBody {
+  if (typeof body !== 'object' || body === null || Array.isArray(body)) return {}
+  const source = body as Record<string, unknown>
+  const picked: ActionBody = {}
+  for (const field of ACTION_BODY_FIELDS) {
+    if (Object.prototype.hasOwnProperty.call(source, field) && source[field] !== undefined) {
+      picked[field] = source[field]
+    }
+  }
+  return picked
+}
+
+export type ActionDraft = {
+  description: string
+  status: ActionStatusValue
+  result: string | null
+  actionAt: Date
+  followUpRequired: boolean
+  followUpNote: string | null
+  attachmentNotes: string | null
+}
+
+export type ParsedAction = {
+  draft: ActionDraft
+  assigneeId?: number
+  followUpDone?: boolean
+  requestId?: string
+  fields: FieldErrors
+}
+
+const ISO_WITH_OFFSET = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})$/
+
+function parseActionTime(value: unknown): Date | null {
+  if (typeof value !== 'string' || !ISO_WITH_OFFSET.test(value)) return null
+  const parsed = new Date(value)
+  return Number.isNaN(parsed.getTime()) ? null : parsed
+}
+
+type TextRead = { present: boolean; value: string | null }
+
+function readOptionalText(body: ActionBody, key: 'result' | 'followUpNote' | 'attachmentNotes', max: number, label: string, fields: FieldErrors): TextRead {
+  if (!(key in body)) return { present: false, value: null }
+  const raw = body[key]
+  if (raw === null) return { present: true, value: null }
+  if (typeof raw !== 'string') {
+    fields[key] = `${label} must be text.`
+    return { present: true, value: null }
+  }
+  const trimmed = raw.trim()
+  if (trimmed.length > max) fields[key] = `${label} must be at most ${max} characters.`
+  return { present: true, value: trimmed === '' ? null : trimmed }
+}
+
+/**
+ * One parser for create (existing = null) and edit (existing = current row).
+ * It validates the merged result, so an edit is checked as a whole. The caller
+ * still does the database checks: assignee exists/active, Ticket locked, version.
+ */
+export function parseActionBody(body: ActionBody, existing: ActionDraft | null, now: Date): ParsedAction {
+  const fields: FieldErrors = {}
+  const base: ActionDraft = existing ?? {
+    description: '',
+    status: 'PLANNED',
+    result: null,
+    actionAt: now,
+    followUpRequired: false,
+    followUpNote: null,
+    attachmentNotes: null,
+  }
+
+  let description = base.description
+  if ('description' in body) {
+    description = typeof body.description === 'string' ? body.description.trim() : ''
+  }
+  if (description.length < 1 || description.length > ACTION_DESCRIPTION_MAX) {
+    fields.description = `Description must be 1-${ACTION_DESCRIPTION_MAX} characters.`
+  }
+
+  let status = base.status
+  if ('status' in body) {
+    if (typeof body.status === 'string' && (ACTION_STATUSES as readonly string[]).includes(body.status)) {
+      status = body.status as ActionStatusValue
+    } else {
+      fields.status = 'Status is invalid.'
+    }
+  }
+  if (!existing && !fields.status && !(ACTION_CREATE_STATUSES as readonly string[]).includes(status)) {
+    fields.status = 'A new action can start as Planned, In Progress or Completed.'
+  }
+
+  const resultRead = readOptionalText(body, 'result', ACTION_RESULT_MAX, 'Result', fields)
+  const result = resultRead.present ? resultRead.value : base.result
+  if (status === 'COMPLETED' && !fields.result && result === null) {
+    fields.result = 'Result is required when the action is completed.'
+  }
+
+  let actionAt = base.actionAt
+  if ('actionAt' in body) {
+    const parsed = parseActionTime(body.actionAt)
+    if (parsed) actionAt = parsed
+    else fields.actionAt = 'Action date and time must be an ISO time with a UTC offset.'
+  }
+  if (status === 'COMPLETED' && !fields.actionAt && actionAt.getTime() > now.getTime() + COMPLETED_FUTURE_SKEW_MS) {
+    fields.actionAt = 'A completed action cannot be dated in the future.'
+  }
+
+  let assigneeId: number | undefined
+  if ('assigneeId' in body) {
+    if (typeof body.assigneeId === 'number' && Number.isInteger(body.assigneeId)) assigneeId = body.assigneeId
+    else fields.assigneeId = ASSIGNEE_ERROR_MESSAGE
+  }
+
+  let followUpRequired = base.followUpRequired
+  if ('followUpRequired' in body) {
+    if (typeof body.followUpRequired === 'boolean') followUpRequired = body.followUpRequired
+    else fields.followUpRequired = 'Follow-up required must be true or false.'
+  }
+  const noteRead = readOptionalText(body, 'followUpNote', ACTION_FOLLOW_UP_NOTE_MAX, 'Follow-up note', fields)
+  let followUpNote = noteRead.present ? noteRead.value : base.followUpNote
+  if (!followUpRequired && 'followUpRequired' in body && !noteRead.present) followUpNote = null
+  if (!fields.followUpNote) {
+    if (followUpRequired && followUpNote === null) {
+      fields.followUpNote = 'Follow-up note is required when follow-up is needed.'
+    } else if (!followUpRequired && followUpNote !== null) {
+      fields.followUpNote = 'Follow-up note must be empty when no follow-up is needed.'
+    }
+  }
+
+  let followUpDone: boolean | undefined
+  if ('followUpDone' in body) {
+    if (typeof body.followUpDone === 'boolean') followUpDone = body.followUpDone
+    else fields.followUpDone = 'Follow-up done must be true or false.'
+  }
+  if (followUpDone === true && !followUpRequired && !fields.followUpDone) {
+    fields.followUpDone = 'There is no follow-up to mark as done.'
+  }
+
+  const notesRead = readOptionalText(body, 'attachmentNotes', ACTION_ATTACHMENT_NOTES_MAX, 'Attachment notes', fields)
+  const attachmentNotes = notesRead.present ? notesRead.value : base.attachmentNotes
+
+  let requestId: string | undefined
+  if (!existing && 'requestId' in body) {
+    if (typeof body.requestId === 'string' && ACTION_REQUEST_ID_PATTERN.test(body.requestId)) requestId = body.requestId
+    else fields.requestId = 'Request id must be 8-64 letters, digits, "-" or "_".'
+  }
+
+  return {
+    draft: { description, status, result, actionAt, followUpRequired, followUpNote, attachmentNotes },
+    assigneeId,
+    followUpDone,
+    requestId,
+    fields,
+  }
+}
+
+/** Fields a Completed action may not change (BR-L4-05). Follow-up fields and attachment notes stay editable. */
+export const COMPLETED_LOCKED_FIELDS = ['description', 'result', 'actionAt', 'assigneeId'] as const
+
+export type ActionEditProblem =
+  | { error: 'ACTION_LOCKED'; reason: 'CANCELLED' }
+  | { error: 'ACTION_LOCKED'; reason: 'COMPLETED'; fields: string[] }
+  | { error: 'INVALID_ACTION_TRANSITION'; from: ActionStatusValue; to: ActionStatusValue }
+
+/** Returns null when the edit may go ahead, otherwise the 409 body to send. */
+export function evaluateActionEdit(current: ActionStatusValue, body: ActionBody): ActionEditProblem | null {
+  if (current === 'CANCELLED') return { error: 'ACTION_LOCKED', reason: 'CANCELLED' }
+
+  if (current === 'COMPLETED') {
+    const locked = COMPLETED_LOCKED_FIELDS.filter((field) => field in body)
+    if (locked.length > 0) return { error: 'ACTION_LOCKED', reason: 'COMPLETED', fields: [...locked] }
+  }
+
+  const requested = body.status
+  if (
+    typeof requested === 'string' &&
+    requested !== current &&
+    (ACTION_STATUSES as readonly string[]).includes(requested) &&
+    !canMoveAction(current, requested as ActionStatusValue)
+  ) {
+    return { error: 'INVALID_ACTION_TRANSITION', from: current, to: requested as ActionStatusValue }
+  }
+
+  return null
+}
+```
+
+- [ ] **Step 4: Export it.** Append to `packages/shared/src/index.ts`: `export * from './action-rules.js'`
+
+- [ ] **Step 5: Run to verify it passes.** `npx vitest run tests/lab-04/action-rules.unit.test.ts` → all PASS. Then `npx tsc --noEmit -p .` in `server/` → no errors.
+
+- [ ] **Step 6: Stage.** `git add packages/shared server/tests/lab-04/action-rules.unit.test.ts`
+
+---
+
+### Task 3: Server plumbing (touchTicket, assignable roles, first history row)
+
+**Files:**
+- Create: `server/src/tickets/touch-ticket.ts`, `server/src/users/assignable-roles.ts`
+- Modify: `server/src/tickets.ts` (the create transaction), `server/src/staff/staff-ticket-actions.ts`
+- Test: `server/tests/lab-04/ticket-history.api.test.ts`
+
+**Interfaces:**
+- Produces: `touchTicket(client: Pick<Prisma.TransactionClient, 'ticket'>, ticketId: number): Promise<void>`; `ASSIGNABLE_ROLES: readonly Role[]`; `findAssignableUser(client: Pick<Prisma.TransactionClient, 'user'>, userId: number): Promise<{ id: number } | null>`.
+- Consumes: Task 1 models.
+
+- [ ] **Step 1: Write the failing test** `server/tests/lab-04/ticket-history.api.test.ts`:
+
+```ts
+import { describe, expect, it } from 'vitest'
+import { prisma } from '../../src/prisma.js'
+import { loginAsNewUser } from '../helpers/users.js'
+import { createTicketVia } from '../helpers/tickets.js'
+
+describe('Ticket creation writes the first history row (BR-L4-16, AC-L4-18)', () => {
+  it('records fromStatus null, toStatus NEW and the Requester as actor, once', async () => {
+    const requester = await loginAsNewUser('REQUESTER')
+    const ticket = await createTicketVia(requester.agent)
+
+    const rows = await prisma.ticketStatusHistory.findMany({ where: { ticketId: ticket.id } })
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({ fromStatus: null, toStatus: 'NEW', changedById: requester.userId })
+  })
+})
+```
+
+- [ ] **Step 2: Create the helper `server/tests/helpers/tickets.ts`** (needed by this and later tests):
+
+```ts
+import type { TicketStatus } from '@prisma/client'
+import { prisma } from '../../src/prisma.js'
+import type { AuthenticatedAgent } from './session.js'
+
+export type CreatedTicket = { id: number; ticketNumber: string; currentStatus: string; version: number }
+
+/** Creates a Ticket through the real API as the given Requester agent. */
+export async function createTicketVia(agent: AuthenticatedAgent, summary = 'Helper ticket for tests'): Promise<CreatedTicket> {
+  const [category, relatedSystem] = await Promise.all([
+    prisma.category.findFirstOrThrow({ where: { isActive: true }, orderBy: { id: 'asc' } }),
+    prisma.relatedSystem.findFirstOrThrow({ where: { isActive: true }, orderBy: { id: 'asc' } }),
+  ])
+  const response = await agent.post('/api/tickets').send({
+    categoryId: category.id,
+    relatedSystemId: relatedSystem.id,
+    requestedPriority: 'MEDIUM',
+    summary,
+    description: 'Ticket created by the test helper.',
+  })
+  if (response.status !== 201) {
+    throw new Error(`createTicketVia failed: ${response.status} ${JSON.stringify(response.body)}`)
+  }
+  return response.body as CreatedTicket
+}
+
+/** Test-only shortcut: set a status directly (the workflow endpoint arrives in a later Issue). */
+export async function setTicketStatus(ticketId: number, status: TicketStatus): Promise<void> {
+  await prisma.ticket.update({ where: { id: ticketId }, data: { currentStatus: status } })
+}
+```
+
+- [ ] **Step 3: Run to verify it fails.** `npx vitest run tests/lab-04/ticket-history.api.test.ts` → FAIL (`expected [] to have length 1`).
+
+- [ ] **Step 4: Create `server/src/tickets/touch-ticket.ts`:**
+
+```ts
+import type { Prisma } from '@prisma/client'
+
+/**
+ * Child activity (an Action, Comment, Note, or Attachment change) counts as
+ * activity on the Ticket (BR-L4-15), so "recently updated" reflects it.
+ * Writes updatedAt explicitly because an empty Prisma update is not guaranteed to.
+ */
+export async function touchTicket(client: Pick<Prisma.TransactionClient, 'ticket'>, ticketId: number): Promise<void> {
+  await client.ticket.update({ where: { id: ticketId }, data: { updatedAt: new Date() } })
+}
+```
+
+- [ ] **Step 5: Create `server/src/users/assignable-roles.ts`:**
+
+```ts
+import type { Prisma, Role } from '@prisma/client'
+
+/** Roles that may own a Ticket or be assigned an Action (BR-L4-03). */
+export const ASSIGNABLE_ROLES: readonly Role[] = ['IT_STAFF', 'ADMINISTRATOR']
+
+/** The user when they exist, are active, and hold an assignable role; otherwise null. */
+export async function findAssignableUser(
+  client: Pick<Prisma.TransactionClient, 'user'>,
+  userId: number,
+): Promise<{ id: number } | null> {
+  const user = await client.user.findUnique({ where: { id: userId }, select: { id: true, role: true, isActive: true } })
+  if (!user || !user.isActive || !ASSIGNABLE_ROLES.includes(user.role)) return null
+  return { id: user.id }
+}
+```
+
+- [ ] **Step 6: Use the shared constant in `staff-ticket-actions.ts`.** Replace the line `const OWNER_ROLES: readonly Role[] = ['IT_STAFF', 'ADMINISTRATOR']` with an import `import { ASSIGNABLE_ROLES } from '../users/assignable-roles.js'`, change `OWNER_ROLES.includes(` to `ASSIGNABLE_ROLES.includes(`, and remove `Role` from the `import type { Role, TicketStatus } from '@prisma/client'` line if it becomes unused. Then `grep -rn "'IT_STAFF', 'ADMINISTRATOR'" server/src` and replace any other literal role lists that mean "assignable" (not `requireRole(...)` calls) with `ASSIGNABLE_ROLES`.
+
+- [ ] **Step 7: Write the first history row in `tickets.ts`.** In the `prisma.$transaction(async (tx) => {` block of `ticketsRouter.post('/')`, after `const created = await tx.ticket.create({...})` and before `return tx.ticket.update(...)`, add:
+
+```ts
+      await tx.ticketStatusHistory.create({
+        data: { ticketId: created.id, fromStatus: null, toStatus: 'NEW', changedById: requesterId },
+      })
+```
+
+- [ ] **Step 8: Run.** `npx vitest run tests/lab-04/ticket-history.api.test.ts` → PASS. `npx tsc --noEmit -p .` clean. Full `npx vitest run` → all green.
+
+- [ ] **Step 9: Stage.** `git add server/src server/tests`
+
+---
+
+### Task 4: Action service, router, mount
+
+**Files:**
+- Create: `server/src/actions/action-service.ts`, `server/src/actions/actions-router.ts`
+- Modify: `server/src/app.ts`
+
+**Interfaces:**
+- Consumes: Task 1 models; Task 2 (`pickActionBody`, `parseActionBody`, `evaluateActionEdit`, `ASSIGNEE_ERROR_MESSAGE`, `ActionDraft`); Task 3 (`touchTicket`, `findAssignableUser`); existing `checkTicketAccess(ticketId, userId, role, response)` in `server/src/authorization/ticket-access.ts`.
+- Produces: HTTP routes of api-spec §1. `ServiceResult = { httpStatus: number; body: unknown }`.
+
+- [ ] **Step 1: Create `server/src/actions/action-service.ts`:**
+
+```ts
+import type { ActionTaken, Prisma } from '@prisma/client'
+import {
+  ASSIGNEE_ERROR_MESSAGE,
+  evaluateActionEdit,
+  parseActionBody,
+  pickActionBody,
+  type ActionDraft,
+  type FieldErrors,
+} from '@toktickit/shared'
+import { prisma } from '../prisma.js'
+import { touchTicket } from '../tickets/touch-ticket.js'
+import { findAssignableUser } from '../users/assignable-roles.js'
+
+export type ServiceResult = { httpStatus: number; body: unknown }
+
+const reply = (httpStatus: number, body: unknown): ServiceResult => ({ httpStatus, body })
+const validationFailed = (fields: FieldErrors): ServiceResult => reply(400, { error: 'VALIDATION_FAILED', fields })
+
+const WITH_NAMES = {
+  createdBy: { select: { name: true } },
+  assignee: { select: { name: true } },
+} satisfies Prisma.ActionTakenInclude
+type ActionWithNames = Prisma.ActionTakenGetPayload<{ include: typeof WITH_NAMES }>
+
+const LOCKED_TICKET_STATUSES: readonly string[] = ['CLOSED', 'CANCELLED']
+
+export function toActionResponse(action: ActionWithNames) {
+  return {
+    id: action.id,
+    ticketId: action.ticketId,
+    version: action.version,
+    actionAt: action.actionAt,
+    description: action.description,
+    result: action.result,
+    status: action.status,
+    createdById: action.createdById,
+    createdByName: action.createdBy.name,
+    assigneeId: action.assigneeId,
+    assigneeName: action.assignee.name,
+    followUpRequired: action.followUpRequired,
+    followUpNote: action.followUpNote,
+    followUpDoneAt: action.followUpDoneAt,
+    attachmentNotes: action.attachmentNotes,
+    createdAt: action.createdAt,
+    updatedAt: action.updatedAt,
+  }
+}
+
+function toDraft(action: ActionTaken): ActionDraft {
+  return {
+    description: action.description,
+    status: action.status,
+    result: action.result,
+    actionAt: action.actionAt,
+    followUpRequired: action.followUpRequired,
+    followUpNote: action.followUpNote,
+    attachmentNotes: action.attachmentNotes,
+  }
+}
+
+type LockedTicket = { id: number; currentStatus: string }
+
+/**
+ * BR-L4-11: lock the Ticket row for the rest of the transaction so two
+ * writes on one Ticket run one after the other. Tagged template = bound parameter.
+ */
+async function lockTicket(tx: Prisma.TransactionClient, ticketId: number): Promise<LockedTicket | null> {
+  const rows = await tx.$queryRaw<LockedTicket[]>`
+    SELECT id, "currentStatus"::text AS "currentStatus" FROM "Ticket" WHERE id = ${ticketId} FOR UPDATE`
+  return rows[0] ?? null
+}
+
+export async function listActions(ticketId: number) {
+  const actions = await prisma.actionTaken.findMany({
+    where: { ticketId },
+    orderBy: [{ actionAt: 'asc' }, { id: 'asc' }],
+    include: WITH_NAMES,
+  })
+  return actions.map(toActionResponse)
+}
+
+export async function createAction(ticketId: number, creatorId: number, rawBody: unknown): Promise<ServiceResult> {
+  const body = pickActionBody(rawBody)
+
+  return prisma.$transaction(async (tx) => {
+    const ticket = await lockTicket(tx, ticketId)
+    if (!ticket) return reply(404, { error: 'TICKET_NOT_FOUND' })
+
+    const now = new Date()
+    const parsed = parseActionBody(body, null, now)
+
+    if (parsed.requestId) {
+      const original = await tx.actionTaken.findUnique({
+        where: { ticketId_requestId: { ticketId, requestId: parsed.requestId } },
+        include: WITH_NAMES,
+      })
+      if (original) return reply(200, toActionResponse(original))
+    }
+
+    if (LOCKED_TICKET_STATUSES.includes(ticket.currentStatus)) {
+      return reply(409, { error: 'TICKET_LOCKED', currentStatus: ticket.currentStatus })
+    }
+    if (Object.keys(parsed.fields).length > 0) return validationFailed(parsed.fields)
+
+    const assigneeId = parsed.assigneeId ?? creatorId
+    if (parsed.assigneeId !== undefined && !(await findAssignableUser(tx, parsed.assigneeId))) {
+      return validationFailed({ assigneeId: ASSIGNEE_ERROR_MESSAGE })
+    }
+
+    const created = await tx.actionTaken.create({
+      data: {
+        ticketId,
+        createdById: creatorId,
+        assigneeId,
+        ...parsed.draft,
+        followUpDoneAt: parsed.followUpDone ? now : null,
+        requestId: parsed.requestId ?? null,
+      },
+      include: WITH_NAMES,
+    })
+    await touchTicket(tx, ticketId)
+    return reply(201, toActionResponse(created))
+  })
+}
+
+export async function updateAction(ticketId: number, actionId: number, rawBody: unknown): Promise<ServiceResult> {
+  const body = pickActionBody(rawBody)
+
+  return prisma.$transaction(async (tx) => {
+    const ticket = await lockTicket(tx, ticketId)
+    if (!ticket) return reply(404, { error: 'TICKET_NOT_FOUND' })
+
+    const existing = await tx.actionTaken.findFirst({ where: { id: actionId, ticketId } })
+    if (!existing) return reply(404, { error: 'ACTION_NOT_FOUND' })
+
+    const version = body.version
+    if (typeof version !== 'number' || !Number.isInteger(version) || version < 1) {
+      return validationFailed({ version: 'Version is required.' })
+    }
+    if (LOCKED_TICKET_STATUSES.includes(ticket.currentStatus)) {
+      return reply(409, { error: 'TICKET_LOCKED', currentStatus: ticket.currentStatus })
+    }
+    if (version !== existing.version) {
+      return reply(409, { error: 'STALE_UPDATE', currentVersion: existing.version })
+    }
+
+    const problem = evaluateActionEdit(existing.status, body)
+    if (problem) return reply(409, problem)
+
+    const now = new Date()
+    const parsed = parseActionBody(body, toDraft(existing), now)
+    if (Object.keys(parsed.fields).length > 0) return validationFailed(parsed.fields)
+
+    if (
+      parsed.assigneeId !== undefined &&
+      parsed.assigneeId !== existing.assigneeId &&
+      !(await findAssignableUser(tx, parsed.assigneeId))
+    ) {
+      return validationFailed({ assigneeId: ASSIGNEE_ERROR_MESSAGE })
+    }
+
+    let followUpDoneAt = existing.followUpDoneAt
+    if (!parsed.draft.followUpRequired) followUpDoneAt = null
+    else if (parsed.followUpDone === true && followUpDoneAt === null) followUpDoneAt = now
+    else if (parsed.followUpDone === false) followUpDoneAt = null
+
+    const updated = await tx.actionTaken.update({
+      where: { id: actionId, version: existing.version },
+      data: {
+        ...parsed.draft,
+        assigneeId: parsed.assigneeId ?? existing.assigneeId,
+        followUpDoneAt,
+        version: { increment: 1 },
+      },
+      include: WITH_NAMES,
+    })
+    await touchTicket(tx, ticketId)
+    return reply(200, toActionResponse(updated))
+  })
+}
+```
+
+- [ ] **Step 2: Create `server/src/actions/actions-router.ts`:**
+
+```ts
+import { Router } from 'express'
+import { requireSession, requirePasswordAlreadyChanged } from '../auth/require-session.js'
+import { requireRole } from '../authorization/require-role.js'
+import { checkTicketAccess } from '../authorization/ticket-access.js'
+import { createAction, listActions, updateAction } from './action-service.js'
+
+export const actionsRouter = Router({ mergeParams: true })
+
+const requireAnyRole = [requireSession, requirePasswordAlreadyChanged, requireRole('REQUESTER', 'IT_STAFF', 'ADMINISTRATOR')]
+const requireStaff = [requireSession, requirePasswordAlreadyChanged, requireRole('IT_STAFF', 'ADMINISTRATOR')]
+
+function toInteger(value: unknown): number | null {
+  const parsed = typeof value === 'number' ? value : Number(value)
+  return Number.isInteger(parsed) ? parsed : null
+}
+
+actionsRouter.get('/', ...requireAnyRole, async (request, response, next) => {
+  try {
+    const ticketId = toInteger(request.params.ticketId)
+    if (ticketId === null) {
+      response.status(404).json({ error: 'TICKET_NOT_FOUND' })
+      return
+    }
+    const userId = response.locals.userId as number
+    const role = response.locals.userRole as string
+    if (!(await checkTicketAccess(ticketId, userId, role, response))) return
+
+    response.status(200).json(await listActions(ticketId))
+  } catch (error) {
+    next(error)
+  }
+})
+
+actionsRouter.post('/', ...requireStaff, async (request, response, next) => {
+  try {
+    const ticketId = toInteger(request.params.ticketId)
+    if (ticketId === null) {
+      response.status(404).json({ error: 'TICKET_NOT_FOUND' })
+      return
+    }
+    const result = await createAction(ticketId, response.locals.userId as number, request.body)
+    response.status(result.httpStatus).json(result.body)
+  } catch (error) {
+    next(error)
+  }
+})
+
+actionsRouter.patch('/:actionId', ...requireStaff, async (request, response, next) => {
+  try {
+    const ticketId = toInteger(request.params.ticketId)
+    const actionId = toInteger(request.params.actionId)
+    if (ticketId === null) {
+      response.status(404).json({ error: 'TICKET_NOT_FOUND' })
+      return
+    }
+    if (actionId === null) {
+      response.status(404).json({ error: 'ACTION_NOT_FOUND' })
+      return
+    }
+    const result = await updateAction(ticketId, actionId, request.body)
+    response.status(result.httpStatus).json(result.body)
+  } catch (error) {
+    next(error)
+  }
+})
+
+// Actions are cancelled, never deleted (BR-L4-08). Session is still required, so an anonymous caller gets 401.
+actionsRouter.delete('/:actionId', ...requireAnyRole, (_request, response) => {
+  response.status(404).json({ error: 'ACTION_NOT_FOUND' })
+})
+```
+
+- [ ] **Step 3: Mount it.** In `server/src/app.ts` add `import { actionsRouter } from './actions/actions-router.js'` and, above `app.use('/api/tickets/:ticketId', staffTicketActionsRouter)`, add `app.use('/api/tickets/:ticketId/actions', actionsRouter)`.
+
+- [ ] **Step 4: Typecheck and smoke.** `npx tsc --noEmit -p .` clean; full `npx vitest run` green (no new tests yet; Task 5 adds them).
+
+- [ ] **Step 5: Stage.** `git add server/src`
+
+---
+
+### Task 5: Actions API tests (ACT-01 to ACT-18)
+
+**Files:**
+- Test: `server/tests/lab-04/actions-taken.api.test.ts`
+
+**Interfaces:** Consumes Task 3/4 and helpers `loginAsNewUser`, `createUser`, `createTicketVia`, `setTicketStatus`, `loginAsEmail`.
+
+- [ ] **Step 1: Write the tests** `server/tests/lab-04/actions-taken.api.test.ts`:
+
+```ts
+import request from 'supertest'
+import { beforeAll, describe, expect, it } from 'vitest'
+import { app } from '../helpers/app.js'
+import { prisma } from '../../src/prisma.js'
+import { createUser, loginAsNewUser } from '../helpers/users.js'
+import { createTicketVia, setTicketStatus } from '../helpers/tickets.js'
+import { loginAsEmail, type AuthenticatedAgent } from '../helpers/session.js'
+
+type Actor = { agent: AuthenticatedAgent; userId: number }
+
+let requesterA: Actor
+let requesterB: Actor
+let staff: Actor
+let otherStaff: Actor
+let admin: Actor
+let inactiveStaffId: number
+
+const base = { description: 'Replaced the docking station firmware.' }
+const actionsUrl = (ticketId: number) => `/api/tickets/${ticketId}/actions`
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+async function newTicket(): Promise<number> {
+  return (await createTicketVia(requesterA.agent)).id
+}
+
+async function createVia(actor: Actor, ticketId: number, body: Record<string, unknown> = base) {
+  return actor.agent.post(actionsUrl(ticketId)).send(body)
+}
+
+beforeAll(async () => {
+  const [a, b, s1, s2, ad, inactive] = await Promise.all([
+    loginAsNewUser('REQUESTER'),
+    loginAsNewUser('REQUESTER'),
+    loginAsNewUser('IT_STAFF'),
+    loginAsNewUser('IT_STAFF'),
+    loginAsNewUser('ADMINISTRATOR'),
+    createUser({ role: 'IT_STAFF', isActive: false }),
+  ])
+  requesterA = a
+  requesterB = b
+  staff = s1
+  otherStaff = s2
+  admin = ad
+  inactiveStaffId = inactive.id
+}, 60_000)
+
+describe('POST /api/tickets/:ticketId/actions', () => {
+  it('ACT-01 creates an Action for IT Staff and Administrator with the session user as creator', async () => {
+    const ticketId = await newTicket()
+    const before = await prisma.ticket.findUniqueOrThrow({ where: { id: ticketId } })
+    await sleep(15)
+
+    const created = await createVia(staff, ticketId)
+    expect(created.status).toBe(201)
+    expect(created.body).toMatchObject({
+      ticketId,
+      createdById: staff.userId,
+      assigneeId: staff.userId,
+      status: 'PLANNED',
+      version: 1,
+      description: base.description,
+    })
+
+    const after = await prisma.ticket.findUniqueOrThrow({ where: { id: ticketId } })
+    expect(after.updatedAt.getTime()).toBeGreaterThan(before.updatedAt.getTime())
+    expect(after.version).toBe(before.version)
+
+    const byAdmin = await createVia(admin, ticketId)
+    expect(byAdmin.status).toBe(201)
+    expect(byAdmin.body.createdById).toBe(admin.userId)
+  })
+
+  it('ACT-02 ignores createdById, ticketId, version, id and unknown fields', async () => {
+    const ticketId = await newTicket()
+    const response = await createVia(staff, ticketId, {
+      ...base,
+      createdById: otherStaff.userId,
+      ticketId: 999999999,
+      version: 9,
+      id: 123456789,
+      bogus: 'x',
+    })
+    expect(response.status).toBe(201)
+    expect(response.body.createdById).toBe(staff.userId)
+    expect(response.body.ticketId).toBe(ticketId)
+    expect(response.body.version).toBe(1)
+    expect(response.body.id).not.toBe(123456789)
+    expect(response.body.bogus).toBeUndefined()
+  })
+
+  it('ACT-03 rejects an inactive, Requester, unknown or non-integer assignee on create and edit', async () => {
+    const ticketId = await newTicket()
+    const bad = [inactiveStaffId, requesterB.userId, 999999999, '7']
+    for (const assigneeId of bad) {
+      const response = await createVia(staff, ticketId, { ...base, assigneeId })
+      expect(response.status).toBe(400)
+      expect(response.body.fields.assigneeId).toBe('Assignee must be an active IT Staff or Administrator.')
+    }
+    expect(await prisma.actionTaken.count({ where: { ticketId } })).toBe(0)
+
+    const ok = await createVia(staff, ticketId)
+    const edit = await staff.agent
+      .patch(`${actionsUrl(ticketId)}/${ok.body.id}`)
+      .send({ version: ok.body.version, assigneeId: inactiveStaffId })
+    expect(edit.status).toBe(400)
+    expect(edit.body.fields.assigneeId).toBe('Assignee must be an active IT Staff or Administrator.')
+    const stored = await prisma.actionTaken.findUniqueOrThrow({ where: { id: ok.body.id } })
+    expect(stored.assigneeId).toBe(staff.userId)
+    expect(stored.version).toBe(1)
+  })
+
+  it('ACT-04 rejects a missing follow-up note and a note without follow-up', async () => {
+    const ticketId = await newTicket()
+    const missing = await createVia(staff, ticketId, { ...base, followUpRequired: true })
+    expect(missing.status).toBe(400)
+    expect(missing.body.fields.followUpNote).toBeDefined()
+    const extra = await createVia(staff, ticketId, { ...base, followUpNote: 'Later' })
+    expect(extra.status).toBe(400)
+    expect(extra.body.fields.followUpNote).toBeDefined()
+    expect(await prisma.actionTaken.count({ where: { ticketId } })).toBe(0)
+  })
+
+  it('ACT-07 accepts a staff member who is not the Ticket Owner, with a third person as assignee', async () => {
+    const ticketId = await newTicket()
+    expect((await staff.agent.post(`/api/tickets/${ticketId}/claim`)).status).toBe(200)
+
+    const created = await createVia(otherStaff, ticketId, { ...base, assigneeId: admin.userId })
+    expect(created.status).toBe(201)
+    expect(created.body).toMatchObject({ createdById: otherStaff.userId, assigneeId: admin.userId })
+
+    const edited = await otherStaff.agent
+      .patch(`${actionsUrl(ticketId)}/${created.body.id}`)
+      .send({ version: 1, description: 'Edited by a non-owner.' })
+    expect(edited.status).toBe(200)
+  })
+
+  it('ACT-10 makes a repeated requestId idempotent, also when two arrive at once', async () => {
+    const ticketId = await newTicket()
+    const otherTicketId = await newTicket()
+    const requestId = `req-${Date.now()}-a`
+
+    const first = await createVia(staff, ticketId, { ...base, requestId })
+    const second = await createVia(staff, ticketId, { ...base, requestId })
+    expect([first.status, second.status]).toEqual([201, 200])
+    expect(second.body.id).toBe(first.body.id)
+    expect(await prisma.actionTaken.count({ where: { ticketId } })).toBe(1)
+
+    const parallelId = `req-${Date.now()}-b`
+    const both = await Promise.all([
+      createVia(staff, ticketId, { ...base, requestId: parallelId }),
+      createVia(staff, ticketId, { ...base, requestId: parallelId }),
+    ])
+    expect(both.map((r) => r.status).sort()).toEqual([200, 201])
+    expect(both[0].body.id).toBe(both[1].body.id)
+    expect(await prisma.actionTaken.count({ where: { ticketId, requestId: parallelId } })).toBe(1)
+
+    const elsewhere = await createVia(staff, otherTicketId, { ...base, requestId })
+    expect(elsewhere.status).toBe(201)
+    expect(elsewhere.body.id).not.toBe(first.body.id)
+
+    for (const unsafe of ['bad id!!!', 'short', 'x'.repeat(65)]) {
+      const rejected = await createVia(staff, ticketId, { ...base, requestId: unsafe })
+      expect(rejected.status).toBe(400)
+      expect(rejected.body.fields.requestId).toBeDefined()
+    }
+  })
+
+  it('ACT-11 refuses Actions on a Closed or Cancelled Ticket and allows them on a Resolved one', async () => {
+    for (const status of ['CLOSED', 'CANCELLED'] as const) {
+      const ticketId = await newTicket()
+      const existing = await createVia(staff, ticketId)
+      await setTicketStatus(ticketId, status)
+
+      const create = await createVia(staff, ticketId)
+      expect(create.status).toBe(409)
+      expect(create.body).toEqual({ error: 'TICKET_LOCKED', currentStatus: status })
+
+      const edit = await staff.agent
+        .patch(`${actionsUrl(ticketId)}/${existing.body.id}`)
+        .send({ version: 1, description: 'Too late.' })
+      expect(edit.status).toBe(409)
+      expect(edit.body.error).toBe('TICKET_LOCKED')
+    }
+
+    const resolvedId = await newTicket()
+    await setTicketStatus(resolvedId, 'RESOLVED')
+    expect((await createVia(staff, resolvedId)).status).toBe(201)
+  })
+
+  it('ACT-12 enforces result, future-date and length limits', async () => {
+    const ticketId = await newTicket()
+    const noResult = await createVia(staff, ticketId, { ...base, status: 'COMPLETED' })
+    expect(noResult.status).toBe(400)
+    expect(noResult.body.fields.result).toBeDefined()
+
+    const future = new Date(Date.now() + 3_600_000).toISOString()
+    const futureDone = await createVia(staff, ticketId, { ...base, status: 'COMPLETED', result: 'Done', actionAt: future })
+    expect(futureDone.status).toBe(400)
+    expect(futureDone.body.fields.actionAt).toBeDefined()
+
+    const skew = new Date(Date.now() + 30_000).toISOString()
+    expect((await createVia(staff, ticketId, { ...base, status: 'COMPLETED', result: 'Done', actionAt: skew })).status).toBe(201)
+
+    expect((await createVia(staff, ticketId, { description: 'x'.repeat(2001) })).status).toBe(400)
+    expect((await createVia(staff, ticketId, { description: 'x'.repeat(2000) })).status).toBe(201)
+    expect((await createVia(staff, ticketId, { ...base, result: 'x'.repeat(2001) })).status).toBe(400)
+  })
+
+  it('ACT-15 stores a script tag as plain data', async () => {
+    const ticketId = await newTicket()
+    const text = '<script>alert(1)<' + '/script>'
+    const created = await createVia(staff, ticketId, { description: text })
+    expect(created.status).toBe(201)
+    const listed = await staff.agent.get(actionsUrl(ticketId))
+    expect(listed.body[0].description).toBe(text)
+  })
+})
+
+describe('GET /api/tickets/:ticketId/actions', () => {
+  it('ACT-05 lets a Requester read their own Ticket but not create, edit, or read another Requester’s', async () => {
+    const ticketId = await newTicket()
+    const created = await createVia(staff, ticketId)
+
+    const own = await requesterA.agent.get(actionsUrl(ticketId))
+    expect(own.status).toBe(200)
+    expect(own.body.map((a: { id: number }) => a.id)).toEqual([created.body.id])
+
+    const create = await createVia(requesterA, ticketId)
+    expect(create.status).toBe(403)
+    expect(create.body.error).toBe('FORBIDDEN')
+    const edit = await requesterA.agent.patch(`${actionsUrl(ticketId)}/${created.body.id}`).send({ version: 1, description: 'x' })
+    expect(edit.status).toBe(403)
+
+    const foreign = await requesterB.agent.get(actionsUrl(ticketId))
+    expect(foreign.status).toBe(403)
+    expect(foreign.body.error).toBe('TICKET_FORBIDDEN')
+  })
+
+  it('ACT-14 returns 401 without a session and 403 PASSWORD_CHANGE_REQUIRED when a change is pending', async () => {
+    const ticketId = await newTicket()
+    expect((await request(app).get(actionsUrl(ticketId))).status).toBe(401)
+
+    const pending = await createUser({ role: 'IT_STAFF' })
+    await prisma.user.update({ where: { id: pending.id }, data: { mustChangePassword: true } })
+    const session = await loginAsEmail(pending.email)
+    const response = await session.agent.get(actionsUrl(ticketId))
+    expect(response.status).toBe(403)
+    expect(response.body.error).toBe('PASSWORD_CHANGE_REQUIRED')
+  })
+
+  it('ACT-16 orders by actionAt then id, so equal times stay stable', async () => {
+    const ticketId = await newTicket()
+    const same = '2026-10-01T08:00:00.000Z'
+    const a = await createVia(staff, ticketId, { description: 'first', actionAt: same })
+    const b = await createVia(staff, ticketId, { description: 'second', actionAt: same })
+    const earlier = await createVia(staff, ticketId, { description: 'earlier', actionAt: '2026-09-30T08:00:00.000Z' })
+
+    const listed = await staff.agent.get(actionsUrl(ticketId))
+    expect(listed.body.map((x: { id: number }) => x.id)).toEqual([earlier.body.id, a.body.id, b.body.id])
+  })
+
+  it('returns an empty array when there are no Actions and 404 for an unknown Ticket', async () => {
+    const ticketId = await newTicket()
+    expect((await staff.agent.get(actionsUrl(ticketId))).body).toEqual([])
+    expect((await staff.agent.get(actionsUrl(999999999))).status).toBe(404)
+  })
+})
+
+describe('PATCH /api/tickets/:ticketId/actions/:actionId', () => {
+  it('ACT-06 returns 404 for an Action addressed through the wrong Ticket or an unknown id', async () => {
+    const ticketA = await newTicket()
+    const ticketB = await newTicket()
+    const action = await createVia(staff, ticketA)
+
+    const wrong = await staff.agent.patch(`${actionsUrl(ticketB)}/${action.body.id}`).send({ version: 1, description: 'x' })
+    expect(wrong.status).toBe(404)
+    expect(wrong.body.error).toBe('ACTION_NOT_FOUND')
+
+    const unknown = await staff.agent.patch(`${actionsUrl(ticketA)}/999999999`).send({ version: 1, description: 'x' })
+    expect(unknown.status).toBe(404)
+    expect(unknown.body.error).toBe('ACTION_NOT_FOUND')
+  })
+
+  it('ACT-08 rejects an outdated version and keeps the first change, in order and at the same moment', async () => {
+    const ticketId = await newTicket()
+    const action = await createVia(staff, ticketId)
+    const url = `${actionsUrl(ticketId)}/${action.body.id}`
+
+    const first = await staff.agent.patch(url).send({ version: 1, description: 'First change.' })
+    expect(first.status).toBe(200)
+    expect(first.body.version).toBe(2)
+    const second = await otherStaff.agent.patch(url).send({ version: 1, description: 'Second change.' })
+    expect(second.status).toBe(409)
+    expect(second.body).toEqual({ error: 'STALE_UPDATE', currentVersion: 2 })
+    expect((await prisma.actionTaken.findUniqueOrThrow({ where: { id: action.body.id } })).description).toBe('First change.')
+
+    const racing = await createVia(staff, ticketId)
+    const raceUrl = `${actionsUrl(ticketId)}/${racing.body.id}`
+    const results = await Promise.all([
+      staff.agent.patch(raceUrl).send({ version: 1, description: 'Left.' }),
+      otherStaff.agent.patch(raceUrl).send({ version: 1, description: 'Right.' }),
+    ])
+    expect(results.map((r) => r.status).sort()).toEqual([200, 409])
+    expect((await prisma.actionTaken.findUniqueOrThrow({ where: { id: racing.body.id } })).version).toBe(2)
+  })
+
+  it('ACT-09 locks a Cancelled Action and the content of a Completed one', async () => {
+    const ticketId = await newTicket()
+    const toCancel = await createVia(staff, ticketId)
+    const cancelled = await staff.agent
+      .patch(`${actionsUrl(ticketId)}/${toCancel.body.id}`)
+      .send({ version: 1, status: 'CANCELLED' })
+    expect(cancelled.status).toBe(200)
+    const locked = await staff.agent
+      .patch(`${actionsUrl(ticketId)}/${toCancel.body.id}`)
+      .send({ version: 2, description: 'Nope.' })
+    expect(locked.status).toBe(409)
+    expect(locked.body).toEqual({ error: 'ACTION_LOCKED', reason: 'CANCELLED' })
+
+    const done = await createVia(staff, ticketId, { ...base, status: 'COMPLETED', result: 'Fixed.' })
+    const doneUrl = `${actionsUrl(ticketId)}/${done.body.id}`
+    const content = await staff.agent.patch(doneUrl).send({ version: 1, description: 'Rewritten.' })
+    expect(content.status).toBe(409)
+    expect(content.body).toEqual({ error: 'ACTION_LOCKED', reason: 'COMPLETED', fields: ['description'] })
+
+    const followUp = await staff.agent
+      .patch(doneUrl)
+      .send({ version: 1, followUpRequired: true, followUpNote: 'Check again Friday.', attachmentNotes: 'See photo.' })
+    expect(followUp.status).toBe(200)
+    expect(followUp.body).toMatchObject({ followUpRequired: true, followUpNote: 'Check again Friday.', attachmentNotes: 'See photo.' })
+  })
+
+  it('ACT-17 allows only the BR-L4-05 status moves', async () => {
+    const ticketId = await newTicket()
+    const allowed: Record<string, string[]> = {
+      PLANNED: ['IN_PROGRESS', 'COMPLETED', 'CANCELLED'],
+      IN_PROGRESS: ['COMPLETED', 'CANCELLED'],
+      COMPLETED: [],
+      CANCELLED: [],
+    }
+    const statuses = ['PLANNED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED']
+
+    for (const from of statuses) {
+      for (const to of statuses.filter((s) => s !== from)) {
+        const seeded = await prisma.actionTaken.create({
+          data: {
+            ticketId,
+            createdById: staff.userId,
+            assigneeId: staff.userId,
+            actionAt: new Date(),
+            description: `from ${from}`,
+            status: from as 'PLANNED',
+            result: from === 'COMPLETED' ? 'Done.' : null,
+          },
+        })
+        const response = await staff.agent
+          .patch(`${actionsUrl(ticketId)}/${seeded.id}`)
+          .send({ version: 1, status: to, ...(to === 'COMPLETED' ? { result: 'Done.' } : {}) })
+
+        if (allowed[from].includes(to)) {
+          expect(response.status, `${from} -> ${to}`).toBe(200)
+          expect(response.body.status).toBe(to)
+        } else {
+          expect(response.status, `${from} -> ${to}`).toBe(409)
+          expect(['ACTION_LOCKED', 'INVALID_ACTION_TRANSITION']).toContain(response.body.error)
+        }
+      }
+    }
+
+    const rejected = await prisma.actionTaken.create({
+      data: { ticketId, createdById: staff.userId, assigneeId: staff.userId, actionAt: new Date(), description: 'x', status: 'COMPLETED', result: 'r' },
+    })
+    const body = (
+      await staff.agent.patch(`${actionsUrl(ticketId)}/${rejected.id}`).send({ version: 1, status: 'PLANNED' })
+    ).body
+    expect(body).toEqual({ error: 'INVALID_ACTION_TRANSITION', from: 'COMPLETED', to: 'PLANNED' })
+  })
+
+  it('ACT-18 marks a follow-up done once, keeps the first time on repeat, and clears it on false', async () => {
+    const ticketId = await newTicket()
+    const action = await createVia(staff, ticketId, { ...base, followUpRequired: true, followUpNote: 'Check Friday.' })
+    const url = `${actionsUrl(ticketId)}/${action.body.id}`
+
+    const done = await staff.agent.patch(url).send({ version: 1, followUpDone: true })
+    expect(done.status).toBe(200)
+    const firstTime = done.body.followUpDoneAt
+    expect(firstTime).not.toBeNull()
+
+    await sleep(15)
+    const again = await staff.agent.patch(url).send({ version: 2, followUpDone: true })
+    expect(again.body.followUpDoneAt).toBe(firstTime)
+
+    const reopened = await staff.agent.patch(url).send({ version: 3, followUpDone: false })
+    expect(reopened.body.followUpDoneAt).toBeNull()
+
+    const noFollowUp = await createVia(staff, ticketId)
+    const refused = await staff.agent
+      .patch(`${actionsUrl(ticketId)}/${noFollowUp.body.id}`)
+      .send({ version: 1, followUpDone: true })
+    expect(refused.status).toBe(400)
+    expect(refused.body.fields.followUpDone).toBeDefined()
+  })
+
+  it('requires a positive integer version', async () => {
+    const ticketId = await newTicket()
+    const action = await createVia(staff, ticketId)
+    for (const version of [undefined, 0, -1, 1.5, '1']) {
+      const response = await staff.agent.patch(`${actionsUrl(ticketId)}/${action.body.id}`).send({ version, description: 'x' })
+      expect(response.status).toBe(400)
+      expect(response.body.fields.version).toBeDefined()
+    }
+  })
+})
+
+describe('DELETE /api/tickets/:ticketId/actions/:actionId', () => {
+  it('ACT-13 returns 404 and leaves the row', async () => {
+    const ticketId = await newTicket()
+    const action = await createVia(staff, ticketId)
+    const response = await staff.agent.delete(`${actionsUrl(ticketId)}/${action.body.id}`)
+    expect(response.status).toBe(404)
+    expect(await prisma.actionTaken.count({ where: { id: action.body.id } })).toBe(1)
+  })
+})
+```
+
+- [ ] **Step 2: Run.** `npx vitest run tests/lab-04/actions-taken.api.test.ts`
+Expected: all PASS. If a test fails, read the failure and fix the implementation (not the expectation) unless the expectation contradicts `api-spec.md`.
+
+- [ ] **Step 3: Run the full server suite** `npx vitest run` → all green.
+
+- [ ] **Step 4: Stage.** `git add server/tests/lab-04/actions-taken.api.test.ts`
+
+---
+
+### Task 6: Demo seed refactor with Actions
+
+**Files:**
+- Rename: `server/prisma/seed-demo.ts` → `server/prisma/seed-demo-data.ts` (`git mv`)
+- Create: `server/prisma/seed-demo.ts` (thin runner)
+- Modify: `server/prisma/seed-demo-data.ts`
+
+**Interfaces:**
+- Produces: `runDemoSeed(prisma: PrismaClient): Promise<{ created: number; present: number }>` exported from `seed-demo-data.ts`. Demo Action `requestId` format: `demo-<n>-<slug>` (n = 1-based index within the Ticket).
+- Consumes: Task 1 models; `SEED_PASSWORD` from `seed-data.ts`.
+
+- [ ] **Step 1: Move the file.** `git mv server/prisma/seed-demo.ts server/prisma/seed-demo-data.ts`
+
+- [ ] **Step 2: Turn the script body into an exported function.** In `seed-demo-data.ts`:
+  1. Replace the first line with `import { ActionStatus, PrismaClient, Priority, TicketStatus } from '@prisma/client'` and add `import bcrypt from 'bcryptjs'` and `import { SEED_PASSWORD } from './seed-data.js'`.
+  2. Delete the line `const prisma = new PrismaClient()`.
+  3. Rename `async function main() {` to `export async function runDemoSeed(prisma: PrismaClient) {`.
+  4. Replace the final `console.log(...)` line of that function with `return { created, present: DEMO_TICKETS.length - created }`.
+  5. Delete the trailing `main().catch(...).finally(...)` block.
+
+- [ ] **Step 3: Add the demo Actions data** below `DEMO_TICKETS` (keyed by the existing Ticket `summary`, so the long Ticket lines stay untouched):
+
+```ts
+type DemoAction = {
+  by: string
+  assignee: string
+  status: ActionStatus
+  description: string
+  result?: string
+  hoursAfter: number
+  followUp?: { note: string; done: boolean }
+}
+
+// Tickets not listed here keep zero Actions on purpose (the zero-metric case).
+const DEMO_ACTIONS: Record<string, DemoAction[]> = {
+  'Laptop battery drains quickly': [
+    { by: 'alex.rivera', assignee: 'alex.rivera', status: 'COMPLETED', description: 'Ran the battery health report on the laptop.', result: 'Battery is at 61% of design capacity.', hoursAfter: 5, followUp: { note: 'Order a replacement battery.', done: false } },
+    { by: 'alex.rivera', assignee: 'tom.walker', status: 'PLANNED', description: 'Swap the battery when the part arrives.', hoursAfter: 30 },
+  ],
+  'Cannot connect to VPN from home': [
+    { by: 'priya.nair', assignee: 'priya.nair', status: 'IN_PROGRESS', description: 'Checking the VPN gateway certificate.', hoursAfter: 4 },
+  ],
+  'New employee setup request': [
+    { by: 'alex.rivera', assignee: 'alex.rivera', status: 'COMPLETED', description: 'Created the LEB2 account for the teaching assistant.', result: 'Account active; temporary password issued.', hoursAfter: 6, followUp: { note: 'Confirm the first login worked.', done: true } },
+  ],
+  'Docking station not detected': [
+    { by: 'alex.rivera', assignee: 'alex.rivera', status: 'COMPLETED', description: 'Updated the dock firmware.', result: 'Dock detected after reboot.', hoursAfter: 8 },
+  ],
+  'Multi-monitor not detected': [
+    { by: 'tom.walker', assignee: 'tom.walker', status: 'CANCELLED', description: 'Visit the desk to test the second monitor.', hoursAfter: 3 },
+  ],
+  'Outlook freezing intermittently': [
+    { by: 'tom.walker', assignee: 'tom.walker', status: 'COMPLETED', description: 'Started Outlook in Safe Mode to isolate add-ins.', result: 'Freezing stops in Safe Mode.', hoursAfter: 4 },
+    { by: 'tom.walker', assignee: 'priya.nair', status: 'IN_PROGRESS', description: 'Disabling add-ins one at a time.', hoursAfter: 20 },
+    { by: 'tom.walker', assignee: 'tom.walker', status: 'PLANNED', description: 'Reinstall the PDF add-in once the cause is known.', hoursAfter: 40 },
+  ],
+  'VPN token expired': [
+    { by: 'tom.walker', assignee: 'tom.walker', status: 'COMPLETED', description: 'Issued a new VPN token.', result: 'User confirmed the token works.', hoursAfter: 2 },
+  ],
+  'LEB2 app very slow at noon': [
+    { by: 'tom.walker', assignee: 'tom.walker', status: 'COMPLETED', description: 'Pulled database connection metrics for 12:00 to 13:00.', result: 'Connections spike to the pool limit.', hoursAfter: 3, followUp: { note: 'Ask the platform team to raise the pool limit.', done: false } },
+    { by: 'tom.walker', assignee: 'tom.walker', status: 'IN_PROGRESS', description: 'Waiting on the platform team to schedule the change.', hoursAfter: 10 },
+  ],
+  'Grade export fails for large sections': [
+    { by: 'alex.rivera', assignee: 'alex.rivera', status: 'COMPLETED', description: 'Raised the export timeout to 120 seconds.', result: 'Exports under 150 students now work.', hoursAfter: 6 },
+    { by: 'alex.rivera', assignee: 'alex.rivera', status: 'COMPLETED', description: 'Re-tested a 180 student section.', result: 'Blank file again; timeout is not the cause.', hoursAfter: 50 },
+    { by: 'alex.rivera', assignee: 'alex.rivera', status: 'PLANNED', description: 'Read the export service logs for the failing section.', hoursAfter: 60 },
+  ],
+}
+
+const DEMO_NO_TICKET_REQUESTER = { name: 'Nina Brooks', email: 'nina.brooks@toktickit.test' }
+
+function demoRequestId(summary: string, index: number): string {
+  const slug = summary.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40)
+  return `demo-${index + 1}-${slug}`
+}
+```
+
+- [ ] **Step 4: Use it inside `runDemoSeed`.** At the top of the function (before `let created = 0`) add the zero-Ticket Requester:
+
+```ts
+  await prisma.user.upsert({
+    where: { email: DEMO_NO_TICKET_REQUESTER.email },
+    update: {},
+    create: {
+      ...DEMO_NO_TICKET_REQUESTER,
+      role: 'REQUESTER',
+      isActive: true,
+      mustChangePassword: false,
+      passwordHash: await bcrypt.hash(SEED_PASSWORD, 10),
+    },
+  })
+```
+
+Inside the `for (const demo of DEMO_TICKETS)` loop, replace the `if (exists) continue` line with logic that still ensures Actions for an existing Ticket, and write history rows for a new one. Keep the rest of the loop as is:
+
+```ts
+    const exists = await prisma.ticket.findFirst({ where: { summary: demo.summary } })
+    if (exists) {
+      await ensureDemoActions(prisma, exists.id, exists.createdAt, demo.summary, userByLocalPart)
+      continue
+    }
+```
+
+(The existing `const exists = ...` line is replaced, not duplicated.) After the `prisma.ticket.update({ ... ticketNumber ... })` call in the loop add the history rows and the Actions:
+
+```ts
+    await prisma.ticketStatusHistory.create({
+      data: { ticketId: ticket.id, fromStatus: null, toStatus: 'NEW', changedById: requester.id, changedAt: createdAt },
+    })
+    if (demo.status !== 'NEW') {
+      await prisma.ticketStatusHistory.create({
+        data: { ticketId: ticket.id, fromStatus: 'NEW', toStatus: demo.status, changedById: (owner ?? requester).id, changedAt: new Date(createdAt.getTime() + 2 * 3600_000) },
+      })
+    }
+    await ensureDemoActions(prisma, ticket.id, createdAt, demo.summary, userByLocalPart)
+```
+
+Add the helper above `runDemoSeed`:
+
+```ts
+async function ensureDemoActions(
+  prisma: PrismaClient,
+  ticketId: number,
+  ticketCreatedAt: Date,
+  summary: string,
+  userByLocalPart: (localPart: string) => { id: number },
+) {
+  const actions = DEMO_ACTIONS[summary] ?? []
+  for (const [index, action] of actions.entries()) {
+    const requestId = demoRequestId(summary, index)
+    // Matched by the stable requestId, never overwritten: a staff edit survives a re-run.
+    const exists = await prisma.actionTaken.findUnique({ where: { ticketId_requestId: { ticketId, requestId } } })
+    if (exists) continue
+
+    const actionAt = new Date(ticketCreatedAt.getTime() + action.hoursAfter * 3600_000)
+    await prisma.actionTaken.create({
+      data: {
+        ticketId,
+        createdById: userByLocalPart(action.by).id,
+        assigneeId: userByLocalPart(action.assignee).id,
+        actionAt,
+        description: action.description,
+        result: action.result ?? null,
+        status: action.status,
+        followUpRequired: action.followUp !== undefined,
+        followUpNote: action.followUp?.note ?? null,
+        followUpDoneAt: action.followUp?.done ? new Date(actionAt.getTime() + 24 * 3600_000) : null,
+        requestId,
+      },
+    })
+  }
+}
+```
+
+- [ ] **Step 5: Write the thin runner** `server/prisma/seed-demo.ts`:
+
+```ts
+import { PrismaClient } from '@prisma/client'
+import { runDemoSeed } from './seed-demo-data.js'
+
+const prisma = new PrismaClient()
+
+runDemoSeed(prisma)
+  .then((result) => {
+    console.log(`Demo data: ${result.created} new ticket(s) created, ${result.present} already present.`)
+  })
+  .catch((error: unknown) => {
+    console.error(error)
+    process.exitCode = 1
+  })
+  .finally(async () => {
+    await prisma.$disconnect()
+  })
+```
+
+- [ ] **Step 6: Typecheck and run once against the dev database.** `npx tsc --noEmit -p .`; then `npm run prisma:seed && npm run prisma:seed:demo` twice. Expected: first run creates Tickets (or reports them present), second reports "0 new ticket(s) created". (Task 7's test checks counts in a throwaway schema; this step is only a smoke check. If the dev DB should stay clean for tests, skip the run and rely on Task 7.)
+
+- [ ] **Step 7: Stage.** `git add server/prisma`
+
+---
+
+### Task 7: Migration and seed tests (MIG-01 to MIG-06)
+
+**Files:**
+- Create: `server/tests/helpers/migration-sandbox.ts`
+- Test: `server/tests/lab-04/migration.test.ts`
+
+**Interfaces:**
+- Consumes: Task 1 migration folder; Task 6 `runDemoSeed`; existing `runSeed`.
+- Produces: `MigrationSandbox` with `create()`, `deploy(migrationNames)`, `client` (a `PrismaClient` on the sandbox schema), `dispose()`; `migrationNames()`, `lab4MigrationName()`.
+
+- [ ] **Step 1: Write the sandbox helper** `server/tests/helpers/migration-sandbox.ts`:
+
+```ts
+import 'dotenv/config'
+import { execFileSync } from 'node:child_process'
+import { cpSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
+import { PrismaClient } from '@prisma/client'
+import { prisma } from '../../src/prisma.js'
+
+const SERVER_DIR = path.resolve(import.meta.dirname, '../..')
+export const PRISMA_DIR = path.join(SERVER_DIR, 'prisma')
+const LAB4_SUFFIX = 'lab4_actions_history_versioning'
+
+export function migrationNames(): string[] {
+  return readdirSync(path.join(PRISMA_DIR, 'migrations'), { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .sort()
+}
+
+export function lab4MigrationName(): string {
+  const name = migrationNames().find((candidate) => candidate.endsWith(LAB4_SUFFIX))
+  if (!name) throw new Error('Lab 4 migration folder not found.')
+  return name
+}
+
+/**
+ * A throwaway Postgres schema plus a private copy of the schema file and the
+ * chosen migrations, so a test can apply migrations in stages, insert legacy
+ * rows in between, and never touch the shared test data.
+ */
+export class MigrationSandbox {
+  private constructor(
+    readonly schema: string,
+    readonly url: string,
+    private readonly dir: string,
+    readonly client: PrismaClient,
+  ) {}
+
+  static async create(): Promise<MigrationSandbox> {
+    const base = process.env.DATABASE_URL
+    if (!base) throw new Error('DATABASE_URL is not set.')
+    const schema = `mig_${Date.now()}_${Math.floor(Math.random() * 1_000_000)}`
+    await prisma.$executeRawUnsafe(`CREATE SCHEMA "${schema}"`)
+
+    const url = new URL(base)
+    url.searchParams.set('schema', schema)
+
+    const dir = mkdtempSync(path.join(tmpdir(), 'toktickit-mig-'))
+    mkdirSync(path.join(dir, 'prisma', 'migrations'), { recursive: true })
+    cpSync(path.join(PRISMA_DIR, 'schema.prisma'), path.join(dir, 'prisma', 'schema.prisma'))
+    cpSync(
+      path.join(PRISMA_DIR, 'migrations', 'migration_lock.toml'),
+      path.join(dir, 'prisma', 'migrations', 'migration_lock.toml'),
+    )
+    writeFileSync(path.join(dir, '.keep'), '')
+
+    const client = new PrismaClient({ datasources: { db: { url: url.toString() } } })
+    return new MigrationSandbox(schema, url.toString(), dir, client)
+  }
+
+  /** Copies the named migrations in (existing ones are skipped by Prisma) and runs `migrate deploy`. */
+  deploy(names: string[]): void {
+    for (const name of names) {
+      cpSync(path.join(PRISMA_DIR, 'migrations', name), path.join(this.dir, 'prisma', 'migrations', name), { recursive: true })
+    }
+    execFileSync('npx', ['prisma', 'migrate', 'deploy', '--schema', path.join(this.dir, 'prisma', 'schema.prisma')], {
+      cwd: SERVER_DIR,
+      env: { ...process.env, DATABASE_URL: this.url },
+      stdio: 'pipe',
+    })
+  }
+
+  async dispose(): Promise<void> {
+    await this.client.$disconnect()
+    await prisma.$executeRawUnsafe(`DROP SCHEMA IF EXISTS "${this.schema}" CASCADE`)
+    rmSync(this.dir, { recursive: true, force: true })
+  }
+}
+```
+
+- [ ] **Step 2: Write the failing tests** `server/tests/lab-04/migration.test.ts`:
+
+```ts
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
+import type { PrismaClient } from '@prisma/client'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { runSeed } from '../../prisma/seed-data.js'
+import { runDemoSeed } from '../../prisma/seed-demo-data.js'
+import { MigrationSandbox, PRISMA_DIR, lab4MigrationName, migrationNames } from '../helpers/migration-sandbox.js'
+
+// Every test here runs in a throwaway schema (see migration-sandbox.ts):
+// Lab 3 migrations, then legacy rows, then the Lab 4 migration on top.
+
+let sandbox: MigrationSandbox
+let client: PrismaClient
+
+type LegacySnapshot = {
+  counts: Record<string, number>
+  tickets: Array<{ id: number; ticketNumber: string; summary: string; currentStatus: string; updatedAt: Date }>
+  users: Array<{ id: number; email: string; role: string }>
+}
+
+async function insertOne(sql: string): Promise<number> {
+  const rows = await client.$queryRawUnsafe<Array<{ id: number }>>(sql)
+  return rows[0].id
+}
+
+async function insertLegacyRows(): Promise<void> {
+  const requester = await insertOne(
+    `INSERT INTO "User" ("email","name","passwordHash","role","isActive","mustChangePassword") VALUES ('legacy.requester@mig.test','Legacy Requester','x','REQUESTER',true,false) RETURNING id`,
+  )
+  const staff = await insertOne(
+    `INSERT INTO "User" ("email","name","passwordHash","role","isActive","mustChangePassword") VALUES ('legacy.staff@mig.test','Legacy Staff','x','IT_STAFF',true,false) RETURNING id`,
+  )
+  const category = await insertOne(`INSERT INTO "Category" ("name") VALUES ('Legacy Category') RETURNING id`)
+  const system = await insertOne(`INSERT INTO "RelatedSystem" ("name") VALUES ('Legacy System') RETURNING id`)
+  const ticketSql = (number: string, summary: string, status: string, updatedAt: string) =>
+    `INSERT INTO "Ticket" ("ticketNumber","requesterId","categoryId","relatedSystemId","summary","description","requestedPriority","itPriority","currentStatus","createdAt","updatedAt") VALUES ('${number}',${requester},${category},${system},'${summary}','Legacy description text','LOW','LOW','${status}','2026-09-01T08:00:00Z','${updatedAt}') RETURNING id`
+  const newTicket = await insertOne(ticketSql('TKT-LEG-000001', 'Legacy new ticket', 'NEW', '2026-09-01T08:00:00Z'))
+  await insertOne(ticketSql('TKT-LEG-000002', 'Legacy resolved ticket', 'RESOLVED', '2026-09-03T10:30:00Z'))
+  await insertOne(`INSERT INTO "PublicComment" ("ticketId","authorId","body") VALUES (${newTicket},${staff},'Legacy comment') RETURNING id`)
+  await insertOne(`INSERT INTO "InternalNote" ("ticketId","authorId","body") VALUES (${newTicket},${staff},'Legacy note') RETURNING id`)
+  await insertOne(
+    `INSERT INTO "Attachment" ("ticketId","originalFilename","storedPath","mimeType","sizeBytes") VALUES (${newTicket},'legacy.png','legacy/legacy.png','image/png',10) RETURNING id`,
+  )
+}
+
+async function snapshotLegacy(): Promise<LegacySnapshot> {
+  const count = async (table: string) =>
+    Number((await client.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM "${table}"`))[0].n)
+  return {
+    counts: {
+      User: await count('User'),
+      Ticket: await count('Ticket'),
+      PublicComment: await count('PublicComment'),
+      InternalNote: await count('InternalNote'),
+      Attachment: await count('Attachment'),
+    },
+    tickets: await client.$queryRawUnsafe(
+      `SELECT "id","ticketNumber","summary","currentStatus"::text AS "currentStatus","updatedAt" FROM "Ticket" ORDER BY id`,
+    ),
+    users: await client.$queryRawUnsafe(`SELECT "id","email","role"::text AS "role" FROM "User" ORDER BY id`),
+  }
+}
+
+let before: LegacySnapshot
+
+beforeAll(async () => {
+  sandbox = await MigrationSandbox.create()
+  client = sandbox.client
+  const lab4 = lab4MigrationName()
+  sandbox.deploy(migrationNames().filter((name) => name !== lab4))
+  await insertLegacyRows()
+  before = await snapshotLegacy()
+  sandbox.deploy([lab4])
+}, 180_000)
+
+afterAll(async () => {
+  await sandbox.dispose()
+})
+
+describe('Lab 4 migration on existing data', () => {
+  it('MIG-01 keeps every earlier row and key field unchanged', async () => {
+    const after = await snapshotLegacy()
+    expect(after.counts).toEqual(before.counts)
+    expect(after.tickets).toEqual(before.tickets)
+    expect(after.users).toEqual(before.users)
+  })
+
+  it('MIG-02 writes one baseline history row per existing Ticket', async () => {
+    const tickets = await client.ticket.findMany({ orderBy: { id: 'asc' } })
+    const history = await client.ticketStatusHistory.findMany({ orderBy: { ticketId: 'asc' } })
+    expect(history).toHaveLength(tickets.length)
+    for (const ticket of tickets) {
+      const rows = history.filter((row) => row.ticketId === ticket.id)
+      expect(rows).toHaveLength(1)
+      expect(rows[0]).toMatchObject({ fromStatus: null, toStatus: ticket.currentStatus, changedById: null })
+      expect(rows[0].changedAt.getTime()).toBe(ticket.updatedAt.getTime())
+    }
+  })
+
+  it('MIG-03 gives legacy Tickets version 1, no requester indication, and zero Actions', async () => {
+    const tickets = await client.ticket.findMany()
+    expect(tickets.length).toBeGreaterThan(0)
+    for (const ticket of tickets) {
+      expect(ticket.version).toBe(1)
+      expect(ticket.requesterResolvedAt).toBeNull()
+    }
+    expect(await client.actionTaken.count()).toBe(0)
+  })
+
+  it('MIG-04 rollback.sql drops the new objects and leaves earlier data intact, inside a discarded transaction', async () => {
+    const statements = readFileSync(path.join(PRISMA_DIR, 'migrations', lab4MigrationName(), 'rollback.sql'), 'utf8')
+      .split('\n')
+      .filter((line) => !line.trim().startsWith('--'))
+      .join('\n')
+      .split(';')
+      .map((statement) => statement.trim())
+      .filter(Boolean)
+    expect(statements.length).toBeGreaterThan(0)
+
+    class Discard extends Error {}
+    let observed: { tables: string[]; ticketColumns: string[]; tickets: number } | undefined
+
+    await expect(
+      client.$transaction(async (tx) => {
+        for (const statement of statements) await tx.$executeRawUnsafe(statement)
+        const tables = await tx.$queryRawUnsafe<Array<{ table_name: string }>>(
+          `SELECT table_name FROM information_schema.tables WHERE table_schema = current_schema()`,
+        )
+        const columns = await tx.$queryRawUnsafe<Array<{ column_name: string }>>(
+          `SELECT column_name FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'Ticket'`,
+        )
+        const tickets = await tx.$queryRawUnsafe<Array<{ n: bigint }>>(`SELECT count(*) AS n FROM "Ticket"`)
+        observed = {
+          tables: tables.map((row) => row.table_name),
+          ticketColumns: columns.map((row) => row.column_name),
+          tickets: Number(tickets[0].n),
+        }
+        throw new Discard()
+      }),
+    ).rejects.toBeInstanceOf(Discard)
+
+    expect(observed?.tables).not.toContain('ActionTaken')
+    expect(observed?.tables).not.toContain('TicketStatusHistory')
+    expect(observed?.ticketColumns).not.toContain('version')
+    expect(observed?.ticketColumns).not.toContain('requesterResolvedAt')
+    expect(observed?.tickets).toBe(before.counts.Ticket)
+
+    // The transaction was discarded, so the new objects are back.
+    expect(await client.actionTaken.count()).toBe(0)
+    expect(await client.ticketStatusHistory.count()).toBeGreaterThan(0)
+  })
+})
+
+describe('Demo seed (MIG-05, MIG-06)', () => {
+  async function counts() {
+    return {
+      users: await client.user.count(),
+      tickets: await client.ticket.count(),
+      actions: await client.actionTaken.count(),
+      history: await client.ticketStatusHistory.count(),
+      comments: await client.publicComment.count(),
+      notes: await client.internalNote.count(),
+    }
+  }
+
+  it('MIG-05 is idempotent and covers zero, one and many Actions, open and done follow-ups, and a Requester with no Tickets', async () => {
+    await runSeed(client)
+    await runDemoSeed(client)
+    const first = await counts()
+    await runDemoSeed(client)
+    expect(await counts()).toEqual(first)
+
+    const grouped = await client.actionTaken.groupBy({ by: ['ticketId'], _count: { _all: true } })
+    const perTicket = new Map(grouped.map((row) => [row.ticketId, row._count._all]))
+    const tickets = await client.ticket.findMany({ select: { id: true } })
+    const sizes = tickets.map((ticket) => perTicket.get(ticket.id) ?? 0)
+    expect(sizes.some((size) => size === 0)).toBe(true)
+    expect(sizes.some((size) => size === 1)).toBe(true)
+    expect(sizes.some((size) => size >= 3)).toBe(true)
+
+    expect(await client.actionTaken.count({ where: { followUpRequired: true, followUpDoneAt: null } })).toBeGreaterThan(0)
+    expect(await client.actionTaken.count({ where: { followUpRequired: true, followUpDoneAt: { not: null } } })).toBeGreaterThan(0)
+    const statuses = new Set((await client.actionTaken.findMany({ select: { status: true } })).map((row) => row.status))
+    expect(statuses).toEqual(new Set(['PLANNED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED']))
+
+    const noTickets = await client.user.findFirst({
+      where: { role: 'REQUESTER', isActive: true, mustChangePassword: false, ticketsRequested: { none: {} } },
+    })
+    expect(noTickets).not.toBeNull()
+  }, 120_000)
+
+  it('MIG-06 keeps a staff edit of a seeded Action when the seed runs again', async () => {
+    const seeded = await client.actionTaken.findFirstOrThrow({ where: { requestId: { startsWith: 'demo-' } }, orderBy: { id: 'asc' } })
+    await client.actionTaken.update({
+      where: { id: seeded.id },
+      data: { description: 'Edited by staff after seeding.', version: { increment: 1 } },
+    })
+
+    await runDemoSeed(client)
+
+    const after = await client.actionTaken.findUniqueOrThrow({ where: { id: seeded.id } })
+    expect(after.description).toBe('Edited by staff after seeding.')
+    expect(after.version).toBe(seeded.version + 1)
+  }, 120_000)
+})
+```
+
+- [ ] **Step 3: Run.** `npx vitest run tests/lab-04/migration.test.ts`
+Expected: PASS. If the sandbox `deploy` fails with a module/engine error, run `npx prisma migrate deploy --schema <tmp>` manually from the printed command to read Prisma's message. If `import.meta.dirname` is undefined in the Vitest runtime, replace it with `path.dirname(fileURLToPath(import.meta.url))`.
+
+- [ ] **Step 4: Confirm no leftover schemas.** After the run, list schemas (`npx prisma db execute --stdin <<< "SELECT schema_name FROM information_schema.schemata WHERE schema_name LIKE 'mig_%';"` prints nothing useful, so instead run a one-off `npx tsx -e "import {prisma} from './src/prisma.ts'; console.log(await prisma.\$queryRawUnsafe(\"SELECT schema_name FROM information_schema.schemata WHERE schema_name LIKE 'mig_%'\")); await prisma.\$disconnect()"`). Expected: `[]`.
+
+- [ ] **Step 5: Stage.** `git add server/tests`
+
+---
+
+### Task 8: Child activity touches the Ticket
+
+**Files:**
+- Modify: `server/src/comments.ts`, `server/src/notes.ts`, `server/src/attachments.ts`
+- Test: `server/tests/lab-04/touch-ticket.api.test.ts`
+
+**Interfaces:** Consumes `touchTicket` (Task 3).
+
+- [ ] **Step 1: Write the failing test** `server/tests/lab-04/touch-ticket.api.test.ts`:
+
+```ts
+import { beforeAll, describe, expect, it } from 'vitest'
+import { prisma } from '../../src/prisma.js'
+import { loginAsNewUser } from '../helpers/users.js'
+import { createTicketVia } from '../helpers/tickets.js'
+
+// A real JPEG signature is enough for the content check (same bytes the Lab 2 attachment tests use).
+const VALID_JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46])
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+let requester: Awaited<ReturnType<typeof loginAsNewUser>>
+let staff: Awaited<ReturnType<typeof loginAsNewUser>>
+
+async function updatedAt(ticketId: number): Promise<number> {
+  return (await prisma.ticket.findUniqueOrThrow({ where: { id: ticketId } })).updatedAt.getTime()
+}
+
+beforeAll(async () => {
+  ;[requester, staff] = await Promise.all([loginAsNewUser('REQUESTER'), loginAsNewUser('IT_STAFF')])
+}, 60_000)
+
+describe('Child activity refreshes Ticket.updatedAt (BR-L4-15, AC-L4-20)', () => {
+  it('refreshes on a Public Comment', async () => {
+    const ticket = await createTicketVia(requester.agent)
+    const before = await updatedAt(ticket.id)
+    await sleep(15)
+    expect((await requester.agent.post(`/api/tickets/${ticket.id}/comments`).send({ body: 'Hello' })).status).toBe(201)
+    expect(await updatedAt(ticket.id)).toBeGreaterThan(before)
+  })
+
+  it('refreshes on an Internal Note', async () => {
+    const ticket = await createTicketVia(requester.agent)
+    const before = await updatedAt(ticket.id)
+    await sleep(15)
+    expect((await staff.agent.post(`/api/tickets/${ticket.id}/notes`).send({ body: 'Note' })).status).toBe(201)
+    expect(await updatedAt(ticket.id)).toBeGreaterThan(before)
+  })
+
+  it('refreshes on an Attachment upload and on its removal', async () => {
+    const ticket = await createTicketVia(requester.agent)
+    const beforeUpload = await updatedAt(ticket.id)
+    await sleep(15)
+    const upload = await requester.agent
+      .post(`/api/tickets/${ticket.id}/attachments`)
+      .attach('file', VALID_JPEG, { filename: 'photo.jpg', contentType: 'image/jpeg' })
+    expect(upload.status).toBe(201)
+    const afterUpload = await updatedAt(ticket.id)
+    expect(afterUpload).toBeGreaterThan(beforeUpload)
+
+    await sleep(15)
+    const removal = await requester.agent.delete(`/api/attachments/${upload.body.id}`).send({ reason: 'Wrong file' })
+    expect(removal.status).toBe(200)
+    expect(await updatedAt(ticket.id)).toBeGreaterThan(afterUpload)
+  })
+})
+```
+
+If the attachment field name or route differs, copy them from `server/tests/lab-02/attachments.api.test.ts` (it is the source of truth) and adjust only the request line.
+
+- [ ] **Step 2: Run to verify it fails.** `npx vitest run tests/lab-04/touch-ticket.api.test.ts` → FAIL (`expected ... to be greater than ...`).
+
+- [ ] **Step 3: Wire it in.**
+  - `comments.ts`: add `import { touchTicket } from './tickets/touch-ticket.js'`; replace `const comment = await prisma.publicComment.create({ data: { ticketId, authorId: userId, body }, include: { author: { select: { name: true } } } })` with:
+
+```ts
+    const comment = await prisma.$transaction(async (tx) => {
+      const created = await tx.publicComment.create({
+        data: { ticketId, authorId: userId, body },
+        include: { author: { select: { name: true } } },
+      })
+      await touchTicket(tx, ticketId)
+      return created
+    })
+```
+  - `notes.ts`: same import and the same shape around `prisma.internalNote.create({ data: { ticketId, authorId, body }, include: ... })` (variable `note`, author id variable `authorId`).
+  - `attachments.ts`: import `touchTicket`; in the upload transaction replace `return tx.attachment.create({ data: {...} })` with `const created = await tx.attachment.create({ data: {...same fields...} })`, then `await touchTicket(tx, ticketId)`, then `return created`. In the removal handler, after `const updated = await prisma.attachment.findUniqueOrThrow({ where: { id: attachmentId } })` add `await touchTicket(prisma, updated.ticketId)`.
+
+- [ ] **Step 4: Run.** The new file → PASS; full `npx vitest run` → green.
+
+- [ ] **Step 5: Stage.** `git add server/src server/tests`
+
+---
+
+### Task 9: Docs, full verification, hand-off
+
+**Files:**
+- Modify: `docs/lab-04/tests.md`
+
+- [ ] **Step 1: Mark the rows that now pass.** Run from the repo root:
+
+```bash
+python3 - <<'EOF'
+import re
+p = 'docs/lab-04/tests.md'
+s = open(p).read()
+ids = {'ACT-U01','ACT-U02','ACT-U03','MIG-01','MIG-02','MIG-03','MIG-04','MIG-05','MIG-06'} | {f'ACT-{n:02d}' for n in range(1, 19)}
+out, flipped = [], 0
+for line in s.split('\n'):
+    m = re.match(r'^\| ([A-Z]+-U?\d+) \|', line)
+    if m and m.group(1) in ids and line.rstrip().endswith('Planned |'):
+        line = line.rstrip()[:-len('Planned |')] + 'Pass |'
+        flipped += 1
+    out.append(line)
+open(p, 'w').write('\n'.join(out))
+print(flipped, 'rows flipped (expect 27)')
+EOF
+```
+Expected: `27 rows flipped (expect 27)`. Then add one line to the "Notes" area at the end of `tests.md`: `- Feature 25 also adds ticket-history.api.test.ts (first history row on create) and touch-ticket.api.test.ts (BR-L4-15 for Comments, Notes, Attachments); both are covered by AC-L4-18 and AC-L4-20.`
+
+- [ ] **Step 2: Typecheck, build, full suite.** In `server/`: `npx tsc --noEmit -p .`; `npx vitest run` → all pass (expect 144 + new tests). From the repo root: `npm run build` (client + server) → OK.
+
+- [ ] **Step 3: Stability loop.** Run `for i in $(seq 1 10); do npx vitest run 2>&1 | grep -E "Tests "; done` in `server/` → ten "passed" lines (REG-04 rehearsal; the release Issue records the official log).
+
+- [ ] **Step 4: Client and E2E sanity.** `npm test -w client` → green (response objects only gained fields). Run `npx playwright test` only if the dev servers are up; otherwise report it as not run.
+
+- [ ] **Step 5: Stage everything and report.** `git add -A && git status --short`. Report the counts, anything not run, and wait for "commit" (never commit unprompted).
+
+---
+
+## Self-Review
+
+**Spec coverage.** FR-L4-01..05, 18 → Tasks 2, 4, 5. BR-L4-01..08 → Tasks 2, 4, 5 (BR-L4-05 locks: ACT-09/17, unit). BR-L4-11 serialization for Actions → lock in Task 4 (ACT-08/10 concurrent cases). BR-L4-14 (Action version) → Task 4/5; Ticket `version` column exists but is bumped in #50. BR-L4-15 → Tasks 3, 8. BR-L4-16 → Tasks 1, 3, 7. BR-L4-21 → Tasks 2, 4, 5. AC-L4-01..11 → ACT-01..18. AC-L4-26 → MIG-01..03. Data section: migration, backfill, rollback, seed → Tasks 1, 6, 7. Not covered here on purpose: BR-L4-09/10/12/13/14 (Ticket side), dashboards, UI.
+
+**Placeholders.** None; every code step has code. The two "adjust if the repo differs" notes (attachment request line, `import.meta.dirname`) name the exact source of truth.
+
+**Type consistency.** `parseActionBody(body, existing, now)` returns `{ draft, assigneeId?, followUpDone?, requestId?, fields }` in Tasks 2, 4. `evaluateActionEdit` returns `ActionEditProblem | null` in Tasks 2, 4. `findAssignableUser(client, id)`, `touchTicket(client, ticketId)` match their uses. Unique key `ticketId_requestId` is used in Tasks 4 and 6. `ActionStatus` Prisma enum values equal `ACTION_STATUSES`.
+</script>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
+<script>
+  try {
+    var md = document.getElementById('plan-md').textContent;
+    document.getElementById('plan').innerHTML = marked.parse(md);
+  } catch (e) {
+    document.getElementById('plan').innerHTML = '<pre></pre>';
+    document.querySelector('#plan pre').textContent = document.getElementById('plan-md').textContent;
+  }
+  try {
+    var dark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    mermaid.initialize({ startOnLoad: false, theme: dark ? 'dark' : 'neutral' });
+    mermaid.run({ querySelector: '.mermaid' });
+  } catch (e) {}
+</script>
+</body>
+</html>

@@ -10,6 +10,7 @@ import { prisma } from './prisma.js'
 import { requireSession, requirePasswordAlreadyChanged } from './auth/require-session.js'
 import { requireRole } from './authorization/require-role.js'
 import { resolveOwnedTicket, resolveOwnedAttachment, respondOwnershipFailure } from './ticket-ownership.js'
+import { touchTicket } from './tickets/touch-ticket.js'
 import { checkTicketAccess } from './authorization/ticket-access.js'
 import {
   buildStoragePath,
@@ -99,7 +100,7 @@ ticketAttachmentsRouter.post('/', ...requireRequester, handleUpload, async (requ
           throw new AttachmentLimitReachedError()
         }
 
-        return tx.attachment.create({
+        const created = await tx.attachment.create({
           data: {
             ticketId,
             originalFilename: file.originalname,
@@ -108,6 +109,8 @@ ticketAttachmentsRouter.post('/', ...requireRequester, handleUpload, async (requ
             sizeBytes: file.size,
           },
         })
+        await touchTicket(tx, ticketId)
+        return created
       })
 
       response.status(201).json(attachment)
@@ -251,6 +254,7 @@ attachmentsRouter.delete('/:id', ...requireRequester, async (request, response, 
     }
 
     const updated = await prisma.attachment.findUniqueOrThrow({ where: { id: attachmentId } })
+    await touchTicket(prisma, updated.ticketId)
     response.status(200).json(updated)
   } catch (error) {
     next(error)
