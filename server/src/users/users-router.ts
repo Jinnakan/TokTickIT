@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import type { Role } from '@prisma/client'
+import { ASSIGNABLE_ROLES } from './assignable-roles.js'
 import { prisma } from '../prisma.js'
 import { requireSession, requirePasswordAlreadyChanged } from '../auth/require-session.js'
 import { requireRole } from '../authorization/require-role.js'
@@ -72,7 +73,7 @@ async function wouldRemoveLastActiveAdmin(userId: number, nextIsActive: boolean,
 usersRouter.get('/assignable', ...requireStaff, async (_request, response, next) => {
   try {
     const users = await prisma.user.findMany({
-      where: { isActive: true, role: { in: ['IT_STAFF', 'ADMINISTRATOR'] } },
+      where: { isActive: true, role: { in: [...ASSIGNABLE_ROLES] } },
       select: { id: true, name: true, role: true },
       orderBy: [{ name: 'asc' }, { id: 'asc' }],
     })

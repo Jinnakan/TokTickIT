@@ -195,6 +195,10 @@ ticketsRouter.post('/', ...requireRequester, async (request, response, next) => 
         },
       })
 
+      await tx.ticketStatusHistory.create({
+        data: { ticketId: created.id, fromStatus: null, toStatus: 'NEW', changedById: requesterId },
+      })
+
       return tx.ticket.update({
         where: { id: created.id },
         data: { ticketNumber: generateTicketNumber(created.id, created.createdAt) },
