@@ -14,6 +14,8 @@ const ERROR_MESSAGES: Record<string, string> = {
   ALREADY_CLAIMED: 'Someone else has already claimed this ticket. Reload to see the owner.',
   INVALID_TRANSITION: 'That status change is not allowed from the current status.',
   TICKET_NOT_FOUND: 'This ticket no longer exists.',
+  STALE_UPDATE: 'This ticket changed since you opened it.',
+  RESOLUTION_BLOCKED: 'This ticket cannot be resolved yet.',
 }
 
 async function readError(response: Response): Promise<StaffTicketActionError> {
@@ -36,34 +38,34 @@ export async function claimTicket(ticketId: number): Promise<StaffTicketDetail> 
   return response.json() as Promise<StaffTicketDetail>
 }
 
-export async function reassignTicket(ticketId: number, ticketOwnerId: number): Promise<StaffTicketDetail> {
+export async function reassignTicket(ticketId: number, ticketOwnerId: number, expectedVersion: number): Promise<StaffTicketDetail> {
   const response = await fetch(`/api/tickets/${ticketId}/reassign`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
-    body: JSON.stringify({ ticketOwnerId }),
+    body: JSON.stringify({ ticketOwnerId, expectedVersion }),
   })
   if (!response.ok) throw await readError(response)
   return response.json() as Promise<StaffTicketDetail>
 }
 
-export async function updateItPriority(ticketId: number, itPriority: Priority): Promise<StaffTicketDetail> {
+export async function updateItPriority(ticketId: number, itPriority: Priority, expectedVersion: number): Promise<StaffTicketDetail> {
   const response = await fetch(`/api/tickets/${ticketId}/priority`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
-    body: JSON.stringify({ itPriority }),
+    body: JSON.stringify({ itPriority, expectedVersion }),
   })
   if (!response.ok) throw await readError(response)
   return response.json() as Promise<StaffTicketDetail>
 }
 
-export async function updateStatus(ticketId: number, status: TicketStatus): Promise<StaffTicketDetail> {
+export async function updateStatus(ticketId: number, status: TicketStatus, expectedVersion: number): Promise<StaffTicketDetail> {
   const response = await fetch(`/api/tickets/${ticketId}/status`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
-    body: JSON.stringify({ status }),
+    body: JSON.stringify({ status, expectedVersion }),
   })
   if (!response.ok) throw await readError(response)
   return response.json() as Promise<StaffTicketDetail>

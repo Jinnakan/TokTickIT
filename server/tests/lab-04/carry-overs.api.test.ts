@@ -4,6 +4,7 @@ import { app } from '../helpers/app.js'
 import { prisma } from '../../src/prisma.js'
 import { loginAsAdministrator, loginAsEmail, loginAsItStaff, type AuthenticatedAgent } from '../helpers/session.js'
 import { createUser, loginAsNewUser } from '../helpers/users.js'
+import { versionOf } from '../helpers/tickets.js'
 
 async function createTicketAs(agent: AuthenticatedAgent) {
   const category = await prisma.category.findFirstOrThrow({ where: { isActive: true } })
@@ -54,12 +55,12 @@ describe('Reassign accepts Administrators (CO-02, FR-L4-15)', () => {
     const inactiveStaff = await createUser({ role: 'IT_STAFF', isActive: false })
     const ticket = await createTicketAs(requester)
 
-    const toAdmin = await staff.post(`/api/tickets/${ticket.id}/reassign`).send({ ticketOwnerId: admin.id })
+    const toAdmin = await staff.post(`/api/tickets/${ticket.id}/reassign`).send({ ticketOwnerId: admin.id, expectedVersion: await versionOf(ticket.id) })
     expect(toAdmin.status).toBe(200)
     expect(toAdmin.body.ticketOwnerId).toBe(admin.id)
 
-    expect((await staff.post(`/api/tickets/${ticket.id}/reassign`).send({ ticketOwnerId: inactiveStaff.id })).status).toBe(400)
-    expect((await staff.post(`/api/tickets/${ticket.id}/reassign`).send({ ticketOwnerId: requesterId })).status).toBe(400)
+    expect((await staff.post(`/api/tickets/${ticket.id}/reassign`).send({ ticketOwnerId: inactiveStaff.id, expectedVersion: await versionOf(ticket.id) })).status).toBe(400)
+    expect((await staff.post(`/api/tickets/${ticket.id}/reassign`).send({ ticketOwnerId: requesterId, expectedVersion: await versionOf(ticket.id) })).status).toBe(400)
     expect((await prisma.ticket.findUniqueOrThrow({ where: { id: ticket.id } })).ticketOwnerId).toBe(admin.id)
   })
 })

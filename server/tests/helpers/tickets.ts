@@ -27,3 +27,29 @@ export async function createTicketVia(agent: AuthenticatedAgent, summary = 'Help
 export async function setTicketStatus(ticketId: number, status: TicketStatus): Promise<void> {
   await prisma.ticket.update({ where: { id: ticketId }, data: { currentStatus: status } })
 }
+
+export async function versionOf(ticketId: number): Promise<number> {
+  return (await prisma.ticket.findUniqueOrThrow({ where: { id: ticketId }, select: { version: true } })).version
+}
+
+/** Test-only: a Completed Action so the resolution gate lets a Ticket through. */
+export async function addActionRow(
+  ticketId: number,
+  staffId: number,
+  status: 'PLANNED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED',
+  extra: { followUpRequired?: boolean; followUpNote?: string; followUpDoneAt?: Date } = {},
+) {
+  return prisma.actionTaken.create({
+    data: {
+      ticketId,
+      createdById: staffId,
+      assigneeId: staffId,
+      actionAt: new Date(),
+      description: `seeded ${status} action`,
+      status,
+      result: status === 'COMPLETED' ? 'Done.' : null,
+      followUpNote: extra.followUpRequired ? (extra.followUpNote ?? 'Check later.') : null,
+      ...extra,
+    },
+  })
+}

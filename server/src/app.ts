@@ -8,7 +8,7 @@ import { authRouter } from './auth/auth-router.js'
 import { commentsRouter } from './comments.js'
 import { notesRouter } from './notes.js'
 import { actionsRouter } from './actions/actions-router.js'
-import { staffTicketActionsRouter } from './staff/staff-ticket-actions.js'
+import { ticketWorkflowRouter } from './tickets/ticket-workflow-router.js'
 import { usersRouter } from './users/users-router.js'
 import { registerSessionInvalidationListener } from './users/session-invalidation-listener.js'
 
@@ -64,7 +64,7 @@ app.use('/api/tickets/:ticketId/attachments', ticketAttachmentsRouter)
 app.use('/api/tickets/:ticketId/comments', commentsRouter)
 app.use('/api/tickets/:ticketId/notes', notesRouter)
 app.use('/api/tickets/:ticketId/actions', actionsRouter)
-app.use('/api/tickets/:ticketId', staffTicketActionsRouter)
+app.use('/api/tickets/:ticketId', ticketWorkflowRouter)
 app.use('/api/attachments', attachmentsRouter)
 app.use('/api/tickets', ticketsRouter)
 app.use('/api/users', usersRouter)

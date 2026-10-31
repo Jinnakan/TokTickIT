@@ -22,6 +22,10 @@ const baseTicket = {
   requester: { id: 3, name: 'Jennifer Anderson' },
   ticketOwner: null,
   allowedStatuses: ['OPEN', 'CANCELLED'],
+  version: 4,
+  requesterResolvedAt: null,
+  actionsSummary: { total: 0, planned: 0, inProgress: 0, completed: 0, cancelled: 0, openFollowUps: 0 },
+  resolution: { canResolve: true, blockers: [] },
 }
 
 function stubFetch(overrides: { ticket?: typeof baseTicket; comments?: unknown[]; notes?: unknown[] } = {}) {
@@ -31,6 +35,7 @@ function stubFetch(overrides: { ticket?: typeof baseTicket; comments?: unknown[]
     if (url === '/api/tickets/42') return { ok: true, json: async () => overrides.ticket ?? baseTicket } as Response
     if (url === '/api/tickets/42/attachments') return { ok: true, json: async () => [] } as Response
     if (url === '/api/tickets/42/actions') return { ok: true, json: async () => [] } as Response
+    if (url === '/api/tickets/42/history') return { ok: true, json: async () => [] } as Response
     if (url === '/api/tickets/42/comments') return { ok: true, json: async () => overrides.comments ?? [] } as Response
     if (url === '/api/tickets/42/notes') return { ok: true, json: async () => overrides.notes ?? [] } as Response
     if (url === '/api/users/assignable') return { ok: true, json: async () => [] } as Response
@@ -114,6 +119,7 @@ describe('StaffTicketDetail', () => {
       if (url === '/api/related-systems') return { ok: true, json: async () => relatedSystems } as Response
       if (url === '/api/tickets/42/attachments') return { ok: true, json: async () => [] } as Response
       if (url === '/api/tickets/42/actions') return { ok: true, json: async () => [] } as Response
+      if (url === '/api/tickets/42/history') return { ok: true, json: async () => [] } as Response
       if (url === '/api/tickets/42/comments') return { ok: true, json: async () => [] } as Response
       if (url === '/api/tickets/42/notes') return { ok: true, json: async () => [] } as Response
       if (url === '/api/tickets/42/claim' && init?.method === 'POST') {

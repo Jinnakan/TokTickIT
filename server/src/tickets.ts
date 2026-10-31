@@ -6,6 +6,7 @@ import { requireSession, requirePasswordAlreadyChanged } from './auth/require-se
 import { requireRole } from './authorization/require-role.js'
 import { resolveOwnedTicket, respondOwnershipFailure } from './ticket-ownership.js'
 import { TicketQueryBuilder } from './staff/ticket-query-builder.js'
+import { evaluateResolutionGate, loadActionFacts, summarizeActions } from './tickets/resolution-gate.js'
 import { getTicketState } from './tickets/ticket-state/ticket-state-factory.js'
 import {
   DEFAULT_PAGE,
@@ -307,6 +308,7 @@ ticketsRouter.get('/', ...requireAnyAuthenticatedRole, async (request, response,
           itPriority: true,
           currentStatus: true,
           ticketOwnerId: true,
+          requesterResolvedAt: true,
           createdAt: true,
           updatedAt: true,
           requester: { select: { id: true, name: true } },
@@ -360,10 +362,15 @@ ticketsRouter.get('/:id', ...requireAnyAuthenticatedRole, async (request, respon
         response.status(404).json({ error: 'TICKET_NOT_FOUND' })
         return
       }
-      // Sent alongside the ticket so the client never has to reimplement
-      // the state table (getTicketState is the single source of truth the
-      // 409 on PATCH /status also reads from).
-      response.status(200).json({ ...ticket, allowedStatuses: getTicketState(ticket.currentStatus).allowedActions() })
+      const facts = await loadActionFacts(prisma, ticketId)
+      const blockers = evaluateResolutionGate(facts)
+      // allowedStatuses and resolution are sent so the client never reimplements the state table or the gate.
+      response.status(200).json({
+        ...ticket,
+        allowedStatuses: getTicketState(ticket.currentStatus).allowedActions(),
+        actionsSummary: summarizeActions(facts),
+        resolution: { canResolve: blockers.length === 0, blockers },
+      })
       return
     }
 
@@ -373,7 +380,7 @@ ticketsRouter.get('/:id', ...requireAnyAuthenticatedRole, async (request, respon
       return
     }
 
-    response.status(200).json(result.value)
+    response.status(200).json({ ...result.value, actionsSummary: summarizeActions(await loadActionFacts(prisma, ticketId)) })
   } catch (error) {
     next(error)
   }

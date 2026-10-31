@@ -9,6 +9,8 @@ export type Priority = ServerPriority
 export type TicketStatus = ServerTicketStatus
 export type { TicketSortField, SortDirection }
 
+import type { Blocker } from '../workflow/blockers.js'
+
 export type Ticket = {
   id: number
   ticketNumber: string
@@ -21,6 +23,8 @@ export type Ticket = {
   description: string
   createdAt: string
   updatedAt: string
+  version?: number
+  requesterResolvedAt?: string | null
 }
 
 export type TicketListItem = Pick<
@@ -51,6 +55,7 @@ export type TicketListQuery = {
 }
 
 export type StaffTicketListItem = TicketListItem & {
+  requesterResolvedAt: string | null
   itPriority: Priority
   ticketOwnerId: number | null
   requester: { id: number; name: string }
@@ -68,12 +73,25 @@ export type StaffTicketListQuery = TicketListQuery & {
   unassignedOnly?: boolean
 }
 
+export type ActionsSummary = {
+  total: number
+  planned: number
+  inProgress: number
+  completed: number
+  cancelled: number
+  openFollowUps: number
+}
+
 export type StaffTicketDetail = Ticket & {
+  version: number
+  requesterResolvedAt: string | null
   itPriority: Priority
   ticketOwnerId: number | null
   requester: { id: number; name: string }
   ticketOwner: { id: number; name: string } | null
   allowedStatuses: TicketStatus[]
+  actionsSummary: ActionsSummary
+  resolution: { canResolve: boolean; blockers: Blocker[] }
 }
 
 export type CreateTicketInput = {

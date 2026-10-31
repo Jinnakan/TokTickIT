@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
 import { PRIORITIES, PRIORITY_LABELS, STATUS_LABELS } from '@toktickit/shared'
-import { claimTicket, reassignTicket, updateItPriority, updateStatus } from '../api/staffTicketDetail.js'
+import { claimTicket, reassignTicket, StaffTicketActionError, updateItPriority, updateStatus } from '../api/staffTicketDetail.js'
 import { fetchAssignableUsers, type AssignableUser } from '../api/users.js'
 import type { Priority, StaffTicketDetail, TicketStatus } from '../types/ticket.js'
+import type { Blocker } from '../workflow/blockers.js'
+import { ResolutionBlockers } from './ResolutionBlockers.js'
 import type { TicketDetailMediator } from '../staff/ticket-detail-mediator.js'
 
 export function ServiceActionsPanel({
@@ -22,6 +24,9 @@ export function ServiceActionsPanel({
   const [assignableFailed, setAssignableFailed] = useState(false)
   const [selectedOwner, setSelectedOwner] = useState('')
   const [isReassigning, setIsReassigning] = useState(false)
+  const [blockedBy, setBlockedBy] = useState<Blocker[] | null>(null)
+  const [isStale, setIsStale] = useState(false)
+  const [confirmingCancel, setConfirmingCancel] = useState(false)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -36,55 +41,71 @@ export function ServiceActionsPanel({
     return () => controller.abort()
   }, [])
 
+  function clearFailure() {
+    setActionError('')
+    setIsStale(false)
+    setBlockedBy(null)
+  }
+
+  function showFailure(error: unknown, fallback: string) {
+    setActionError(error instanceof Error ? error.message : fallback)
+    setIsStale(error instanceof StaffTicketActionError && error.code === 'STALE_UPDATE')
+    const detail = error instanceof StaffTicketActionError ? (error.detail as { blockers?: Blocker[] } | undefined) : undefined
+    const blocked = error instanceof StaffTicketActionError && error.code === 'RESOLUTION_BLOCKED'
+    setBlockedBy(blocked ? (detail?.blockers ?? []) : null)
+    // The standing resolution block is stale when the server says it is blocked.
+    if (blocked) mediator.onStatusChanged()
+  }
+
   async function handleReassign() {
     if (!selectedOwner) return
-    setActionError('')
+    clearFailure()
     setIsReassigning(true)
     try {
-      await reassignTicket(ticket.id, Number(selectedOwner))
+      await reassignTicket(ticket.id, Number(selectedOwner), ticket.version)
       setSelectedOwner('')
       mediator.onReassigned()
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : 'Unable to reassign this ticket.')
+      showFailure(error, 'Unable to reassign this ticket.')
     } finally {
       setIsReassigning(false)
     }
   }
 
   async function handleClaim() {
-    setActionError('')
+    clearFailure()
     setIsClaiming(true)
     try {
       await claimTicket(ticket.id)
       mediator.onClaimed()
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : 'Unable to claim this ticket.')
+      showFailure(error, 'Unable to claim this ticket.')
     } finally {
       setIsClaiming(false)
     }
   }
 
   async function handlePriorityChange(next: Priority) {
-    setActionError('')
+    clearFailure()
     setIsChangingPriority(true)
     try {
-      await updateItPriority(ticket.id, next)
+      await updateItPriority(ticket.id, next, ticket.version)
       mediator.onPriorityChanged()
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : 'Unable to update IT Priority.')
+      showFailure(error, 'Unable to update IT Priority.')
     } finally {
       setIsChangingPriority(false)
     }
   }
 
   async function handleStatusChange(next: TicketStatus) {
-    setActionError('')
+    clearFailure()
     setIsChangingStatus(true)
     try {
-      await updateStatus(ticket.id, next)
+      await updateStatus(ticket.id, next, ticket.version)
       mediator.onStatusChanged()
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : 'Unable to change the status.')
+      showFailure(error, 'Unable to change the status.')
     } finally {
       setIsChangingStatus(false)
     }
@@ -97,8 +118,16 @@ export function ServiceActionsPanel({
       <h2 id="service-actions-heading" className="h5 fw-bold mb-3">Service Actions</h2>
 
       {actionError && (
-        <div className="alert alert-danger" role="alert">
-          {actionError}
+        <div className="alert alert-danger d-flex flex-wrap align-items-center gap-2" role="alert">
+          <span>{actionError}</span>
+          {isStale && (
+            <button type="button" className="btn btn-outline-danger btn-sm" onClick={() => {
+                clearFailure()
+                mediator.onStatusChanged()
+              }}>
+              Reload
+            </button>
+          )}
         </div>
       )}
 
@@ -173,7 +202,10 @@ export function ServiceActionsPanel({
             value=""
             disabled={isChangingStatus || ticket.allowedStatuses.length === 0}
             onChange={(event) => {
-              if (event.target.value) void handleStatusChange(event.target.value as TicketStatus)
+              const next = event.target.value as TicketStatus
+              if (!next) return
+              if (next === 'CANCELLED') setConfirmingCancel(true)
+              else void handleStatusChange(next)
             }}
           >
             <option value="" disabled>
@@ -183,6 +215,41 @@ export function ServiceActionsPanel({
               <option key={status} value={status}>{STATUS_LABELS[status]}</option>
             ))}
           </select>
+          {ticket.allowedStatuses.includes('RESOLVED') && !ticket.resolution.canResolve && (
+            <ResolutionBlockers blockers={ticket.resolution.blockers} />
+          )}
+          {blockedBy && blockedBy.length > 0 && !(ticket.allowedStatuses.includes('RESOLVED') && !ticket.resolution.canResolve) && (
+            <ResolutionBlockers blockers={blockedBy} />
+          )}
+          {confirmingCancel && (
+            <div
+              role="alertdialog"
+              aria-labelledby="confirm-cancel-ticket"
+              className="alert alert-warning mt-2 mb-0"
+              onKeyDown={(event) => {
+                if (event.key === 'Escape') setConfirmingCancel(false)
+              }}
+            >
+              <p id="confirm-cancel-ticket" className="mb-2">
+                Cancel this ticket? Its planned and in-progress actions will be cancelled too, and a cancelled ticket cannot be changed again.
+              </p>
+              <div className="d-flex gap-2">
+                <button type="button" className="btn btn-outline-secondary btn-sm" autoFocus onClick={() => setConfirmingCancel(false)}>
+                  Keep ticket
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-danger btn-sm"
+                  onClick={() => {
+                    setConfirmingCancel(false)
+                    void handleStatusChange('CANCELLED')
+                  }}
+                >
+                  Cancel ticket
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </section>

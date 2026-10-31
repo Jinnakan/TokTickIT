@@ -1,4 +1,4 @@
-import type { CreateTicketInput, FieldErrors, Ticket, TicketListQuery, TicketListResponse } from '../types/ticket.js'
+import type { CreateTicketInput, FieldErrors, Ticket, TicketListQuery, TicketListResponse, TicketStatus } from '../types/ticket.js'
 
 export class TicketValidationError extends Error {
   fields: FieldErrors
@@ -78,4 +78,12 @@ export async function fetchTicket(ticketId: number, signal?: AbortSignal): Promi
   }
 
   return response.json() as Promise<Ticket>
+}
+
+export async function markAppearsResolved(
+  ticketId: number,
+): Promise<{ id: number; requesterResolvedAt: string; currentStatus: TicketStatus }> {
+  const response = await fetch(`/api/tickets/${ticketId}/appears-resolved`, { method: 'POST', credentials: 'include' })
+  if (!response.ok) throw new Error('Unable to send that. Please try again.')
+  return response.json() as Promise<{ id: number; requesterResolvedAt: string; currentStatus: TicketStatus }>
 }

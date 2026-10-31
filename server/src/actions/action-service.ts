@@ -5,16 +5,13 @@ import {
   parseActionBody,
   pickActionBody,
   type ActionDraft,
-  type FieldErrors,
 } from '@toktickit/shared'
 import { prisma } from '../prisma.js'
+import { lockTicket } from '../tickets/lock-ticket.js'
+import { reply, validationFailed, type ServiceResult } from '../tickets/service-result.js'
 import { touchTicket } from '../tickets/touch-ticket.js'
 import { findAssignableUser } from '../users/assignable-roles.js'
 
-export type ServiceResult = { httpStatus: number; body: unknown }
-
-const reply = (httpStatus: number, body: unknown): ServiceResult => ({ httpStatus, body })
-const validationFailed = (fields: FieldErrors): ServiceResult => reply(400, { error: 'VALIDATION_FAILED', fields })
 
 const WITH_NAMES = {
   createdBy: { select: { name: true } },
@@ -56,18 +53,6 @@ function toDraft(action: ActionTaken): ActionDraft {
     followUpNote: action.followUpNote,
     attachmentNotes: action.attachmentNotes,
   }
-}
-
-type LockedTicket = { id: number; currentStatus: string }
-
-/**
- * BR-L4-11: lock the Ticket row for the rest of the transaction so two
- * writes on one Ticket run one after the other. Tagged template = bound parameter.
- */
-async function lockTicket(tx: Prisma.TransactionClient, ticketId: number): Promise<LockedTicket | null> {
-  const rows = await tx.$queryRaw<LockedTicket[]>`
-    SELECT id, "currentStatus"::text AS "currentStatus" FROM "Ticket" WHERE id = ${ticketId} FOR UPDATE`
-  return rows[0] ?? null
 }
 
 export async function listActions(ticketId: number) {

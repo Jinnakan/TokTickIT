@@ -28,6 +28,7 @@ function stubFetch(overrides: { ticketStatus?: number; ticketBody?: unknown } = 
     if (url === '/api/related-systems') return { ok: true, json: async () => relatedSystems } as Response
     if (url === '/api/tickets/42/attachments') return { ok: true, json: async () => [] } as Response
     if (url === '/api/tickets/42/actions') return { ok: true, json: async () => [] } as Response
+    if (url === '/api/tickets/42/history') return { ok: true, json: async () => [] } as Response
     if (url === '/api/tickets/42/comments') return { ok: true, json: async () => [] } as Response
     throw new Error(`Unexpected fetch: ${url}`)
   }))
