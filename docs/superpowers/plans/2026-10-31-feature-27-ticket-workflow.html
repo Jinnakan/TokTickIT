@@ -1,0 +1,2051 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Feature 27: Ticket workflow and resolution gate (plan)</title>
+<style>
+  :root { --bg:#f6faf7; --fg:#1b2a22; --muted:#5b6b62; --card:#fff; --line:#cfe0d5; --accent:#2f7d52; --warn:#b4540a; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#101a14; --fg:#e4efe8; --muted:#9db3a5; --card:#18261e; --line:#2b4034; --accent:#6fcf97; --warn:#f0a35e; } }
+  body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.55 system-ui,sans-serif; }
+  main { max-width:1080px; margin:0 auto; padding:24px 16px 80px; }
+  h1 { font-size:1.7rem; margin:.2em 0; } h2 { margin-top:2em; border-bottom:2px solid var(--line); padding-bottom:.2em; }
+  .meta { color:var(--muted); }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px 18px; margin:14px 0; }
+  .pair { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  @media (max-width:760px) { .pair { grid-template-columns:1fr; } }
+  .pair h4 { margin:0 0 6px; } .before h4 { color:var(--warn); } .after h4 { color:var(--accent); }
+  table { border-collapse:collapse; width:100%; font-size:.93rem; } th,td { border:1px solid var(--line); padding:6px 9px; text-align:left; vertical-align:top; }
+  code, pre { font-family:ui-monospace,Menlo,monospace; font-size:.85rem; } pre { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:10px 12px; overflow:auto; }
+  #plan h3 { margin-top:2em; padding-top:.4em; border-top:1px dashed var(--line); } #plan ul { padding-left:1.2em; }
+  .mermaid { text-align:center; overflow:auto; }
+</style>
+</head>
+<body>
+<main>
+<h1>Feature 27: Ticket workflow and resolution gate</h1>
+<p class="meta">Issue #50 · branch <code>feature/27-Ticket-workflow-resolution-gate</code> from <code>lab4-staging</code> · server and client · one E2E spec</p>
+
+<h2>A. Read this</h2>
+
+<div class="card">
+<p><strong>Goal.</strong> Make the backend own the whole Ticket lifecycle. Status, priority and owner changes carry <code>expectedVersion</code> and run in one locked transaction; moving to Resolved is refused while the Actions say work is unfinished; every status change writes a history row; a Requester can say "this looks fixed" without changing the status. The staff screen then shows only the allowed next statuses, explains blockers in plain words, asks before cancelling, and lists history. This is the Issue that makes Actions Taken matter.</p>
+<p><strong>Already true, so not rebuilt.</strong> The transition matrix in <code>ticket-state/*</code> already equals BR-L4-09 (Lab 3 built the same table), so those classes stay; <code>WF-U02</code> just proves it. <strong>Not in this feature:</strong> <code>statusGroup</code> and <code>requesterReportedResolved</code> list filters (WF-16, they exist for dashboard drill-down, so they belong to #51), dashboards, navigation.</p>
+</div>
+
+<div class="card">
+<p><strong>Decisions the plan makes (veto any before "Ready for feature 27").</strong></p>
+<ol>
+<li><strong>A facade, not scattered routes.</strong> <code>ticket-workflow-service.ts</code> is the single entry point for claim, reassign, priority, status and appears-resolved. Each write: lock the Ticket row, 404 if missing, compare <code>expectedVersion</code>, check the transition (State classes), run the resolution gate for Resolved, update, append history, apply side effects, all in one transaction. The old <code>staff-ticket-actions.ts</code> is replaced by a thin <code>ticket-workflow-router.ts</code>.</li>
+<li><strong>Check order inside a status change:</strong> 400 (missing or bad <code>expectedVersion</code>, bad body) → 404 → 409 <code>STALE_UPDATE</code> → 409 <code>INVALID_TRANSITION</code> → 409 <code>RESOLUTION_BLOCKED</code> → write. Stale comes first because a changed version means the state you judged the move against may be gone. (api-spec lists the same four 409s without ordering.)</li>
+<li><strong>The gate is a pure function</strong> (<code>resolution-gate.ts</code>) fed with Action facts, unit-tested over every combination (WF-U01). The same function builds the <code>resolution</code> block on <code>GET /api/tickets/:id</code>, so the UI explains a blocker without reimplementing the rule.</li>
+<li><strong>Lab 3 tests must change, on purpose.</strong> They call these routes without <code>expectedVersion</code> (now 400) and resolve Tickets with no Completed Action (now blocked). I update them to send the version and to add a Completed Action first, and say so in the commit, rather than weakening the new rules.</li>
+<li><strong>The lock test is deterministic.</strong> A test transaction holds the Ticket row lock, a Resolve request is fired, the test proves it waits, adds a Planned Action inside the lock, commits, and the Resolve must then fail with <code>ACTIONS_STILL_OPEN</code>. A racing-requests loop cannot show that, because "resolve then add" is also a valid result.</li>
+<li><strong>The staff screen stops flashing "Loading ticket…" on refresh.</strong> First load still shows it; later refreshes (after a status change, or an Action change, which feature 26 deferred to here) keep the page and swap data in. Without this, saving an Action would destroy the open Action form. The Actions list and History refetch quietly when <code>ticket.version</code> changes, because a Cancel changes Actions on the server.</li>
+<li><strong>Cancel asks first</strong> in an inline <code>role="alertdialog"</code> that names what will happen to open Actions, the same pattern as Cancel action.</li>
+<li><strong>History creation row already exists</strong> (feature 25); this feature writes one row per status change, and only status changes (BR-L4-16).</li>
+</ol>
+</div>
+
+<h3>Before and after: changing a Ticket's status</h3>
+<div class="pair">
+<div class="card before"><h4>Now (Lab 3)</h4>
+<pre class="mermaid">
+sequenceDiagram
+  participant S as Staff
+  participant API
+  participant DB
+  S->>API: PATCH status
+  API->>DB: read Ticket
+  API->>API: state allows it?
+  API->>DB: update status
+  Note over DB: no version, no history, no check of the work done
+</pre></div>
+<div class="card after"><h4>After feature 27</h4>
+<pre class="mermaid">
+sequenceDiagram
+  participant S as Staff
+  participant R as workflow router
+  participant F as workflow service (facade)
+  participant DB
+  S->>R: PATCH status + expectedVersion
+  R->>F: changeStatus
+  F->>DB: BEGIN, SELECT Ticket FOR UPDATE
+  F->>F: 404? stale? State allows it?
+  F->>DB: read Action facts
+  F->>F: pure gate (only when moving to Resolved)
+  F->>DB: update + version+1, append history, side effects
+  F-->>S: 200 Ticket, or 409 STALE / INVALID_TRANSITION / RESOLUTION_BLOCKED
+</pre></div>
+</div>
+
+<h3>Before and after: staff status control</h3>
+<div class="pair">
+<div class="card before"><h4>Now</h4>
+<pre class="mermaid">
+flowchart TB
+  A["Status select (allowed next)"] --> B["PATCH immediately"]
+  B --> C["whole page reloads: Loading ticket"]
+</pre></div>
+<div class="card after"><h4>After</h4>
+<pre class="mermaid">
+flowchart TB
+  A["Status select (allowed next)"] --> B{"chosen status"}
+  B -->|Cancelled| D["inline confirm: open actions will be cancelled"]
+  D -->|confirm| E["PATCH + expectedVersion"]
+  B -->|Resolved| F["blocker lines from resolution; PATCH anyway shows 409 lines"]
+  B -->|other| E
+  E --> G["quiet refresh: ticket, actions list, history"]
+  E -->|409 STALE| H["This ticket changed since you opened it. Reload"]
+</pre></div>
+</div>
+
+<h3>What changes</h3>
+<table>
+<tr><th>Added</th><th>Modified</th></tr>
+<tr><td>
+<code>server/src/tickets/resolution-gate.ts</code>, <code>ticket-workflow-service.ts</code>, <code>lock-ticket.ts</code>, <code>service-result.ts</code><br>
+<code>server/src/tickets/ticket-workflow-router.ts</code> (replaces <code>staff/staff-ticket-actions.ts</code>)<br>
+<code>client/src/api/history.ts</code>, <code>client/src/workflow/blockers.ts</code><br>
+<code>client/src/components/HistoryPanel.tsx</code>, <code>ResolutionBlockers.tsx</code>, <code>AppearsResolved.tsx</code><br>
+tests: <code>server/tests/lab-04/{workflow-rules.unit,ticket-workflow.api}.test.ts</code>, <code>client/tests/lab-04/TicketWorkflow.test.tsx</code>, <code>e2e/lab-04/ticket-resolution.spec.ts</code>
+</td><td>
+<code>server/src/app.ts</code>, <code>tickets.ts</code> (detail fields, staff list field), <code>actions/action-service.ts</code> (shared lock and result helpers)<br>
+<code>client/src/api/staffTicketDetail.ts</code>, <code>api/tickets.ts</code>, <code>types/ticket.ts</code><br>
+<code>components/ServiceActionsPanel.tsx</code>, <code>StaffTicketDetail.tsx</code>, <code>TicketDetail.tsx</code>, <code>ActionsTakenPanel.tsx</code>, <code>StaffTicketQueue.tsx</code>, <code>TicketBadges.tsx</code>; <code>staff/ticket-detail-mediator.ts</code><br>
+Lab 3/4 tests that call the changed routes; <code>docs/lab-04/tests.md</code>
+</td></tr>
+</table>
+
+<h3>Parallelization analysis</h3>
+<table>
+<tr><th>Batch</th><th>Tasks</th><th>Why</th></tr>
+<tr><td>1</td><td>T1 gate + workflow unit tests, T2 shared helpers refactor, T6 client API layer and types</td><td>Disjoint files; server and client never touch the same file</td></tr>
+<tr><td>2</td><td>T3 workflow service, T7 client blocker/status/appears components</td><td>T3 needs T1+T2; T7 needs T6 and talks to a mocked fetch</td></tr>
+<tr><td>3</td><td>T4 router + routes in <code>tickets.ts</code> + app mount, T8 history, badges, mounting, silent refresh</td><td>T4 needs T3; T8 needs T6, T7</td></tr>
+<tr><td>4</td><td>T5 server tests (update Lab 3/4, write WF), T9 client tests</td><td>Each needs its own side finished</td></tr>
+<tr><td>5</td><td>T10 E2E, real-browser check, docs, full runs</td><td>Needs both sides</td></tr>
+</table>
+<p class="meta">Critical path: T2 → T3 → T4 → T5 → T10. The client chain (T6 → T7 → T8 → T9) can run beside the server chain.</p>
+
+<h2>B. Implementation plan</h2>
+<div id="plan">Loading plan...</div>
+</main>
+
+<script type="text/plain" id="plan-md">
+# Feature 27: Ticket Workflow and Resolution Gate Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Enforce the Ticket lifecycle in the backend (versions, resolution gate, history, side effects, Requester indication) and expose it in the staff and Requester screens.
+
+**Architecture:** A pure `resolution-gate.ts` and the existing State classes feed a facade `ticket-workflow-service.ts` that runs each write in one transaction after locking the Ticket row; a thin router calls it. The client reads `version`, `resolution` and `allowedStatuses` from `GET /api/tickets/:id`, sends `expectedVersion`, and renders blockers, a cancel confirmation, history, and the Requester button.
+
+**Tech Stack:** Express 5, Prisma 6.19 (PostgreSQL), Vitest + supertest, React 19 + Testing Library, Playwright.
+
+**Spec:** `docs/lab-04/specification.md` (BR-L4-09 to 16, FR-L4-06 to 11, 17; AC-L4-08, 12 to 20); `docs/lab-04/api-spec.md` §2, §3 (`GET /api/tickets/:id`, staff list field); `docs/lab-04/ui-spec.md` §5; `docs/lab-04/tests.md` WF-01 to 15, 17, 18, WF-U01, WF-U02, UI4-17 to 22, E2E4-02.
+
+## Global Constraints
+
+- Repo root: `/Users/jinnakanchaviengpob/Desktop/3rd Year/CPE_334/ToKTickIT`. Server commands in `server/`, client commands in `client/`.
+- Do not create branches, push, open PRs or close issues. Stage only; commit only when the user says so. No Prisma `migrate reset`; this feature adds no migration.
+- Raw SQL in `server/src` only as tagged templates (`tx.$queryRaw\`...\``). The Lab 3 static guard forbids `$queryRawUnsafe`, `$executeRawUnsafe`, `child_process`.
+- Test rules: tests own their data (`loginAsNewUser`, `createUser`, `createTicketVia`); never mutate seeded accounts; import the test server from `tests/helpers/app.ts`.
+- Error bodies exactly: `STALE_UPDATE {currentVersion}`, `INVALID_TRANSITION {from,to,allowed}`, `RESOLUTION_BLOCKED {blockers:[{code:'NO_COMPLETED_ACTION'},{code:'ACTIONS_STILL_OPEN',count},{code:'FOLLOW_UP_OPEN',count}]}`, `NOT_APPLICABLE {currentStatus}`, `ALREADY_CLAIMED {ticketOwnerId}`, 400 `VALIDATION_FAILED {fields}`.
+- UI messages exactly: `This ticket changed since you opened it.`, blocker lines `Add a completed action`, `N action(s) are still planned or in progress`, `N follow-up(s) are still open`, `Requester reports resolved`, `Problem appears resolved`, `You told us this appears resolved on {date}.`, `History`.
+- The UI never reimplements the gate or the matrix: it reads `resolution` and `allowedStatuses` from the API.
+- After each task: `cd server && npx tsc --noEmit -p . && npx vitest run` and `cd client && npx tsc --noEmit -p tsconfig.app.json && npx vitest run` as relevant. Known: until Task 5 finishes, Lab 3 tests that call the changed routes fail on purpose.
+
+## File Structure
+
+| File | Responsibility |
+|---|---|
+| `server/src/tickets/service-result.ts` | `ServiceResult`, `reply`, `validationFailed` (moved out of `action-service.ts`) |
+| `server/src/tickets/lock-ticket.ts` | `lockTicket(tx, ticketId)` (moved out of `action-service.ts`) |
+| `server/src/tickets/resolution-gate.ts` | Pure: `ActionFact`, `Blocker`, `evaluateResolutionGate`, `summarizeActions`, `loadActionFacts` |
+| `server/src/tickets/ticket-workflow-service.ts` | Facade: `claim`, `reassign`, `changePriority`, `changeStatus`, `markAppearsResolved`, `listHistory` |
+| `server/src/tickets/ticket-workflow-router.ts` | Routes `claim`, `reassign`, `priority`, `status`, `appears-resolved`, `history` |
+| `client/src/api/history.ts` | `fetchHistory` |
+| `client/src/workflow/blockers.ts` | `Blocker` type, `blockerLine` |
+| `client/src/components/ResolutionBlockers.tsx` | Plain-text blocker list |
+| `client/src/components/HistoryPanel.tsx` | Collapsed History list |
+| `client/src/components/AppearsResolved.tsx` | Requester button / confirmation text |
+
+---
+
+### Task 1: The resolution gate (pure) and workflow unit tests
+
+**Files:**
+- Create: `server/src/tickets/resolution-gate.ts`
+- Test: `server/tests/lab-04/workflow-rules.unit.test.ts`
+
+**Interfaces:**
+- Produces:
+  - `type ActionFact = { status: ActionStatusValue; followUpRequired: boolean; followUpDoneAt: Date | null }`
+  - `type Blocker = { code: 'NO_COMPLETED_ACTION' } | { code: 'ACTIONS_STILL_OPEN'; count: number } | { code: 'FOLLOW_UP_OPEN'; count: number }`
+  - `evaluateResolutionGate(actions: readonly ActionFact[]): Blocker[]` (empty array = may resolve)
+  - `type ActionsSummary = { total: number; planned: number; inProgress: number; completed: number; cancelled: number; openFollowUps: number }`, `summarizeActions(actions): ActionsSummary`
+  - `loadActionFacts(client: Pick<Prisma.TransactionClient, 'actionTaken'>, ticketId: number): Promise<ActionFact[]>`
+
+- [ ] **Step 1: Write the failing test** `server/tests/lab-04/workflow-rules.unit.test.ts`:
+
+```ts
+import { describe, expect, it } from 'vitest'
+import { ACTION_STATUSES, type ActionStatusValue } from '@toktickit/shared'
+import { evaluateResolutionGate, summarizeActions, type ActionFact } from '../../src/tickets/resolution-gate.js'
+import { getTicketState } from '../../src/tickets/ticket-state/ticket-state-factory.js'
+
+const DONE = new Date('2026-10-31T09:00:00.000Z')
+
+function fact(status: ActionStatusValue, followUp: 'none' | 'open' | 'done' = 'none'): ActionFact {
+  return { status, followUpRequired: followUp !== 'none', followUpDoneAt: followUp === 'done' ? DONE : null }
+}
+
+describe('Resolution gate (WF-U01, BR-L4-10)', () => {
+  it('blocks a Ticket with no Actions at all (a legacy Ticket)', () => {
+    expect(evaluateResolutionGate([])).toEqual([{ code: 'NO_COMPLETED_ACTION' }])
+  })
+
+  it('allows a Ticket with one Completed Action and nothing else', () => {
+    expect(evaluateResolutionGate([fact('COMPLETED')])).toEqual([])
+  })
+
+  it('lists every blocker in the documented order with counts', () => {
+    const blockers = evaluateResolutionGate([
+      fact('PLANNED'),
+      fact('IN_PROGRESS', 'open'),
+      fact('CANCELLED'),
+      fact('COMPLETED', 'open'),
+    ])
+    expect(blockers).toEqual([
+      { code: 'ACTIONS_STILL_OPEN', count: 2 },
+      { code: 'FOLLOW_UP_OPEN', count: 2 },
+    ])
+    expect(evaluateResolutionGate([fact('PLANNED')])).toEqual([
+      { code: 'NO_COMPLETED_ACTION' },
+      { code: 'ACTIONS_STILL_OPEN', count: 1 },
+    ])
+  })
+
+  it('ignores a follow-up that is done and one on a Cancelled Action', () => {
+    expect(evaluateResolutionGate([fact('COMPLETED', 'done'), fact('CANCELLED', 'open')])).toEqual([])
+  })
+
+  it('answers every combination of up to three Actions consistently with the rule', () => {
+    const states: ActionFact[] = ACTION_STATUSES.flatMap((status) =>
+      (['none', 'open', 'done'] as const).map((followUp) => fact(status, followUp)),
+    )
+    for (const a of states) for (const b of states) for (const c of [undefined, ...states]) {
+      const actions = c ? [a, b, c] : [a, b]
+      const blockers = evaluateResolutionGate(actions)
+      const hasCompleted = actions.some((x) => x.status === 'COMPLETED')
+      const open = actions.filter((x) => x.status === 'PLANNED' || x.status === 'IN_PROGRESS').length
+      const followUps = actions.filter((x) => x.status !== 'CANCELLED' && x.followUpRequired && x.followUpDoneAt === null).length
+      expect(blockers.some((x) => x.code === 'NO_COMPLETED_ACTION')).toBe(!hasCompleted)
+      expect(blockers.find((x) => x.code === 'ACTIONS_STILL_OPEN')).toEqual(open > 0 ? { code: 'ACTIONS_STILL_OPEN', count: open } : undefined)
+      expect(blockers.find((x) => x.code === 'FOLLOW_UP_OPEN')).toEqual(followUps > 0 ? { code: 'FOLLOW_UP_OPEN', count: followUps } : undefined)
+    }
+  })
+
+  it('summarizes the Actions for GET /api/tickets/:id', () => {
+    expect(
+      summarizeActions([fact('PLANNED'), fact('IN_PROGRESS'), fact('COMPLETED', 'open'), fact('COMPLETED', 'done'), fact('CANCELLED', 'open')]),
+    ).toEqual({ total: 5, planned: 1, inProgress: 1, completed: 2, cancelled: 1, openFollowUps: 1 })
+    expect(summarizeActions([])).toEqual({ total: 0, planned: 0, inProgress: 0, completed: 0, cancelled: 0, openFollowUps: 0 })
+  })
+})
+
+describe('Ticket transition matrix through the State classes (WF-U02, BR-L4-09)', () => {
+  const expected = {
+    NEW: ['OPEN', 'CANCELLED'],
+    OPEN: ['IN_PROGRESS', 'CANCELLED'],
+    IN_PROGRESS: ['WAITING_FOR_REQUESTER', 'RESOLVED', 'CANCELLED'],
+    WAITING_FOR_REQUESTER: ['IN_PROGRESS', 'RESOLVED', 'CANCELLED'],
+    RESOLVED: ['CLOSED', 'REOPENED'],
+    CLOSED: ['REOPENED'],
+    REOPENED: ['IN_PROGRESS', 'CANCELLED'],
+    CANCELLED: [],
+  } as const
+
+  it('matches the table exactly for every from/to pair', () => {
+    const all = Object.keys(expected) as Array<keyof typeof expected>
+    for (const from of all) {
+      expect(getTicketState(from).allowedActions()).toEqual(expected[from])
+      for (const to of all) {
+        expect(getTicketState(from).canTransitionTo(to), `${from} -> ${to}`).toBe((expected[from] as readonly string[]).includes(to))
+      }
+    }
+  })
+})
+```
+
+- [ ] **Step 2: Run to verify it fails.** `cd server && npx vitest run tests/lab-04/workflow-rules.unit.test.ts` → FAIL (module not found).
+
+- [ ] **Step 3: Implement `server/src/tickets/resolution-gate.ts`:**
+
+```ts
+import type { Prisma } from '@prisma/client'
+import type { ActionStatusValue } from '@toktickit/shared'
+
+export type ActionFact = {
+  status: ActionStatusValue
+  followUpRequired: boolean
+  followUpDoneAt: Date | null
+}
+
+export type Blocker =
+  | { code: 'NO_COMPLETED_ACTION' }
+  | { code: 'ACTIONS_STILL_OPEN'; count: number }
+  | { code: 'FOLLOW_UP_OPEN'; count: number }
+
+/** An open follow-up: required, not done, on an Action that is not Cancelled (api-spec §3). */
+function isOpenFollowUp(action: ActionFact): boolean {
+  return action.status !== 'CANCELLED' && action.followUpRequired && action.followUpDoneAt === null
+}
+
+/**
+ * BR-L4-10: a Ticket may move to Resolved only with at least one Completed
+ * Action, none Planned or In Progress, and no open required follow-up.
+ * Pure on purpose: the same answer feeds the 409 and GET /api/tickets/:id.
+ */
+export function evaluateResolutionGate(actions: readonly ActionFact[]): Blocker[] {
+  const blockers: Blocker[] = []
+  if (!actions.some((action) => action.status === 'COMPLETED')) blockers.push({ code: 'NO_COMPLETED_ACTION' })
+
+  const stillOpen = actions.filter((action) => action.status === 'PLANNED' || action.status === 'IN_PROGRESS').length
+  if (stillOpen > 0) blockers.push({ code: 'ACTIONS_STILL_OPEN', count: stillOpen })
+
+  const followUps = actions.filter(isOpenFollowUp).length
+  if (followUps > 0) blockers.push({ code: 'FOLLOW_UP_OPEN', count: followUps })
+
+  return blockers
+}
+
+export type ActionsSummary = {
+  total: number
+  planned: number
+  inProgress: number
+  completed: number
+  cancelled: number
+  openFollowUps: number
+}
+
+export function summarizeActions(actions: readonly ActionFact[]): ActionsSummary {
+  const count = (status: ActionStatusValue) => actions.filter((action) => action.status === status).length
+  return {
+    total: actions.length,
+    planned: count('PLANNED'),
+    inProgress: count('IN_PROGRESS'),
+    completed: count('COMPLETED'),
+    cancelled: count('CANCELLED'),
+    openFollowUps: actions.filter(isOpenFollowUp).length,
+  }
+}
+
+export async function loadActionFacts(
+  client: Pick<Prisma.TransactionClient, 'actionTaken'>,
+  ticketId: number,
+): Promise<ActionFact[]> {
+  return client.actionTaken.findMany({
+    where: { ticketId },
+    select: { status: true, followUpRequired: true, followUpDoneAt: true },
+  })
+}
+```
+
+- [ ] **Step 4: Run.** The unit file → PASS; `npx tsc --noEmit -p .` clean.
+
+- [ ] **Step 5: Stage.** `git add server/src/tickets/resolution-gate.ts server/tests/lab-04/workflow-rules.unit.test.ts`
+
+---
+
+### Task 2: Shared service helpers (refactor, no behavior change)
+
+**Files:**
+- Create: `server/src/tickets/service-result.ts`, `server/src/tickets/lock-ticket.ts`
+- Modify: `server/src/actions/action-service.ts`
+
+**Interfaces:** Produces `ServiceResult`, `reply(httpStatus, body)`, `validationFailed(fields)`, `lockTicket(tx, ticketId): Promise<LockedTicket | null>`, `type LockedTicket = { id: number; currentStatus: string }`.
+
+- [ ] **Step 1: Create `service-result.ts`:**
+
+```ts
+import type { FieldErrors } from '@toktickit/shared'
+
+/** What a service returns to its router: an HTTP status and a JSON body. */
+export type ServiceResult = { httpStatus: number; body: unknown }
+
+export const reply = (httpStatus: number, body: unknown): ServiceResult => ({ httpStatus, body })
+
+export const validationFailed = (fields: FieldErrors): ServiceResult =>
+  reply(400, { error: 'VALIDATION_FAILED', fields })
+```
+
+- [ ] **Step 2: Create `lock-ticket.ts`:**
+
+```ts
+import type { Prisma } from '@prisma/client'
+
+export type LockedTicket = { id: number; currentStatus: string }
+
+/**
+ * BR-L4-11: lock the Ticket row for the rest of the transaction so two writes
+ * on one Ticket run one after the other. Tagged template = bound parameter.
+ */
+export async function lockTicket(tx: Prisma.TransactionClient, ticketId: number): Promise<LockedTicket | null> {
+  const rows = await tx.$queryRaw<LockedTicket[]>`
+    SELECT id, "currentStatus"::text AS "currentStatus" FROM "Ticket" WHERE id = ${ticketId} FOR UPDATE`
+  return rows[0] ?? null
+}
+```
+
+- [ ] **Step 3: Use them in `action-service.ts`.** Delete the local `ServiceResult`, `reply`, `validationFailed`, `LockedTicket` and `lockTicket` definitions and add imports:
+
+```ts
+import { reply, validationFailed, type ServiceResult } from '../tickets/service-result.js'
+import { lockTicket } from '../tickets/lock-ticket.js'
+```
+Keep `export type { ServiceResult }` if `actions-router.ts` imports the type from `action-service.js`; otherwise change that import to `../tickets/service-result.js`. Remove `FieldErrors` from the shared import if it becomes unused.
+
+- [ ] **Step 4: Run.** `npx tsc --noEmit -p .`; `npx vitest run tests/lab-04/actions-taken.api.test.ts` → all pass (behavior unchanged).
+
+- [ ] **Step 5: Stage.** `git add server/src`
+
+---
+
+### Task 3: The workflow facade
+
+**Files:**
+- Create: `server/src/tickets/ticket-workflow-service.ts`
+
+**Interfaces:**
+- Consumes: Tasks 1 and 2; `getTicketState`; `findAssignableUser`, `ASSIGNABLE_ROLES` (`users/assignable-roles.ts`); `touchTicket` not needed (Ticket updates refresh `updatedAt` themselves).
+- Produces (all return `Promise<ServiceResult>`):
+  - `claim(ticketId: number, userId: number)`
+  - `reassign(ticketId: number, rawOwnerId: unknown, rawVersion: unknown)`
+  - `changePriority(ticketId: number, rawPriority: unknown, rawVersion: unknown)`
+  - `changeStatus(ticketId: number, actorId: number, rawStatus: unknown, rawVersion: unknown)`
+  - `markAppearsResolved(ticketId: number)`
+  - `listHistory(ticketId: number)`
+
+- [ ] **Step 1: Create the file:**
+
+```ts
+import type { Prisma, Priority, Ticket, TicketStatus } from '@prisma/client'
+import { PRIORITIES, TICKET_STATUSES, type FieldErrors } from '@toktickit/shared'
+import { prisma } from '../prisma.js'
+import { findAssignableUser } from '../users/assignable-roles.js'
+import { lockTicket } from './lock-ticket.js'
+import { evaluateResolutionGate, loadActionFacts } from './resolution-gate.js'
+import { reply, validationFailed, type ServiceResult } from './service-result.js'
+import { getTicketState } from './ticket-state/ticket-state-factory.js'
+
+const APPEARS_RESOLVED_STATUSES: readonly TicketStatus[] = ['OPEN', 'IN_PROGRESS', 'WAITING_FOR_REQUESTER', 'REOPENED']
+const VERSION_REQUIRED = 'expectedVersion is required.'
+const OWNER_MESSAGE = 'ticketOwnerId must reference an active IT Staff or Administrator user.'
+
+function readExpectedVersion(value: unknown): number | null {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 1 ? value : null
+}
+
+/**
+ * Every Ticket write that takes `expectedVersion` goes through here: lock the
+ * row, 404 if it is gone, then 409 STALE_UPDATE if the caller's version is old.
+ * Callers do their own 400 checks before this, so a bad body never takes a lock.
+ */
+async function lockedWrite(
+  ticketId: number,
+  expectedVersion: number,
+  write: (tx: Prisma.TransactionClient, ticket: Ticket) => Promise<ServiceResult>,
+): Promise<ServiceResult> {
+  return prisma.$transaction(async (tx) => {
+    const locked = await lockTicket(tx, ticketId)
+    if (!locked) return reply(404, { error: 'TICKET_NOT_FOUND' })
+
+    const ticket = await tx.ticket.findUniqueOrThrow({ where: { id: ticketId } })
+    if (ticket.version !== expectedVersion) {
+      return reply(409, { error: 'STALE_UPDATE', currentVersion: ticket.version })
+    }
+    return write(tx, ticket)
+  })
+}
+
+/** Claim is already an atomic check-and-set (Lab 3); it now also increases the version. */
+export async function claim(ticketId: number, userId: number): Promise<ServiceResult> {
+  const claimed = await prisma.ticket.updateMany({
+    where: { id: ticketId, ticketOwnerId: null },
+    data: { ticketOwnerId: userId, version: { increment: 1 } },
+  })
+
+  if (claimed.count === 0) {
+    const existing = await prisma.ticket.findUnique({ where: { id: ticketId } })
+    if (!existing) return reply(404, { error: 'TICKET_NOT_FOUND' })
+    return reply(409, { error: 'ALREADY_CLAIMED', ticketOwnerId: existing.ticketOwnerId })
+  }
+  return reply(200, await prisma.ticket.findUniqueOrThrow({ where: { id: ticketId } }))
+}
+
+export async function reassign(ticketId: number, rawOwnerId: unknown, rawVersion: unknown): Promise<ServiceResult> {
+  const fields: FieldErrors = {}
+  const ownerId = typeof rawOwnerId === 'number' && Number.isInteger(rawOwnerId) ? rawOwnerId : null
+  if (ownerId === null) fields.ticketOwnerId = 'ticketOwnerId is required.'
+  const expectedVersion = readExpectedVersion(rawVersion)
+  if (expectedVersion === null) fields.expectedVersion = VERSION_REQUIRED
+  if (Object.keys(fields).length > 0 || ownerId === null || expectedVersion === null) return validationFailed(fields)
+
+  return lockedWrite(ticketId, expectedVersion, async (tx) => {
+    if (!(await findAssignableUser(tx, ownerId))) return validationFailed({ ticketOwnerId: OWNER_MESSAGE })
+    const updated = await tx.ticket.update({
+      where: { id: ticketId },
+      data: { ticketOwnerId: ownerId, version: { increment: 1 } },
+    })
+    return reply(200, updated)
+  })
+}
+
+export async function changePriority(ticketId: number, rawPriority: unknown, rawVersion: unknown): Promise<ServiceResult> {
+  const fields: FieldErrors = {}
+  const priority =
+    typeof rawPriority === 'string' && (PRIORITIES as readonly string[]).includes(rawPriority) ? (rawPriority as Priority) : null
+  if (priority === null) fields.itPriority = 'itPriority is invalid.'
+  const expectedVersion = readExpectedVersion(rawVersion)
+  if (expectedVersion === null) fields.expectedVersion = VERSION_REQUIRED
+  if (Object.keys(fields).length > 0 || priority === null || expectedVersion === null) return validationFailed(fields)
+
+  return lockedWrite(ticketId, expectedVersion, async (tx) => {
+    const updated = await tx.ticket.update({
+      where: { id: ticketId },
+      data: { itPriority: priority, version: { increment: 1 } },
+    })
+    return reply(200, updated)
+  })
+}
+
+/**
+ * The status facade (FR-L4-06, FR-L4-07, BR-L4-09 to 16): one transaction does
+ * lock, version check, transition check (State classes), resolution gate,
+ * update, history row, and the Reopened / Cancelled side effects.
+ */
+export async function changeStatus(
+  ticketId: number,
+  actorId: number,
+  rawStatus: unknown,
+  rawVersion: unknown,
+): Promise<ServiceResult> {
+  const expectedVersion = readExpectedVersion(rawVersion)
+  if (expectedVersion === null) return validationFailed({ expectedVersion: VERSION_REQUIRED })
+
+  return lockedWrite(ticketId, expectedVersion, async (tx, ticket) => {
+    const state = getTicketState(ticket.currentStatus)
+    const requested =
+      typeof rawStatus === 'string' && (TICKET_STATUSES as readonly string[]).includes(rawStatus)
+        ? (rawStatus as TicketStatus)
+        : null
+
+    if (!requested || !state.canTransitionTo(requested)) {
+      return reply(409, {
+        error: 'INVALID_TRANSITION',
+        from: ticket.currentStatus,
+        to: typeof rawStatus === 'string' ? rawStatus : null,
+        allowed: state.allowedActions(),
+      })
+    }
+
+    if (requested === 'RESOLVED') {
+      const blockers = evaluateResolutionGate(await loadActionFacts(tx, ticketId))
+      if (blockers.length > 0) return reply(409, { error: 'RESOLUTION_BLOCKED', blockers })
+    }
+
+    const updated = await tx.ticket.update({
+      where: { id: ticketId },
+      data: {
+        currentStatus: requested,
+        version: { increment: 1 },
+        ...(requested === 'REOPENED' ? { requesterResolvedAt: null } : {}),
+      },
+    })
+    await tx.ticketStatusHistory.create({
+      data: { ticketId, fromStatus: ticket.currentStatus, toStatus: requested, changedById: actorId },
+    })
+    if (requested === 'CANCELLED') {
+      await tx.actionTaken.updateMany({
+        where: { ticketId, status: { in: ['PLANNED', 'IN_PROGRESS'] } },
+        data: { status: 'CANCELLED', version: { increment: 1 } },
+      })
+    }
+    return reply(200, updated)
+  })
+}
+
+/** BR-L4-12: advisory only. Sets requesterResolvedAt once; never changes the status or version. */
+export async function markAppearsResolved(ticketId: number): Promise<ServiceResult> {
+  return prisma.$transaction(async (tx) => {
+    const locked = await lockTicket(tx, ticketId)
+    if (!locked) return reply(404, { error: 'TICKET_NOT_FOUND' })
+
+    const ticket = await tx.ticket.findUniqueOrThrow({ where: { id: ticketId } })
+    if (!APPEARS_RESOLVED_STATUSES.includes(ticket.currentStatus)) {
+      return reply(409, { error: 'NOT_APPLICABLE', currentStatus: ticket.currentStatus })
+    }
+
+    const requesterResolvedAt = ticket.requesterResolvedAt ?? new Date()
+    if (ticket.requesterResolvedAt === null) {
+      await tx.ticket.update({ where: { id: ticketId }, data: { requesterResolvedAt } })
+    }
+    return reply(200, { id: ticketId, requesterResolvedAt, currentStatus: ticket.currentStatus })
+  })
+}
+
+export async function listHistory(ticketId: number): Promise<ServiceResult> {
+  const rows = await prisma.ticketStatusHistory.findMany({
+    where: { ticketId },
+    orderBy: [{ changedAt: 'asc' }, { id: 'asc' }],
+    include: { changedBy: { select: { name: true } } },
+  })
+  return reply(
+    200,
+    rows.map((row) => ({
+      id: row.id,
+      fromStatus: row.fromStatus,
+      toStatus: row.toStatus,
+      changedById: row.changedById,
+      changedByName: row.changedBy?.name ?? null,
+      changedAt: row.changedAt,
+    })),
+  )
+}
+```
+
+- [ ] **Step 2: Typecheck.** `cd server && npx tsc --noEmit -p .` → clean.
+
+- [ ] **Step 3: Stage.** `git add server/src/tickets/ticket-workflow-service.ts`
+
+---
+
+### Task 4: Router, mount, and the detail/list fields
+
+**Files:**
+- Create: `server/src/tickets/ticket-workflow-router.ts`
+- Delete: `server/src/staff/staff-ticket-actions.ts` (`git rm`)
+- Modify: `server/src/app.ts`, `server/src/tickets.ts`
+
+**Interfaces:** Consumes Task 3, `checkTicketAccess`, `resolveOwnedTicket`, `respondOwnershipFailure`, `loadActionFacts`, `evaluateResolutionGate`, `summarizeActions`.
+
+- [ ] **Step 1: Create the router:**
+
+```ts
+import { Router } from 'express'
+import { requireSession, requirePasswordAlreadyChanged } from '../auth/require-session.js'
+import { requireRole } from '../authorization/require-role.js'
+import { checkTicketAccess } from '../authorization/ticket-access.js'
+import { resolveOwnedTicket, respondOwnershipFailure } from '../ticket-ownership.js'
+import {
+  changePriority,
+  changeStatus,
+  claim,
+  listHistory,
+  markAppearsResolved,
+  reassign,
+} from './ticket-workflow-service.js'
+
+export const ticketWorkflowRouter = Router({ mergeParams: true })
+
+const requireStaff = [requireSession, requirePasswordAlreadyChanged, requireRole('IT_STAFF', 'ADMINISTRATOR')]
+const requireRequester = [requireSession, requirePasswordAlreadyChanged, requireRole('REQUESTER')]
+const requireAnyRole = [requireSession, requirePasswordAlreadyChanged, requireRole('REQUESTER', 'IT_STAFF', 'ADMINISTRATOR')]
+
+function toInteger(value: unknown): number | null {
+  const parsed = typeof value === 'number' ? value : Number(value)
+  return Number.isInteger(parsed) ? parsed : null
+}
+
+ticketWorkflowRouter.post('/claim', ...requireStaff, async (request, response, next) => {
+  try {
+    const ticketId = toInteger(request.params.ticketId)
+    if (ticketId === null) return void response.status(404).json({ error: 'TICKET_NOT_FOUND' })
+    const result = await claim(ticketId, response.locals.userId as number)
+    response.status(result.httpStatus).json(result.body)
+  } catch (error) {
+    next(error)
+  }
+})
+
+ticketWorkflowRouter.post('/reassign', ...requireStaff, async (request, response, next) => {
+  try {
+    const ticketId = toInteger(request.params.ticketId)
+    if (ticketId === null) return void response.status(404).json({ error: 'TICKET_NOT_FOUND' })
+    const result = await reassign(ticketId, request.body?.ticketOwnerId, request.body?.expectedVersion)
+    response.status(result.httpStatus).json(result.body)
+  } catch (error) {
+    next(error)
+  }
+})
+
+ticketWorkflowRouter.patch('/priority', ...requireStaff, async (request, response, next) => {
+  try {
+    const ticketId = toInteger(request.params.ticketId)
+    if (ticketId === null) return void response.status(404).json({ error: 'TICKET_NOT_FOUND' })
+    const result = await changePriority(ticketId, request.body?.itPriority, request.body?.expectedVersion)
+    response.status(result.httpStatus).json(result.body)
+  } catch (error) {
+    next(error)
+  }
+})
+
+ticketWorkflowRouter.patch('/status', ...requireStaff, async (request, response, next) => {
+  try {
+    const ticketId = toInteger(request.params.ticketId)
+    if (ticketId === null) return void response.status(404).json({ error: 'TICKET_NOT_FOUND' })
+    const result = await changeStatus(
+      ticketId,
+      response.locals.userId as number,
+      request.body?.status,
+      request.body?.expectedVersion,
+    )
+    response.status(result.httpStatus).json(result.body)
+  } catch (error) {
+    next(error)
+  }
+})
+
+// Requester only, own Ticket only (BR-L4-12). Role is checked before ownership.
+ticketWorkflowRouter.post('/appears-resolved', ...requireRequester, async (request, response, next) => {
+  try {
+    const ticketId = toInteger(request.params.ticketId)
+    if (ticketId === null) return void response.status(404).json({ error: 'TICKET_NOT_FOUND' })
+
+    const ownership = await resolveOwnedTicket(ticketId, response.locals.userId as number)
+    if (ownership.status !== 'ok') {
+      respondOwnershipFailure(response, ownership, { notFound: 'TICKET_NOT_FOUND', forbidden: 'TICKET_FORBIDDEN' })
+      return
+    }
+    const result = await markAppearsResolved(ticketId)
+    response.status(result.httpStatus).json(result.body)
+  } catch (error) {
+    next(error)
+  }
+})
+
+ticketWorkflowRouter.get('/history', ...requireAnyRole, async (request, response, next) => {
+  try {
+    const ticketId = toInteger(request.params.ticketId)
+    if (ticketId === null) return void response.status(404).json({ error: 'TICKET_NOT_FOUND' })
+    if (!(await checkTicketAccess(ticketId, response.locals.userId as number, response.locals.userRole as string, response))) return
+
+    const result = await listHistory(ticketId)
+    response.status(result.httpStatus).json(result.body)
+  } catch (error) {
+    next(error)
+  }
+})
+
+// History is append-only: no write route exists (BR-L4-16).
+ticketWorkflowRouter.all('/history', ...requireAnyRole, (_request, response) => {
+  response.status(404).json({ error: 'NOT_FOUND' })
+})
+```
+
+- [ ] **Step 2: Mount it.** In `app.ts` replace `import { staffTicketActionsRouter } from './staff/staff-ticket-actions.js'` with `import { ticketWorkflowRouter } from './tickets/ticket-workflow-router.js'` and `app.use('/api/tickets/:ticketId', staffTicketActionsRouter)` with `app.use('/api/tickets/:ticketId', ticketWorkflowRouter)`. Then `git rm server/src/staff/staff-ticket-actions.ts` and `grep -rn "staff-ticket-actions" server client e2e docs --include=*.ts --include=*.tsx` to fix any other import.
+
+- [ ] **Step 3: Detail fields in `tickets.ts`.** Add imports `import { evaluateResolutionGate, loadActionFacts, summarizeActions } from './tickets/resolution-gate.js'`. In `ticketsRouter.get('/:id')` replace the staff response line with:
+
+```ts
+      const facts = await loadActionFacts(prisma, ticketId)
+      const blockers = evaluateResolutionGate(facts)
+      // allowedStatuses and resolution are sent so the client never reimplements the state table or the gate.
+      response.status(200).json({
+        ...ticket,
+        allowedStatuses: getTicketState(ticket.currentStatus).allowedActions(),
+        actionsSummary: summarizeActions(facts),
+        resolution: { canResolve: blockers.length === 0, blockers },
+      })
+      return
+```
+and the Requester response line `response.status(200).json(result.value)` with:
+
+```ts
+    response.status(200).json({ ...result.value, actionsSummary: summarizeActions(await loadActionFacts(prisma, ticketId)) })
+```
+(`version` and `requesterResolvedAt` already come with the Ticket row.)
+
+- [ ] **Step 4: Staff list field.** In the staff `findMany` `select` of `GET /api/tickets` add `requesterResolvedAt: true` (not in the Requester list select, WF-18).
+
+- [ ] **Step 5: Typecheck.** `npx tsc --noEmit -p .` → clean. (Lab 3 tests are still red until Task 5.)
+
+- [ ] **Step 6: Stage.** `git add -A server/src`
+
+---
+
+### Task 5: Server tests: update Lab 3/4, write WF-01 to WF-18
+
+**Files:**
+- Modify: `server/tests/helpers/tickets.ts`, `server/tests/lab-03/staff-ticket-detail.api.test.ts`, `server/tests/lab-04/carry-overs.api.test.ts`
+- Create: `server/tests/lab-04/ticket-workflow.api.test.ts`
+
+- [ ] **Step 1: Add helpers** to `server/tests/helpers/tickets.ts` (append):
+
+```ts
+export async function versionOf(ticketId: number): Promise<number> {
+  return (await prisma.ticket.findUniqueOrThrow({ where: { id: ticketId }, select: { version: true } })).version
+}
+
+/** Test-only: a Completed Action so the resolution gate lets a Ticket through. */
+export async function addActionRow(
+  ticketId: number,
+  staffId: number,
+  status: 'PLANNED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED',
+  extra: { followUpRequired?: boolean; followUpNote?: string; followUpDoneAt?: Date } = {},
+) {
+  return prisma.actionTaken.create({
+    data: {
+      ticketId,
+      createdById: staffId,
+      assigneeId: staffId,
+      actionAt: new Date(),
+      description: `seeded ${status} action`,
+      status,
+      result: status === 'COMPLETED' ? 'Done.' : null,
+      followUpNote: extra.followUpRequired ? (extra.followUpNote ?? 'Check later.') : null,
+      ...extra,
+    },
+  })
+}
+```
+
+- [ ] **Step 2: Update the Lab 3 staff tests** in `tests/lab-03/staff-ticket-detail.api.test.ts` (the rules changed on purpose: `expectedVersion` is now required and Resolved needs a Completed Action):
+  - Add imports `import { addActionRow, versionOf } from '../helpers/tickets.js'`.
+  - Every `reassign` call: add `expectedVersion: ticket.version` to the body (`createTicketAs` returns the full row, which includes `version`).
+  - Every `priority` call: add `expectedVersion: ticket.version` (the invalid-priority test still expects 400).
+  - `NEW -> CLOSED` test: body `{ status: 'CLOSED', expectedVersion: ticket.version }`.
+  - In "accepts every allowed transition": get `const { agent: staffAgent, userId: staffId } = await loginAsItStaff()`; after `const ticket = await createTicketAs(requesterAgent)` add `await addActionRow(ticket.id, staffId, 'COMPLETED')`; track `let version = ticket.version`, send `{ status: to, expectedVersion: version }` and set `version = response.body.version` after each 200.
+  - In "rejects every transition out of CANCELLED": after the two setup PATCHes (which also need versions: read `await versionOf(ticket.id)` before each), in the loop send `{ status: target, expectedVersion: await versionOf(ticket.id) }`.
+  - The Requester 403 test needs no change.
+
+- [ ] **Step 3: Update `tests/lab-04/carry-overs.api.test.ts`** reassign test: each `reassign` send adds `expectedVersion: await versionOf(ticket.id)` (import `versionOf` from `../helpers/tickets.js`; the first call succeeds and bumps the version, so re-read before each).
+
+- [ ] **Step 4: Run Lab 3/4 server tests.** `npx vitest run tests/lab-03 tests/lab-04/carry-overs.api.test.ts` → all pass.
+
+- [ ] **Step 5: Write the WF tests** `server/tests/lab-04/ticket-workflow.api.test.ts`:
+
+```ts
+import request from 'supertest'
+import { beforeAll, describe, expect, it } from 'vitest'
+import type { TicketStatus } from '@prisma/client'
+import { app } from '../helpers/app.js'
+import { prisma } from '../../src/prisma.js'
+import { loginAsNewUser } from '../helpers/users.js'
+import { addActionRow, createTicketVia, setTicketStatus, versionOf } from '../helpers/tickets.js'
+
+type Actor = Awaited<ReturnType<typeof loginAsNewUser>>
+let requester: Actor
+let otherRequester: Actor
+let staff: Actor
+let otherStaff: Actor
+
+const url = (id: number, part: string) => `/api/tickets/${id}/${part}`
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+async function ticketAt(status: TicketStatus = 'NEW'): Promise<number> {
+  const ticket = await createTicketVia(requester.agent)
+  if (status !== 'NEW') await setTicketStatus(ticket.id, status)
+  return ticket.id
+}
+
+async function move(actor: Actor, ticketId: number, status: string) {
+  return actor.agent.patch(url(ticketId, 'status')).send({ status, expectedVersion: await versionOf(ticketId) })
+}
+
+beforeAll(async () => {
+  ;[requester, otherRequester, staff, otherStaff] = await Promise.all([
+    loginAsNewUser('REQUESTER'),
+    loginAsNewUser('REQUESTER'),
+    loginAsNewUser('IT_STAFF'),
+    loginAsNewUser('IT_STAFF'),
+  ])
+}, 60_000)
+
+const MATRIX: Record<TicketStatus, TicketStatus[]> = {
+  NEW: ['OPEN', 'CANCELLED'],
+  OPEN: ['IN_PROGRESS', 'CANCELLED'],
+  IN_PROGRESS: ['WAITING_FOR_REQUESTER', 'RESOLVED', 'CANCELLED'],
+  WAITING_FOR_REQUESTER: ['IN_PROGRESS', 'RESOLVED', 'CANCELLED'],
+  RESOLVED: ['CLOSED', 'REOPENED'],
+  CLOSED: ['REOPENED'],
+  REOPENED: ['IN_PROGRESS', 'CANCELLED'],
+  CANCELLED: [],
+}
+const ALL = Object.keys(MATRIX) as TicketStatus[]
+
+describe('Status transitions (WF-01, WF-02, AC-L4-14)', () => {
+  it('WF-01 accepts every allowed transition, bumps the version, and writes a history row', async () => {
+    for (const from of ALL) {
+      for (const to of MATRIX[from]) {
+        const id = await ticketAt(from)
+        if (to === 'RESOLVED') await addActionRow(id, staff.userId, 'COMPLETED')
+        const before = await versionOf(id)
+
+        const response = await staff.agent.patch(url(id, 'status')).send({ status: to, expectedVersion: before })
+
+        expect(response.status, `${from} -> ${to}`).toBe(200)
+        expect(response.body).toMatchObject({ currentStatus: to, version: before + 1 })
+        const rows = await prisma.ticketStatusHistory.findMany({ where: { ticketId: id }, orderBy: { id: 'desc' }, take: 1 })
+        expect(rows[0]).toMatchObject({ fromStatus: from, toStatus: to, changedById: staff.userId })
+      }
+    }
+  }, 120_000)
+
+  it('WF-02 refuses every other pair with INVALID_TRANSITION and the allowed list', async () => {
+    for (const from of ALL) {
+      const id = await ticketAt(from)
+      for (const to of ALL.filter((candidate) => !MATRIX[from].includes(candidate))) {
+        const before = await versionOf(id)
+        const response = await staff.agent.patch(url(id, 'status')).send({ status: to, expectedVersion: before })
+        expect(response.status, `${from} -> ${to}`).toBe(409)
+        expect(response.body).toEqual({ error: 'INVALID_TRANSITION', from, to, allowed: MATRIX[from] })
+        expect(await versionOf(id)).toBe(before)
+      }
+    }
+  }, 120_000)
+
+  it('refuses an unknown status value the same way', async () => {
+    const id = await ticketAt('NEW')
+    const response = await staff.agent.patch(url(id, 'status')).send({ status: 'DONE', expectedVersion: await versionOf(id) })
+    expect(response.status).toBe(409)
+    expect(response.body.error).toBe('INVALID_TRANSITION')
+  })
+})
+
+describe('Resolution gate (WF-03, WF-04, AC-L4-12)', () => {
+  it('WF-03 reports each blocker', async () => {
+    const none = await ticketAt('IN_PROGRESS')
+    const noActions = await move(staff, none, 'RESOLVED')
+    expect(noActions.status).toBe(409)
+    expect(noActions.body).toEqual({ error: 'RESOLUTION_BLOCKED', blockers: [{ code: 'NO_COMPLETED_ACTION' }] })
+
+    const open = await ticketAt('IN_PROGRESS')
+    await addActionRow(open, staff.userId, 'COMPLETED')
+    await addActionRow(open, staff.userId, 'PLANNED')
+    await addActionRow(open, staff.userId, 'IN_PROGRESS')
+    expect((await move(staff, open, 'RESOLVED')).body.blockers).toEqual([{ code: 'ACTIONS_STILL_OPEN', count: 2 }])
+
+    const followUp = await ticketAt('IN_PROGRESS')
+    await addActionRow(followUp, staff.userId, 'COMPLETED', { followUpRequired: true })
+    expect((await move(staff, followUp, 'RESOLVED')).body.blockers).toEqual([{ code: 'FOLLOW_UP_OPEN', count: 1 }])
+
+    expect(await prisma.ticket.count({ where: { id: { in: [none, open, followUp] }, currentStatus: 'RESOLVED' } })).toBe(0)
+  })
+
+  it('WF-04 resolves once the blockers are cleared, and ignores a follow-up on a Cancelled Action', async () => {
+    const id = await ticketAt('IN_PROGRESS')
+    const completed = await addActionRow(id, staff.userId, 'COMPLETED', { followUpRequired: true })
+    expect((await move(staff, id, 'RESOLVED')).status).toBe(409)
+
+    await prisma.actionTaken.update({ where: { id: completed.id }, data: { followUpDoneAt: new Date() } })
+    await addActionRow(id, staff.userId, 'CANCELLED', { followUpRequired: true })
+    const resolved = await move(staff, id, 'RESOLVED')
+    expect(resolved.status).toBe(200)
+    expect(resolved.body.currentStatus).toBe('RESOLVED')
+  })
+
+  it('WF-14 a status change waits for the Ticket lock, then sees an Action added by the lock holder', async () => {
+    const id = await ticketAt('IN_PROGRESS')
+    await addActionRow(id, staff.userId, 'COMPLETED')
+    const version = await versionOf(id)
+
+    let release: () => void = () => {}
+    let acquired: () => void = () => {}
+    const lockTaken = new Promise<void>((resolve) => { acquired = resolve })
+    const held = prisma.$transaction(
+      async (tx) => {
+        await tx.$queryRaw`SELECT id FROM "Ticket" WHERE id = ${id} FOR UPDATE`
+        acquired()
+        await new Promise<void>((resolve) => { release = resolve })
+        await tx.actionTaken.create({
+          data: { ticketId: id, createdById: otherStaff.userId, assigneeId: otherStaff.userId, actionAt: new Date(), description: 'Added under the lock', status: 'PLANNED' },
+        })
+      },
+      { timeout: 20_000 },
+    )
+    await lockTaken
+
+    let settled = false
+    const resolving = staff.agent.patch(url(id, 'status')).send({ status: 'RESOLVED', expectedVersion: version }).then((r) => {
+      settled = true
+      return r
+    })
+    await sleep(500)
+    expect(settled).toBe(false)
+
+    release()
+    await held
+    const response = await resolving
+    expect(response.status).toBe(409)
+    expect(response.body).toEqual({ error: 'RESOLUTION_BLOCKED', blockers: [{ code: 'ACTIONS_STILL_OPEN', count: 1 }] })
+    expect((await prisma.ticket.findUniqueOrThrow({ where: { id } })).currentStatus).toBe('IN_PROGRESS')
+  }, 40_000)
+
+  it('WF-14 racing requests always end in one valid state', async () => {
+    for (let round = 0; round < 8; round += 1) {
+      const id = await ticketAt('IN_PROGRESS')
+      await addActionRow(id, staff.userId, 'COMPLETED')
+      const version = await versionOf(id)
+      const [resolve, created] = await Promise.all([
+        staff.agent.patch(url(id, 'status')).send({ status: 'RESOLVED', expectedVersion: version }),
+        otherStaff.agent.post(`/api/tickets/${id}/actions`).send({ description: 'Raced action' }),
+      ])
+      const stored = await prisma.ticket.findUniqueOrThrow({ where: { id } })
+      if (resolve.status === 200) {
+        expect(stored.currentStatus).toBe('RESOLVED')
+        expect(created.status).toBe(201)
+      } else {
+        expect(resolve.status).toBe(409)
+        expect(resolve.body.blockers).toEqual([{ code: 'ACTIONS_STILL_OPEN', count: 1 }])
+        expect(stored.currentStatus).toBe('IN_PROGRESS')
+      }
+    }
+  }, 60_000)
+})
+
+describe('Requester access (WF-05)', () => {
+  it('refuses status, priority, reassign and claim for a Requester', async () => {
+    const id = await ticketAt('NEW')
+    const version = await versionOf(id)
+    expect((await requester.agent.patch(url(id, 'status')).send({ status: 'OPEN', expectedVersion: version })).status).toBe(403)
+    expect((await requester.agent.patch(url(id, 'priority')).send({ itPriority: 'HIGH', expectedVersion: version })).status).toBe(403)
+    expect((await requester.agent.post(url(id, 'reassign')).send({ ticketOwnerId: staff.userId, expectedVersion: version })).status).toBe(403)
+    expect((await requester.agent.post(url(id, 'claim'))).status).toBe(403)
+    expect(await versionOf(id)).toBe(version)
+  })
+})
+
+describe('Appears resolved (WF-06, WF-07, WF-08)', () => {
+  it('WF-06 sets requesterResolvedAt once in each allowed status and changes neither status nor version', async () => {
+    for (const status of ['OPEN', 'IN_PROGRESS', 'WAITING_FOR_REQUESTER', 'REOPENED'] as const) {
+      const id = await ticketAt(status)
+      const version = await versionOf(id)
+
+      const first = await requester.agent.post(url(id, 'appears-resolved'))
+      expect(first.status, status).toBe(200)
+      expect(first.body).toMatchObject({ id, currentStatus: status })
+      expect(first.body.requesterResolvedAt).not.toBeNull()
+
+      await sleep(15)
+      const again = await requester.agent.post(url(id, 'appears-resolved'))
+      expect(again.status).toBe(200)
+      expect(again.body.requesterResolvedAt).toBe(first.body.requesterResolvedAt)
+
+      const stored = await prisma.ticket.findUniqueOrThrow({ where: { id } })
+      expect(stored.currentStatus).toBe(status)
+      expect(stored.version).toBe(version)
+    }
+  })
+
+  it('WF-07 refuses another Requester, the wrong status, staff, an unknown Ticket, and no session', async () => {
+    const id = await ticketAt('OPEN')
+    const foreign = await otherRequester.agent.post(url(id, 'appears-resolved'))
+    expect(foreign.status).toBe(403)
+    expect(foreign.body.error).toBe('TICKET_FORBIDDEN')
+
+    const fresh = await ticketAt('NEW')
+    const notApplicable = await requester.agent.post(url(fresh, 'appears-resolved'))
+    expect(notApplicable.status).toBe(409)
+    expect(notApplicable.body).toEqual({ error: 'NOT_APPLICABLE', currentStatus: 'NEW' })
+
+    const closed = await ticketAt('CLOSED')
+    expect((await requester.agent.post(url(closed, 'appears-resolved'))).status).toBe(409)
+
+    expect((await staff.agent.post(url(id, 'appears-resolved'))).status).toBe(403)
+    expect((await requester.agent.post('/api/tickets/999999999/appears-resolved')).status).toBe(404)
+    expect((await request(app).post(url(id, 'appears-resolved'))).status).toBe(401)
+    expect((await prisma.ticket.findUniqueOrThrow({ where: { id } })).requesterResolvedAt).toBeNull()
+  })
+
+  it('WF-08 clears the indication when the Ticket is reopened', async () => {
+    const id = await ticketAt('IN_PROGRESS')
+    await addActionRow(id, staff.userId, 'COMPLETED')
+    expect((await requester.agent.post(url(id, 'appears-resolved'))).status).toBe(200)
+    expect((await move(staff, id, 'RESOLVED')).status).toBe(200)
+    expect((await prisma.ticket.findUniqueOrThrow({ where: { id } })).requesterResolvedAt).not.toBeNull()
+
+    expect((await move(staff, id, 'REOPENED')).status).toBe(200)
+    expect((await prisma.ticket.findUniqueOrThrow({ where: { id } })).requesterResolvedAt).toBeNull()
+  })
+})
+
+describe('History (WF-09, WF-10)', () => {
+  it('WF-09 lists creation and every change once, in order, with the actor', async () => {
+    const id = await ticketAt('NEW')
+    expect((await move(staff, id, 'OPEN')).status).toBe(200)
+    expect((await move(otherStaff, id, 'IN_PROGRESS')).status).toBe(200)
+
+    for (const viewer of [requester, staff]) {
+      const response = await viewer.agent.get(url(id, 'history'))
+      expect(response.status).toBe(200)
+      expect(response.body.map((row: { fromStatus: string | null; toStatus: string }) => [row.fromStatus, row.toStatus])).toEqual([
+        [null, 'NEW'],
+        ['NEW', 'OPEN'],
+        ['OPEN', 'IN_PROGRESS'],
+      ])
+      expect(response.body.map((row: { changedById: number }) => row.changedById)).toEqual([requester.userId, staff.userId, otherStaff.userId])
+      expect(response.body[0].changedByName).toBeTruthy()
+    }
+    expect((await otherRequester.agent.get(url(id, 'history'))).status).toBe(403)
+    expect((await staff.agent.get('/api/tickets/999999999/history')).status).toBe(404)
+  })
+
+  it('WF-10 has no write route', async () => {
+    const id = await ticketAt('NEW')
+    const before = await prisma.ticketStatusHistory.count({ where: { ticketId: id } })
+    expect((await staff.agent.post(url(id, 'history')).send({})).status).toBe(404)
+    expect((await staff.agent.patch(url(id, 'history')).send({})).status).toBe(404)
+    expect((await staff.agent.delete(url(id, 'history'))).status).toBe(404)
+    expect(await prisma.ticketStatusHistory.count({ where: { ticketId: id } })).toBe(before)
+  })
+})
+
+describe('Cancelling (WF-11, AC-L4-19)', () => {
+  it('cancels Planned and In Progress Actions and leaves Completed ones', async () => {
+    const id = await ticketAt('IN_PROGRESS')
+    const planned = await addActionRow(id, staff.userId, 'PLANNED')
+    const running = await addActionRow(id, staff.userId, 'IN_PROGRESS')
+    const done = await addActionRow(id, staff.userId, 'COMPLETED')
+
+    expect((await move(staff, id, 'CANCELLED')).status).toBe(200)
+
+    const rows = await prisma.actionTaken.findMany({ where: { ticketId: id }, orderBy: { id: 'asc' } })
+    expect(rows.map((row) => row.status)).toEqual(['CANCELLED', 'CANCELLED', 'COMPLETED'])
+    expect(rows[0].version).toBe(planned.version + 1)
+    expect(rows[1].version).toBe(running.version + 1)
+    expect(rows[2].version).toBe(done.version)
+  })
+})
+
+describe('Versions (WF-12, WF-13, WF-17, AC-L4-08, AC-L4-20)', () => {
+  it('WF-12 rejects a stale or missing expectedVersion on status, priority and reassign', async () => {
+    const id = await ticketAt('NEW')
+    expect((await move(staff, id, 'OPEN')).status).toBe(200)
+    const current = await versionOf(id)
+
+    for (const [method, part, body] of [
+      ['patch', 'status', { status: 'IN_PROGRESS' }],
+      ['patch', 'priority', { itPriority: 'HIGH' }],
+      ['post', 'reassign', { ticketOwnerId: staff.userId }],
+    ] as const) {
+      const stale = await staff.agent[method](url(id, part)).send({ ...body, expectedVersion: current - 1 })
+      expect(stale.status, part).toBe(409)
+      expect(stale.body).toEqual({ error: 'STALE_UPDATE', currentVersion: current })
+
+      for (const expectedVersion of [undefined, 0, -1, 1.5, '2']) {
+        const missing = await staff.agent[method](url(id, part)).send({ ...body, expectedVersion })
+        expect(missing.status, `${part} ${String(expectedVersion)}`).toBe(400)
+        expect(missing.body.fields.expectedVersion).toBeDefined()
+      }
+    }
+    expect(await versionOf(id)).toBe(current)
+  })
+
+  it('WF-13 lets exactly one of two simultaneous status changes win', async () => {
+    const id = await ticketAt('NEW')
+    const version = await versionOf(id)
+    const results = await Promise.all([
+      staff.agent.patch(url(id, 'status')).send({ status: 'OPEN', expectedVersion: version }),
+      otherStaff.agent.patch(url(id, 'status')).send({ status: 'CANCELLED', expectedVersion: version }),
+    ])
+    expect(results.map((r) => r.status).sort()).toEqual([200, 409])
+    expect(results.find((r) => r.status === 409)?.body.error).toBe('STALE_UPDATE')
+    expect(await versionOf(id)).toBe(version + 1)
+  })
+
+  it('WF-17 changes the version only for claim, reassign, priority and status; any activity refreshes updatedAt', async () => {
+    const id = await ticketAt('NEW')
+    const base = await versionOf(id)
+
+    expect((await staff.agent.post(url(id, 'claim'))).status).toBe(200)
+    expect(await versionOf(id)).toBe(base + 1)
+    expect((await staff.agent.post(url(id, 'reassign')).send({ ticketOwnerId: otherStaff.userId, expectedVersion: base + 1 })).status).toBe(200)
+    expect(await versionOf(id)).toBe(base + 2)
+    expect((await staff.agent.patch(url(id, 'priority')).send({ itPriority: 'HIGH', expectedVersion: base + 2 })).status).toBe(200)
+    expect(await versionOf(id)).toBe(base + 3)
+    expect((await move(staff, id, 'OPEN')).status).toBe(200)
+    expect(await versionOf(id)).toBe(base + 4)
+
+    const settled = base + 4
+    const stamp = async () => (await prisma.ticket.findUniqueOrThrow({ where: { id } })).updatedAt.getTime()
+    for (const act of [
+      () => staff.agent.post(`/api/tickets/${id}/actions`).send({ description: 'Version check action' }),
+      () => requester.agent.post(`/api/tickets/${id}/comments`).send({ body: 'Comment' }),
+      () => staff.agent.post(`/api/tickets/${id}/notes`).send({ body: 'Note' }),
+      () => requester.agent.post(url(id, 'appears-resolved')),
+    ]) {
+      const before = await stamp()
+      await sleep(15)
+      expect((await act()).status).toBeLessThan(300)
+      expect(await stamp()).toBeGreaterThan(before)
+      expect(await versionOf(id)).toBe(settled)
+    }
+  })
+})
+
+describe('Ticket detail and list fields (WF-15, WF-18, FR-L4-11)', () => {
+  it('WF-15 returns version, actionsSummary and, for staff only, resolution', async () => {
+    const id = await ticketAt('IN_PROGRESS')
+    await addActionRow(id, staff.userId, 'COMPLETED', { followUpRequired: true })
+    await addActionRow(id, staff.userId, 'PLANNED')
+
+    const asStaff = await staff.agent.get(`/api/tickets/${id}`)
+    expect(asStaff.status).toBe(200)
+    expect(asStaff.body.version).toBe(await versionOf(id))
+    expect(asStaff.body.actionsSummary).toEqual({ total: 2, planned: 1, inProgress: 0, completed: 1, cancelled: 0, openFollowUps: 1 })
+    expect(asStaff.body.resolution).toEqual({
+      canResolve: false,
+      blockers: [{ code: 'ACTIONS_STILL_OPEN', count: 1 }, { code: 'FOLLOW_UP_OPEN', count: 1 }],
+    })
+    expect(asStaff.body.allowedStatuses).toEqual(MATRIX.IN_PROGRESS)
+
+    const asRequester = await requester.agent.get(`/api/tickets/${id}`)
+    expect(asRequester.body.version).toBe(asStaff.body.version)
+    expect(asRequester.body.actionsSummary.total).toBe(2)
+    expect(asRequester.body.resolution).toBeUndefined()
+  })
+
+  it('WF-18 carries the indication on staff list and detail, never on Requester list items', async () => {
+    const id = await ticketAt('IN_PROGRESS')
+    await requester.agent.post(url(id, 'appears-resolved'))
+
+    const detail = await staff.agent.get(`/api/tickets/${id}`)
+    expect(detail.body.requesterResolvedAt).not.toBeNull()
+
+    const search = encodeURIComponent('Helper ticket for tests')
+    const staffList = await staff.agent.get(`/api/tickets?search=${search}&pageSize=50`)
+    const staffItem = staffList.body.data.find((item: { id: number }) => item.id === id)
+    expect(staffItem.requesterResolvedAt).not.toBeNull()
+
+    const requesterList = await requester.agent.get(`/api/tickets?search=${search}&pageSize=50`)
+    const requesterItem = requesterList.body.data.find((item: { id: number }) => item.id === id)
+    expect(requesterItem).toBeDefined()
+    expect('requesterResolvedAt' in requesterItem).toBe(false)
+  })
+})
+
+describe('Claim keeps its Lab 3 behavior', () => {
+  it('still answers ALREADY_CLAIMED to the second claimer', async () => {
+    const id = await ticketAt('NEW')
+    expect((await staff.agent.post(url(id, 'claim'))).status).toBe(200)
+    const second = await otherStaff.agent.post(url(id, 'claim'))
+    expect(second.status).toBe(409)
+    expect(second.body).toEqual({ error: 'ALREADY_CLAIMED', ticketOwnerId: staff.userId })
+  })
+})
+```
+
+- [ ] **Step 6: Run.** `cd server && npx vitest run tests/lab-04/ticket-workflow.api.test.ts tests/lab-04/workflow-rules.unit.test.ts`. If a search in WF-18 does not find the Ticket (pagination), raise `pageSize` or search by the Ticket number instead. Then the full `npx vitest run` → all green.
+
+- [ ] **Step 7: Mutation check.** Temporarily delete ` FOR UPDATE` from `lock-ticket.ts`, run `npx vitest run tests/lab-04/ticket-workflow.api.test.ts -t "WF-14 a status change waits"` and confirm it fails; restore the line.
+
+- [ ] **Step 8: Stage.** `git add -A server`
+
+---
+
+### Task 6: Client API layer and types
+
+**Files:**
+- Create: `client/src/api/history.ts`, `client/src/workflow/blockers.ts`
+- Modify: `client/src/api/staffTicketDetail.ts`, `client/src/api/tickets.ts`, `client/src/types/ticket.ts`
+
+**Interfaces:**
+- Produces:
+  - `type Blocker`, `blockerLine(blocker): string` (from `workflow/blockers.ts`)
+  - `type HistoryRow = { id: number; fromStatus: TicketStatus | null; toStatus: TicketStatus; changedById: number | null; changedByName: string | null; changedAt: string }`, `fetchHistory(ticketId, signal?)`
+  - `StaffTicketActionError` gains `detail` access (already has `detail`); new messages `STALE_UPDATE`, `RESOLUTION_BLOCKED`
+  - `claimTicket(ticketId)`, `reassignTicket(ticketId, ticketOwnerId, expectedVersion)`, `updateItPriority(ticketId, itPriority, expectedVersion)`, `updateStatus(ticketId, status, expectedVersion)`
+  - `markAppearsResolved(ticketId): Promise<{ id: number; requesterResolvedAt: string; currentStatus: TicketStatus }>`
+
+- [ ] **Step 1: `client/src/workflow/blockers.ts`:**
+
+```ts
+export type Blocker =
+  | { code: 'NO_COMPLETED_ACTION' }
+  | { code: 'ACTIONS_STILL_OPEN'; count: number }
+  | { code: 'FOLLOW_UP_OPEN'; count: number }
+
+/** Plain-text line for one blocker (ui-spec §5). */
+export function blockerLine(blocker: Blocker): string {
+  switch (blocker.code) {
+    case 'NO_COMPLETED_ACTION':
+      return 'Add a completed action'
+    case 'ACTIONS_STILL_OPEN':
+      return blocker.count === 1
+        ? '1 action is still planned or in progress'
+        : `${blocker.count} actions are still planned or in progress`
+    case 'FOLLOW_UP_OPEN':
+      return blocker.count === 1 ? '1 follow-up is still open' : `${blocker.count} follow-ups are still open`
+  }
+}
+```
+
+- [ ] **Step 2: `client/src/api/history.ts`:**
+
+```ts
+import type { TicketStatus } from '../types/ticket.js'
+
+export type HistoryRow = {
+  id: number
+  fromStatus: TicketStatus | null
+  toStatus: TicketStatus
+  changedById: number | null
+  changedByName: string | null
+  changedAt: string
+}
+
+export async function fetchHistory(ticketId: number, signal?: AbortSignal): Promise<HistoryRow[]> {
+  const response = await fetch(`/api/tickets/${ticketId}/history`, { credentials: 'include', signal })
+  if (!response.ok) throw new Error('Unable to load the history.')
+  return response.json() as Promise<HistoryRow[]>
+}
+```
+
+- [ ] **Step 3: Types.** In `client/src/types/ticket.ts` add `import type { Blocker } from '../workflow/blockers.js'`; extend `Ticket` with `version?: number; requesterResolvedAt?: string | null`; extend `StaffTicketListItem` with `requesterResolvedAt: string | null`; and replace `StaffTicketDetail` with:
+
+```ts
+export type ActionsSummary = {
+  total: number
+  planned: number
+  inProgress: number
+  completed: number
+  cancelled: number
+  openFollowUps: number
+}
+
+export type StaffTicketDetail = Ticket & {
+  version: number
+  requesterResolvedAt: string | null
+  itPriority: Priority
+  ticketOwnerId: number | null
+  requester: { id: number; name: string }
+  ticketOwner: { id: number; name: string } | null
+  allowedStatuses: TicketStatus[]
+  actionsSummary: ActionsSummary
+  resolution: { canResolve: boolean; blockers: Blocker[] }
+}
+```
+
+- [ ] **Step 4: `staffTicketDetail.ts`.** Add to `ERROR_MESSAGES`: `STALE_UPDATE: 'This ticket changed since you opened it.'`, `RESOLUTION_BLOCKED: 'This ticket cannot be resolved yet.'`. Change the three function signatures and bodies:
+
+```ts
+export async function reassignTicket(ticketId: number, ticketOwnerId: number, expectedVersion: number): Promise<StaffTicketDetail> {
+  const response = await fetch(`/api/tickets/${ticketId}/reassign`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ ticketOwnerId, expectedVersion }),
+  })
+  if (!response.ok) throw await readError(response)
+  return response.json() as Promise<StaffTicketDetail>
+}
+
+export async function updateItPriority(ticketId: number, itPriority: Priority, expectedVersion: number): Promise<StaffTicketDetail> {
+  const response = await fetch(`/api/tickets/${ticketId}/priority`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ itPriority, expectedVersion }),
+  })
+  if (!response.ok) throw await readError(response)
+  return response.json() as Promise<StaffTicketDetail>
+}
+
+export async function updateStatus(ticketId: number, status: TicketStatus, expectedVersion: number): Promise<StaffTicketDetail> {
+  const response = await fetch(`/api/tickets/${ticketId}/status`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ status, expectedVersion }),
+  })
+  if (!response.ok) throw await readError(response)
+  return response.json() as Promise<StaffTicketDetail>
+}
+```
+
+- [ ] **Step 5: `tickets.ts`.** Append:
+
+```ts
+export async function markAppearsResolved(
+  ticketId: number,
+): Promise<{ id: number; requesterResolvedAt: string; currentStatus: TicketStatus }> {
+  const response = await fetch(`/api/tickets/${ticketId}/appears-resolved`, { method: 'POST', credentials: 'include' })
+  if (!response.ok) throw new Error('Unable to send that. Please try again.')
+  return response.json() as Promise<{ id: number; requesterResolvedAt: string; currentStatus: TicketStatus }>
+}
+```
+(import `TicketStatus` from `../types/ticket.js` if not already imported there.)
+
+- [ ] **Step 6: Typecheck.** `cd client && npx tsc --noEmit -p tsconfig.app.json` → errors only in `ServiceActionsPanel.tsx` (old call signatures); they are fixed in Task 7.
+
+- [ ] **Step 7: Stage.** `git add client/src`
+
+---
+
+### Task 7: Status control, blockers, cancel confirmation
+
+**Files:**
+- Create: `client/src/components/ResolutionBlockers.tsx`
+- Modify: `client/src/components/ServiceActionsPanel.tsx`, `client/src/staff/ticket-detail-mediator.ts`
+
+**Interfaces:** Consumes Task 6. Produces `ResolutionBlockers({ blockers })`; mediator method `onActionChanged()`.
+
+- [ ] **Step 1: `ResolutionBlockers.tsx`:**
+
+```tsx
+import { blockerLine, type Blocker } from '../workflow/blockers.js'
+
+/** Plain text, one line per blocker (ui-spec §5). Meaning is in words, never in color alone. */
+export function ResolutionBlockers({ blockers }: { blockers: Blocker[] }) {
+  if (blockers.length === 0) return null
+  return (
+    <div className="small mt-2" role="status">
+      <div className="fw-semibold">Before this ticket can be resolved:</div>
+      <ul className="mb-0 ps-3" aria-label="Why this ticket cannot be resolved yet">
+        {blockers.map((blocker) => (
+          <li key={blocker.code}>{blockerLine(blocker)}</li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+```
+
+- [ ] **Step 2: Mediator.** Add to `ticket-detail-mediator.ts`:
+
+```ts
+  onActionChanged(): void {
+    this.refreshTicket()
+  }
+```
+and extend the class comment with one sentence: an Action change can change what blocks Resolved, so the Ticket is refreshed quietly.
+
+- [ ] **Step 3: Rework `ServiceActionsPanel.tsx`.** Imports: add `import type { Blocker } from '../workflow/blockers.js'`, `import { StaffTicketActionError, ... }`, `import { ResolutionBlockers } from './ResolutionBlockers.js'`. Changes:
+  1. State: `const [blockedBy, setBlockedBy] = useState<Blocker[] | null>(null)`, `const [isStale, setIsStale] = useState(false)`, `const [confirmingCancel, setConfirmingCancel] = useState(false)`.
+  2. A helper used by every write handler to record an error:
+
+```tsx
+  function showFailure(error: unknown, fallback: string) {
+    setActionError(error instanceof Error ? error.message : fallback)
+    setIsStale(error instanceof StaffTicketActionError && error.code === 'STALE_UPDATE')
+    const detail = error instanceof StaffTicketActionError ? (error.detail as { blockers?: Blocker[] } | undefined) : undefined
+    setBlockedBy(error instanceof StaffTicketActionError && error.code === 'RESOLUTION_BLOCKED' ? (detail?.blockers ?? []) : null)
+  }
+```
+  Each handler starts with `setActionError(''); setIsStale(false); setBlockedBy(null)` and its `catch` calls `showFailure(error, '<existing fallback>')`.
+  3. Pass the version: `reassignTicket(ticket.id, Number(selectedOwner), ticket.version)`, `updateItPriority(ticket.id, next, ticket.version)`, `updateStatus(ticket.id, next, ticket.version)`.
+  4. Status select `onChange`: if the value is `CANCELLED` open the confirmation instead of sending:
+
+```tsx
+            onChange={(event) => {
+              const next = event.target.value as TicketStatus
+              if (!next) return
+              if (next === 'CANCELLED') setConfirmingCancel(true)
+              else void handleStatusChange(next)
+            }}
+```
+  5. Under the status select (inside its column) render the standing blocker panel and the confirmation:
+
+```tsx
+          {ticket.allowedStatuses.includes('RESOLVED') && !ticket.resolution.canResolve && (
+            <ResolutionBlockers blockers={ticket.resolution.blockers} />
+          )}
+          {blockedBy && blockedBy.length > 0 && !(ticket.allowedStatuses.includes('RESOLVED') && !ticket.resolution.canResolve) && (
+            <ResolutionBlockers blockers={blockedBy} />
+          )}
+          {confirmingCancel && (
+            <div
+              role="alertdialog"
+              aria-labelledby="confirm-cancel-ticket"
+              className="alert alert-warning mt-2 mb-0"
+              onKeyDown={(event) => {
+                if (event.key === 'Escape') setConfirmingCancel(false)
+              }}
+            >
+              <p id="confirm-cancel-ticket" className="mb-2">
+                Cancel this ticket? Its planned and in-progress actions will be cancelled too, and a cancelled ticket cannot be changed again.
+              </p>
+              <div className="d-flex gap-2">
+                <button type="button" className="btn btn-outline-secondary btn-sm" autoFocus onClick={() => setConfirmingCancel(false)}>
+                  Keep ticket
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-danger btn-sm"
+                  onClick={() => {
+                    setConfirmingCancel(false)
+                    void handleStatusChange('CANCELLED')
+                  }}
+                >
+                  Cancel ticket
+                </button>
+              </div>
+            </div>
+          )}
+```
+  6. Error alert: show the Reload button when stale:
+
+```tsx
+      {actionError && (
+        <div className="alert alert-danger d-flex flex-wrap align-items-center gap-2" role="alert">
+          <span>{actionError}</span>
+          {isStale && (
+            <button type="button" className="btn btn-outline-danger btn-sm" onClick={() => mediator.onStatusChanged()}>
+              Reload
+            </button>
+          )}
+        </div>
+      )}
+```
+
+- [ ] **Step 4: Typecheck.** `npx tsc --noEmit -p tsconfig.app.json` → clean. Then `npx vitest run` and fix any existing client test that fails only because the fixture lacks `resolution` or `version`: add `version: 4, requesterResolvedAt: null, actionsSummary: { total: 0, planned: 0, inProgress: 0, completed: 0, cancelled: 0, openFollowUps: 0 }, resolution: { canResolve: true, blockers: [] }` to the staff ticket fixtures in `tests/lab-03/StaffTicketDetail.test.tsx` and `tests/lab-04/CarryOvers.test.tsx` (`staffTicket`).
+
+- [ ] **Step 5: Stage.** `git add client`
+
+---
+
+### Task 8: History, indication, badges, quiet refresh, mounting
+
+**Files:**
+- Create: `client/src/components/HistoryPanel.tsx`, `client/src/components/AppearsResolved.tsx`
+- Modify: `TicketBadges.tsx`, `StaffTicketDetail.tsx`, `TicketDetail.tsx`, `ActionsTakenPanel.tsx`, `StaffTicketQueue.tsx`
+
+- [ ] **Step 1: Badge.** Append to `TicketBadges.tsx`:
+
+```tsx
+export function RequesterReportedBadge() {
+  return (
+    <span className="badge rounded-pill border border-success text-success-emphasis bg-success-subtle">
+      Requester reports resolved
+    </span>
+  )
+}
+```
+
+- [ ] **Step 2: `HistoryPanel.tsx`:**
+
+```tsx
+import { useEffect, useRef, useState } from 'react'
+import { STATUS_LABELS } from '@toktickit/shared'
+import { fetchHistory, type HistoryRow } from '../api/history.js'
+
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleString(undefined, {
+    year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+  })
+}
+
+/** Collapsed, read-only status history, oldest first (ui-spec §5). Refetches quietly when the Ticket version changes. */
+export function HistoryPanel({ ticketId, ticketVersion }: { ticketId: number; ticketVersion?: number }) {
+  const [rows, setRows] = useState<HistoryRow[] | null>(null)
+  const [failed, setFailed] = useState(false)
+  const lastVersion = useRef(ticketVersion)
+
+  useEffect(() => {
+    let ignore = false
+    fetchHistory(ticketId)
+      .then((loaded) => {
+        if (ignore) return
+        setRows(loaded)
+        setFailed(false)
+      })
+      .catch(() => {
+        if (!ignore) setFailed(true)
+      })
+    return () => {
+      ignore = true
+    }
+  }, [ticketId, ticketVersion])
+  void lastVersion
+
+  return (
+    <details className="mt-4">
+      <summary className="h6 fw-bold">History</summary>
+      {failed && <p className="text-danger small mt-2" role="alert">Unable to load the history.</p>}
+      {!failed && rows === null && <p className="text-body-secondary small mt-2" role="status">Loading history…</p>}
+      {rows && (
+        <ol className="list-unstyled mt-2 mb-0">
+          {rows.map((row) => (
+            <li key={row.id} className="small py-1 border-bottom">
+              <strong>
+                {row.fromStatus ? `${STATUS_LABELS[row.fromStatus]} → ${STATUS_LABELS[row.toStatus]}` : `Created as ${STATUS_LABELS[row.toStatus]}`}
+              </strong>
+              {' · '}
+              {row.changedByName ?? 'System'}
+              {' · '}
+              <span className="text-body-secondary">{formatDate(row.changedAt)}</span>
+            </li>
+          ))}
+        </ol>
+      )}
+    </details>
+  )
+}
+```
+(Remove the unused `lastVersion` ref and `useRef` import if lint objects; the effect already depends on `ticketVersion`.)
+
+- [ ] **Step 3: `AppearsResolved.tsx`:**
+
+```tsx
+import { useState } from 'react'
+import { markAppearsResolved } from '../api/tickets.js'
+import type { TicketStatus } from '../types/ticket.js'
+
+const APPLICABLE: readonly TicketStatus[] = ['OPEN', 'IN_PROGRESS', 'WAITING_FOR_REQUESTER', 'REOPENED']
+
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+}
+
+/** Requester-only, advisory: never changes the Ticket status (BR-L4-12). */
+export function AppearsResolved({
+  ticketId,
+  status,
+  requesterResolvedAt,
+}: {
+  ticketId: number
+  status: TicketStatus
+  requesterResolvedAt: string | null | undefined
+}) {
+  const [resolvedAt, setResolvedAt] = useState<string | null>(requesterResolvedAt ?? null)
+  const [isSending, setIsSending] = useState(false)
+  const [error, setError] = useState('')
+
+  if (resolvedAt) {
+    return <p className="mt-3 mb-0" role="status">You told us this appears resolved on {formatDate(resolvedAt)}.</p>
+  }
+  if (!APPLICABLE.includes(status)) return null
+
+  async function handleClick() {
+    setError('')
+    setIsSending(true)
+    try {
+      const result = await markAppearsResolved(ticketId)
+      setResolvedAt(result.requesterResolvedAt)
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Unable to send that. Please try again.')
+    } finally {
+      setIsSending(false)
+    }
+  }
+
+  return (
+    <div className="mt-3">
+      {error && <div className="alert alert-danger" role="alert">{error}</div>}
+      <button type="button" className="btn btn-outline-primary" disabled={isSending} onClick={() => void handleClick()}>
+        {isSending ? 'Sending…' : 'Problem appears resolved'}
+      </button>
+    </div>
+  )
+}
+```
+
+- [ ] **Step 4: Requester screen** (`TicketDetail.tsx`): import `AppearsResolved` and `HistoryPanel`; inside the ticket card body after the Description block add `<AppearsResolved ticketId={ticket.id} status={ticket.currentStatus} requesterResolvedAt={ticket.requesterResolvedAt} />`; after `<CommentsPanel .../>` add `<HistoryPanel ticketId={ticket.id} />`; pass `ticketVersion={ticket.version}` to `ActionsTakenPanel`.
+
+- [ ] **Step 5: `ActionsTakenPanel.tsx`.** Props add `ticketVersion?: number; onChanged?: () => void`. Add a quiet refetch effect (the list must follow server-side Cancel):
+
+```tsx
+  const firstVersion = useRef(ticketVersion)
+  useEffect(() => {
+    if (ticketVersion === firstVersion.current) return
+    firstVersion.current = ticketVersion
+    fetchActions(ticketId).then(setActions).catch(() => {})
+  }, [ticketVersion, ticketId])
+```
+(import `useRef`). Call `onChanged?.()` after a successful `submit` and after a successful `quickChange` (right after `setAnnouncement('Action saved')`).
+
+- [ ] **Step 6: Staff screen** (`StaffTicketDetail.tsx`):
+  - Quiet refresh: add `const loadedId = useRef<number | null>(null)` and `const [refreshFailed, setRefreshFailed] = useState(false)`. In the load effect compute `const isRefresh = loadedId.current === ticketId` before `setStatus('loading')`, and only call `setStatus('loading')` when `!isRefresh`. In `.then` add `loadedId.current = ticketId; setRefreshFailed(false)`. In `.catch` do `if (isRefresh) setRefreshFailed(true); else setStatus('error')`. Render `{refreshFailed && <div className="alert alert-warning" role="alert">Unable to refresh the ticket. Reload the page to see the latest.</div>}` above the ticket card.
+  - Header indication: next to the `<h1>` render `{ticket.requesterResolvedAt && <RequesterReportedBadge />}` (wrap the h1 and badge in a `d-flex flex-wrap align-items-center gap-2 mb-4` div).
+  - `<ActionsTakenPanel ... ticketVersion={ticket.version} onChanged={() => mediator.onActionChanged()} />`.
+  - After `<NotesPanel .../>` add `<HistoryPanel ticketId={ticket.id} ticketVersion={ticket.version} />`.
+
+- [ ] **Step 7: Queue row.** In `StaffTicketQueue.tsx` import `RequesterReportedBadge` and render it after each `<StatusBadge status={ticket.currentStatus} />` (both the table row at about line 289 and the mobile card at about line 316) as `{ticket.requesterResolvedAt && <RequesterReportedBadge />}`.
+
+- [ ] **Step 8: Run.** `npx tsc --noEmit -p tsconfig.app.json`; `npx vitest run` → all green. Fix any existing fetch stub that now needs `/api/tickets/42/history` (add `if (url === '/api/tickets/42/history') return { ok: true, json: async () => [] } as Response` next to the `/actions` line in `tests/lab-02/TicketDetail.test.tsx`, `tests/lab-03/StaffTicketDetail.test.tsx` (both stubs) and `tests/lab-04/CarryOvers.test.tsx`).
+
+- [ ] **Step 9: Stage.** `git add client`
+
+---
+
+### Task 9: Client tests (UI4-17 to UI4-22)
+
+**Files:**
+- Create: `client/tests/lab-04/TicketWorkflow.test.tsx`
+
+- [ ] **Step 1: Write the tests:**
+
+```tsx
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { StaffTicketDetail } from '../../src/components/StaffTicketDetail.js'
+import { TicketDetail } from '../../src/components/TicketDetail.js'
+
+const categories = [{ id: 1, name: 'Hardware' }]
+const relatedSystems = [{ id: 7, name: 'Corporate Laptop' }]
+const summary = { total: 0, planned: 0, inProgress: 0, completed: 0, cancelled: 0, openFollowUps: 0 }
+
+function staffTicket(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 42, ticketNumber: 'TKT-2026-000042', requesterId: 1, categoryId: 1, relatedSystemId: 7,
+    requestedPriority: 'MEDIUM', itPriority: 'MEDIUM', currentStatus: 'IN_PROGRESS', ticketOwnerId: 9,
+    summary: 'Laptop battery drains quickly', description: 'The battery drains much faster than it used to.',
+    createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
+    requester: { id: 1, name: 'Jennifer Anderson' }, ticketOwner: { id: 9, name: 'Alex Rivera' },
+    version: 4, requesterResolvedAt: null, allowedStatuses: ['WAITING_FOR_REQUESTER', 'RESOLVED', 'CANCELLED'],
+    actionsSummary: summary, resolution: { canResolve: true, blockers: [] },
+    ...overrides,
+  }
+}
+
+type Options = {
+  ticket?: Record<string, unknown>
+  history?: unknown[]
+  onStatus?: (body: Record<string, unknown>) => { status: number; body: unknown } | undefined
+  onAppears?: () => { status: number; body: unknown }
+}
+
+function stubApi(options: Options = {}) {
+  const writes: Array<{ url: string; method: string; body: Record<string, unknown> | null }> = []
+  let ticketReads = 0
+  vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+    const method = init?.method ?? 'GET'
+    const reply = (status: number, json: unknown) => ({ ok: status < 300, status, json: async () => json }) as Response
+    const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : null
+
+    if (url === '/api/tickets/42' && method === 'GET') {
+      ticketReads += 1
+      return reply(200, options.ticket ?? staffTicket())
+    }
+    if (url === '/api/tickets/42/status' && method === 'PATCH') {
+      writes.push({ url, method, body })
+      const overridden = options.onStatus?.(body ?? {})
+      return overridden ? reply(overridden.status, overridden.body) : reply(200, staffTicket({ version: 5 }))
+    }
+    if (url === '/api/tickets/42/appears-resolved' && method === 'POST') {
+      writes.push({ url, method, body })
+      const answer = options.onAppears?.() ?? { status: 200, body: { id: 42, requesterResolvedAt: '2026-10-31T09:00:00.000Z', currentStatus: 'IN_PROGRESS' } }
+      return reply(answer.status, answer.body)
+    }
+    if (url === '/api/tickets/42/history') return reply(200, options.history ?? [])
+    if (url === '/api/categories') return reply(200, categories)
+    if (url === '/api/related-systems') return reply(200, relatedSystems)
+    if (url === '/api/users/assignable') return reply(200, [])
+    if (url.startsWith('/api/tickets/42/')) return reply(200, [])
+    throw new Error(`Unexpected fetch: ${method} ${url}`)
+  }))
+  return { writes, ticketReads: () => ticketReads }
+}
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
+
+function mountStaff() {
+  render(<StaffTicketDetail ticketId={42} currentUserId={9} onBackToQueue={() => {}} />)
+}
+
+describe('Status control (UI4-17, FR-L4-06)', () => {
+  it('offers only the next statuses the API sends', async () => {
+    stubApi()
+    mountStaff()
+    const select = await screen.findByLabelText('Current Status')
+    const labels = within(select).getAllByRole('option').map((option) => option.textContent)
+    expect(labels).toEqual(['In Progress — change to…', 'Waiting for Requester', 'Resolved', 'Cancelled'])
+  })
+
+  it('sends the status with expectedVersion for an ordinary move', async () => {
+    const api = stubApi()
+    mountStaff()
+    fireEvent.change(await screen.findByLabelText('Current Status'), { target: { value: 'WAITING_FOR_REQUESTER' } })
+    await waitFor(() => expect(api.writes).toHaveLength(1))
+    expect(api.writes[0].body).toEqual({ status: 'WAITING_FOR_REQUESTER', expectedVersion: 4 })
+  })
+})
+
+describe('Blockers (UI4-18, AC-L4-12)', () => {
+  const blocked = {
+    canResolve: false,
+    blockers: [{ code: 'NO_COMPLETED_ACTION' }, { code: 'ACTIONS_STILL_OPEN', count: 2 }, { code: 'FOLLOW_UP_OPEN', count: 1 }],
+  }
+
+  it('lists a plain-text line per blocker from the resolution block while Resolved is offered', async () => {
+    stubApi({ ticket: staffTicket({ resolution: blocked }) })
+    mountStaff()
+    const list = await screen.findByRole('list', { name: 'Why this ticket cannot be resolved yet' })
+    expect(within(list).getAllByRole('listitem').map((item) => item.textContent)).toEqual([
+      'Add a completed action',
+      '2 actions are still planned or in progress',
+      '1 follow-up is still open',
+    ])
+  })
+
+  it('shows the lines from the 409 when Resolved is chosen anyway', async () => {
+    stubApi({
+      onStatus: () => ({ status: 409, body: { error: 'RESOLUTION_BLOCKED', blockers: [{ code: 'ACTIONS_STILL_OPEN', count: 1 }] } }),
+    })
+    mountStaff()
+    fireEvent.change(await screen.findByLabelText('Current Status'), { target: { value: 'RESOLVED' } })
+
+    expect(await screen.findByText('This ticket cannot be resolved yet.')).toBeInTheDocument()
+    expect(await screen.findByText('1 action is still planned or in progress')).toBeInTheDocument()
+  })
+})
+
+describe('Cancel confirmation (UI4-19, AC-L4-19)', () => {
+  it('asks first, names the open actions, and sends only after confirmation', async () => {
+    const api = stubApi()
+    mountStaff()
+    fireEvent.change(await screen.findByLabelText('Current Status'), { target: { value: 'CANCELLED' } })
+
+    const dialog = await screen.findByRole('alertdialog')
+    expect(dialog).toHaveTextContent(/planned and in-progress actions will be cancelled/)
+    expect(api.writes).toHaveLength(0)
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Keep ticket' }))
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    expect(api.writes).toHaveLength(0)
+
+    fireEvent.change(screen.getByLabelText('Current Status'), { target: { value: 'CANCELLED' } })
+    fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Cancel ticket' }))
+    await waitFor(() => expect(api.writes).toHaveLength(1))
+    expect(api.writes[0].body).toEqual({ status: 'CANCELLED', expectedVersion: 4 })
+  })
+})
+
+describe('Requester indication (UI4-20, AC-L4-16)', () => {
+  const requesterTicket = {
+    id: 42, ticketNumber: 'TKT-2026-000042', requesterId: 1, categoryId: 1, relatedSystemId: 7,
+    requestedPriority: 'MEDIUM', currentStatus: 'IN_PROGRESS', summary: 'Laptop battery drains quickly',
+    description: 'The battery drains much faster than it used to.', createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z', version: 4, requesterResolvedAt: null, actionsSummary: summary,
+  }
+
+  it('shows the button, then the confirmation text, and never offers a status control', async () => {
+    const api = stubApi({ ticket: requesterTicket })
+    render(<TicketDetail ticketId={42} onBackToMyTickets={() => {}} />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Problem appears resolved' }))
+    await waitFor(() => expect(api.writes).toHaveLength(1))
+    expect(await screen.findByText(/You told us this appears resolved on/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Problem appears resolved' })).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Current Status')).not.toBeInTheDocument()
+  })
+
+  it('hides the button when the status does not apply, and shows the text when already used', async () => {
+    stubApi({ ticket: { ...requesterTicket, currentStatus: 'NEW' } })
+    const { unmount } = render(<TicketDetail ticketId={42} onBackToMyTickets={() => {}} />)
+    await screen.findByText('Laptop battery drains quickly')
+    expect(screen.queryByRole('button', { name: 'Problem appears resolved' })).not.toBeInTheDocument()
+    unmount()
+    vi.unstubAllGlobals()
+
+    stubApi({ ticket: { ...requesterTicket, requesterResolvedAt: '2026-10-30T09:00:00.000Z' } })
+    render(<TicketDetail ticketId={42} onBackToMyTickets={() => {}} />)
+    expect(await screen.findByText(/You told us this appears resolved on/)).toBeInTheDocument()
+  })
+
+  it('shows staff the Requester reports resolved badge in the Ticket Detail header', async () => {
+    stubApi({ ticket: staffTicket({ requesterResolvedAt: '2026-10-30T09:00:00.000Z' }) })
+    mountStaff()
+    expect(await screen.findByText('Requester reports resolved')).toBeInTheDocument()
+  })
+
+  it('shows no badge when nothing was reported', async () => {
+    stubApi()
+    mountStaff()
+    await screen.findByText('Laptop battery drains quickly')
+    expect(screen.queryByText('Requester reports resolved')).not.toBeInTheDocument()
+  })
+})
+
+describe('History (UI4-21, AC-L4-18)', () => {
+  it('is collapsed and lists the rows oldest first', async () => {
+    stubApi({
+      history: [
+        { id: 1, fromStatus: null, toStatus: 'NEW', changedById: 1, changedByName: 'Jennifer Anderson', changedAt: '2026-10-30T07:00:00.000Z' },
+        { id: 2, fromStatus: 'NEW', toStatus: 'OPEN', changedById: 9, changedByName: 'Alex Rivera', changedAt: '2026-10-30T08:00:00.000Z' },
+      ],
+    })
+    mountStaff()
+    const summaryElement = await screen.findByText('History')
+    const details = summaryElement.closest('details') as HTMLDetailsElement
+    expect(details.open).toBe(false)
+
+    const rows = await within(details).findAllByRole('listitem')
+    expect(rows[0]).toHaveTextContent('Created as New')
+    expect(rows[0]).toHaveTextContent('Jennifer Anderson')
+    expect(rows[1]).toHaveTextContent('New → Open')
+    expect(rows[1]).toHaveTextContent('Alex Rivera')
+  })
+})
+
+describe('Stale update (UI4-22, AC-L4-08)', () => {
+  it('shows the message with Reload and refetches without overwriting anything', async () => {
+    const api = stubApi({ onStatus: () => ({ status: 409, body: { error: 'STALE_UPDATE', currentVersion: 6 } }) })
+    mountStaff()
+    fireEvent.change(await screen.findByLabelText('Current Status'), { target: { value: 'WAITING_FOR_REQUESTER' } })
+
+    expect(await screen.findByText('This ticket changed since you opened it.')).toBeInTheDocument()
+    const readsBefore = api.ticketReads()
+    fireEvent.click(screen.getByRole('button', { name: 'Reload' }))
+    await waitFor(() => expect(api.ticketReads()).toBe(readsBefore + 1))
+    expect(api.writes).toHaveLength(1)
+    expect(screen.getByText('Laptop battery drains quickly')).toBeInTheDocument()
+  })
+
+  it('refreshes without the Loading ticket flash after a successful change', async () => {
+    const api = stubApi()
+    mountStaff()
+    fireEvent.change(await screen.findByLabelText('Current Status'), { target: { value: 'WAITING_FOR_REQUESTER' } })
+    await waitFor(() => expect(api.ticketReads()).toBe(2))
+    expect(screen.queryByText(/Loading ticket/)).not.toBeInTheDocument()
+    expect(screen.getByText('Laptop battery drains quickly')).toBeInTheDocument()
+  })
+})
+```
+
+- [ ] **Step 2: Run.** `cd client && npx vitest run tests/lab-04/TicketWorkflow.test.tsx`. If a query is ambiguous (for example two elements with text "Open"), narrow it with `within`; do not weaken the assertion. Then the full `npx vitest run`, `npx tsc --noEmit -p tsconfig.app.json`, `npm run build`.
+
+- [ ] **Step 3: Mutation check.** Temporarily delete the `if (next === 'CANCELLED') setConfirmingCancel(true)` branch, confirm the Cancel test fails, restore.
+
+- [ ] **Step 4: Stage.** `git add client`
+
+---
+
+### Task 10: E2E, real-browser check, docs
+
+**Files:**
+- Create: `e2e/lab-04/ticket-resolution.spec.ts`
+- Modify: `docs/lab-04/tests.md`
+
+- [ ] **Step 1: Write the E2E (E2E4-02):**
+
+```ts
+import { expect, test, type Page } from '@playwright/test'
+
+// E2E4-02 (AC-L4-12, AC-L4-16, AC-L4-17): resolve is blocked, the blockers are
+// cleared, the Requester reports it, staff resolve and reopen, history shows each step.
+
+async function login(page: Page, email: string) {
+  await page.goto('/')
+  await page.getByLabel('Email *').fill(email)
+  await page.getByLabel('Password *').fill('DevPass123!')
+  await page.getByRole('button', { name: 'Login' }).click()
+}
+async function logout(page: Page) {
+  await page.getByRole('button', { name: 'Logout' }).click()
+  await expect(page.getByRole('heading', { name: 'TokTickIT' })).toBeVisible()
+}
+async function openQueueTicket(page: Page, summary: string) {
+  await expect(page.getByRole('heading', { name: 'Ticket Queue' })).toBeVisible()
+  await page.getByPlaceholder('Search by ticket number or summary…').fill(summary)
+  await page.getByText(summary).first().click()
+  await expect(page.getByRole('heading', { name: /Ticket TKT-/ })).toBeVisible()
+}
+
+test.describe('Ticket resolution flow', () => {
+  test('blocked, cleared, reported by the Requester, resolved, reopened, with history', async ({ page }) => {
+    const summary = `Resolution E2E check ${Date.now()}`
+
+    await login(page, 'sarah.johnson@toktickit.test')
+    await page.getByRole('button', { name: 'Create Ticket' }).first().click()
+    await page.locator('#ticket-category').selectOption({ label: 'Hardware' })
+    await page.locator('#ticket-related-system').selectOption({ label: 'Corporate Laptop' })
+    await page.locator('#ticket-priority').selectOption({ label: 'Medium' })
+    await page.locator('#ticket-summary').fill(summary)
+    await page.locator('#ticket-description').fill('Created by the Lab 4 resolution E2E spec.')
+    await page.getByRole('button', { name: 'Submit' }).click()
+    await expect(page.getByText(/Your official Ticket Number is/)).toBeVisible()
+    await logout(page)
+
+    // Staff: claim, move to In Progress, and see why Resolved is blocked.
+    await login(page, 'alex.rivera@toktickit.test')
+    await openQueueTicket(page, summary)
+    await page.getByRole('button', { name: 'Claim Ticket' }).click()
+    await expect(page.getByText('Alex Rivera (you)')).toBeVisible()
+    await page.getByLabel('Current Status').selectOption('OPEN')
+    await expect(page.getByLabel('Current Status')).toContainText('Open')
+    await page.getByLabel('Current Status').selectOption('IN_PROGRESS')
+    await expect(page.getByText('Add a completed action')).toBeVisible()
+
+    // Add a Planned action: the blocker changes. Then complete it: blockers clear.
+    await page.getByRole('button', { name: 'Add action' }).click()
+    await page.getByLabel('Description *').fill('Reseat the battery connector.')
+    await page.getByRole('button', { name: 'Save' }).click()
+    await expect(page.getByText('1 action is still planned or in progress')).toBeVisible()
+    await page.getByRole('button', { name: 'Complete' }).click()
+    await page.getByLabel('Result *').fill('Battery now charges.')
+    await page.getByRole('button', { name: 'Save' }).click()
+    await expect(page.getByText('Battery now charges.')).toBeVisible()
+    await expect(page.getByRole('list', { name: 'Why this ticket cannot be resolved yet' })).toHaveCount(0)
+    await logout(page)
+
+    // Requester says it looks fixed; status stays In Progress.
+    await login(page, 'sarah.johnson@toktickit.test')
+    await page.getByRole('button', { name: 'My Tickets' }).first().click()
+    await page.getByText(summary).first().click()
+    await page.getByRole('button', { name: 'Problem appears resolved' }).click()
+    await expect(page.getByText(/You told us this appears resolved on/)).toBeVisible()
+    await expect(page.getByText('In Progress').first()).toBeVisible()
+    await logout(page)
+
+    // Staff see the badge, resolve, then reopen; the badge goes away.
+    await login(page, 'alex.rivera@toktickit.test')
+    await openQueueTicket(page, summary)
+    await expect(page.getByText('Requester reports resolved')).toBeVisible()
+    await page.getByLabel('Current Status').selectOption('RESOLVED')
+    await expect(page.getByLabel('Current Status')).toContainText('Resolved')
+    await page.getByLabel('Current Status').selectOption('REOPENED')
+    await expect(page.getByLabel('Current Status')).toContainText('Reopened')
+    await expect(page.getByText('Requester reports resolved')).toHaveCount(0)
+
+    await page.getByText('History', { exact: true }).click()
+    const history = page.locator('details').filter({ hasText: 'History' })
+    for (const step of ['Created as New', 'New → Open', 'Open → In Progress', 'In Progress → Resolved', 'Resolved → Reopened']) {
+      await expect(history.getByText(step)).toBeVisible()
+    }
+  })
+})
+```
+
+- [ ] **Step 2: Run E2E.** From the repo root: `npx playwright test e2e/lab-04/ticket-resolution.spec.ts`, then the full `npx playwright test` (Lab 2, Lab 3 and feature 26 specs must still pass; the Lab 3 staff spec moves a Ticket NEW to OPEN with the new version-aware client). If a locator differs on the real page, fix the locator, not the assertion.
+
+- [ ] **Step 3: Real-browser check** (dev servers via `.claude/launch.json`: `toktickit-server`, `toktickit-client`). As `alex.rivera@toktickit.test` / `DevPass123!` open an In Progress Ticket with no Actions: blocker panel beside Current Status; choose Resolved: lines from the 409; choose Cancelled: confirmation appears and Escape cancels it; edit the Ticket in a second tab then change status in the first: stale message with Reload; expand History. As a Requester: button, then text; history. Check at 1280, 768 and 390 px (no clipped text, no horizontal scroll, focus ring visible) and the browser console (only the two expected login 401s).
+
+- [ ] **Step 4: Update `docs/lab-04/tests.md`.** Mark `Pass`: WF-U01, WF-U02, WF-01 to WF-15, WF-17, WF-18, UI4-17 to UI4-22, E2E4-02 (same script style as before: match by ID, replace the trailing `Planned |`). **Leave WF-16 as Planned** (it belongs to the dashboards Issue) and add one note line: `- WF-16 (statusGroup and requesterReportedResolved) ships with the dashboards Issue because only the drill-down links use it.` Add a line recording that the Lab 3 tests that call claim, reassign, priority and status were changed to send `expectedVersion` and to add a Completed Action before resolving, because BR-L4-10 and BR-L4-14 changed those rules.
+
+- [ ] **Step 5: Final runs.** Server `npx tsc --noEmit -p . && npx vitest run` (and the stability loop: `for i in $(seq 1 5); do npx vitest run 2>&1 | grep -E "Tests |×"; done`); client `npx tsc --noEmit -p tsconfig.app.json && npx vitest run && npm run build`; E2E all green. Then `git add -A && git status --short`, report counts and anything not run, and wait for "commit".
+
+---
+
+## Self-Review
+
+**Spec coverage.** FR-L4-06/07 (matrix, gate) → Tasks 1, 3, 5 (WF-01 to 04, U01, U02). FR-L4-08, BR-L4-14 (versions) → Tasks 3, 5 (WF-12, 13, 17). FR-L4-09, BR-L4-16 (history) → Tasks 3, 4, 5 (WF-09, 10). FR-L4-10/11, BR-L4-12 (indication) → Tasks 3, 4, 8 (WF-06 to 08, 18; UI4-20). BR-L4-11 (lock) → Task 3, deterministic proof WF-14. BR-L4-13 (cancel cascade) → WF-11, UI4-19. BR-L4-15 → WF-17. api-spec §3 detail fields → WF-15; staff list field → WF-18. FR-L4-17 specific messages for stale and blocked → Tasks 6, 7, UI4-18, UI4-22. ui-spec §5 (allowed statuses only, blockers as plain text, cancel confirmation, stale message with Reload, history, indication) → Tasks 7, 8, 9. AC-L4-08/12 to 20 mapped through the WF and UI4 rows. Not here on purpose: WF-16, dashboards, navigation.
+
+**Placeholders.** None. Two conditional notes (WF-18 search pagination, ambiguous UI queries) tell the executor to fix the query, not the assertion.
+
+**Type consistency.** `ServiceResult`, `reply`, `validationFailed` (Task 2) are used unchanged in Tasks 3 and 4; the service function names and argument order in Task 3 match the router calls in Task 4; `Blocker` is defined once on the server (Task 1) and once on the client (Task 6) with identical shapes; `updateStatus(ticketId, status, expectedVersion)` (Task 6) matches `ServiceActionsPanel` (Task 7); `HistoryRow` matches the service's `listHistory` mapping.
+</script>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
+<script>
+  try {
+    var md = document.getElementById('plan-md').textContent;
+    document.getElementById('plan').innerHTML = marked.parse(md);
+  } catch (e) {
+    document.getElementById('plan').innerHTML = '<pre></pre>';
+    document.querySelector('#plan pre').textContent = document.getElementById('plan-md').textContent;
+  }
+  try {
+    var dark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    mermaid.initialize({ startOnLoad: false, theme: dark ? 'dark' : 'neutral' });
+    mermaid.run({ querySelector: '.mermaid' });
+  } catch (e) {}
+</script>
+</body>
+</html>

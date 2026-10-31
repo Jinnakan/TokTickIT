@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { fetchActiveCategories, fetchActiveRelatedSystems, type ReferenceItem } from '../api/referenceData.js'
 import { fetchStaffTicketDetail } from '../api/staffTicketDetail.js'
 import type { StaffTicketDetail as StaffTicketDetailType } from '../types/ticket.js'
-import { PriorityBadge, StatusBadge } from './TicketBadges.js'
+import { PriorityBadge, RequesterReportedBadge, StatusBadge } from './TicketBadges.js'
+import { HistoryPanel } from './HistoryPanel.js'
 import { AttachmentSection } from './AttachmentSection.js'
 import { CommentsPanel } from './CommentsPanel.js'
 import { NotesPanel } from './NotesPanel.js'
@@ -36,10 +37,14 @@ export function StaffTicketDetail({
   const [categories, setCategories] = useState<ReferenceItem[]>([])
   const [relatedSystems, setRelatedSystems] = useState<ReferenceItem[]>([])
   const [reloadToken, setReloadToken] = useState(0)
+  const loadedId = useRef<number | null>(null)
+  const [refreshFailed, setRefreshFailed] = useState(false)
 
   useEffect(() => {
     let ignore = false
-    setStatus('loading')
+    // First load shows the spinner; later refreshes swap data in quietly so open forms survive.
+    const isRefresh = loadedId.current === ticketId
+    if (!isRefresh) setStatus('loading')
 
     Promise.all([fetchStaffTicketDetail(ticketId), fetchActiveCategories(), fetchActiveRelatedSystems()])
       .then(([loadedTicket, loadedCategories, loadedRelatedSystems]) => {
@@ -47,11 +52,14 @@ export function StaffTicketDetail({
         setTicket(loadedTicket)
         setCategories(loadedCategories)
         setRelatedSystems(loadedRelatedSystems)
+        loadedId.current = ticketId
+        setRefreshFailed(false)
         setStatus('ready')
       })
       .catch(() => {
         if (ignore) return
-        setStatus('error')
+        if (isRefresh) setRefreshFailed(true)
+        else setStatus('error')
       })
 
     return () => {
@@ -91,9 +99,18 @@ export function StaffTicketDetail({
         </button>
       </nav>
 
+      {refreshFailed && (
+        <div className="alert alert-warning" role="alert">
+          Unable to refresh the ticket. Reload the page to see the latest.
+        </div>
+      )}
+
       <div className="card shadow-sm">
         <div className="card-body">
-          <h1 className="h4 fw-bold mb-4">Ticket {ticket.ticketNumber}</h1>
+          <div className="d-flex flex-wrap align-items-center gap-2 mb-4">
+            <h1 className="h4 fw-bold mb-0">Ticket {ticket.ticketNumber}</h1>
+            {ticket.requesterResolvedAt && <RequesterReportedBadge />}
+          </div>
 
           <div className="row g-3 mb-3">
             <ReadOnlyField label="Ticket Number" value={ticket.ticketNumber} />
@@ -134,10 +151,13 @@ export function StaffTicketDetail({
         ticketStatus={ticket.currentStatus}
         canEdit={true}
         currentUserId={currentUserId}
+        ticketVersion={ticket.version}
+        onChanged={() => mediator.onActionChanged()}
       />
       <AttachmentSection ticketId={ticket.id} canEdit={false} />
       <CommentsPanel ticketId={ticket.id} />
       <NotesPanel ticketId={ticket.id} />
+      <HistoryPanel ticketId={ticket.id} ticketVersion={ticket.version} />
     </div>
   )
 }

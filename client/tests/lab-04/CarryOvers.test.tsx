@@ -24,6 +24,10 @@ const staffTicket = {
   requester: { id: 1, name: 'Jennifer Anderson' },
   ticketOwner: { id: 9, name: 'Alex Rivera' },
   allowedStatuses: ['IN_PROGRESS', 'CANCELLED'],
+  version: 4,
+  requesterResolvedAt: null,
+  actionsSummary: { total: 0, planned: 0, inProgress: 0, completed: 0, cancelled: 0, openFollowUps: 0 },
+  resolution: { canResolve: true, blockers: [] },
 }
 
 const assignable = [
@@ -57,6 +61,7 @@ function stubTicketFetch(options: { onReassign?: (body: unknown) => void; assign
     if (url === '/api/related-systems') return { ok: true, json: async () => relatedSystems } as Response
     if (url === '/api/tickets/42/attachments') return { ok: true, json: async () => [activeAttachment] } as Response
     if (url === '/api/tickets/42/actions') return { ok: true, json: async () => [] } as Response
+    if (url === '/api/tickets/42/history') return { ok: true, json: async () => [] } as Response
     if (url === '/api/tickets/42/comments') return { ok: true, json: async () => [] } as Response
     if (url === '/api/tickets/42/notes') return { ok: true, json: async () => [] } as Response
     throw new Error(`Unexpected fetch: ${url}`)
@@ -84,7 +89,7 @@ describe('Reassign control (UI4-23, FR-L4-15)', () => {
     fireEvent.click(button)
 
     await waitFor(() => {
-      expect(posted).toEqual({ ticketOwnerId: 10 })
+      expect(posted).toEqual({ ticketOwnerId: 10, expectedVersion: 4 })
     })
   })
 

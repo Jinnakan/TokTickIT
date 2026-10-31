@@ -25,4 +25,9 @@ export class TicketDetailMediator {
   onStatusChanged(): void {
     this.refreshTicket()
   }
+
+  /** An Action change can change what blocks Resolved, so the Ticket is refreshed quietly. */
+  onActionChanged(): void {
+    this.refreshTicket()
+  }
 }

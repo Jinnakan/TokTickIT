@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   ActionApiError,
   createAction,
@@ -27,11 +27,15 @@ export function ActionsTakenPanel({
   ticketStatus,
   canEdit,
   currentUserId,
+  ticketVersion,
+  onChanged,
 }: {
   ticketId: number
   ticketStatus: TicketStatus
   canEdit: boolean
   currentUserId?: number
+  ticketVersion?: number
+  onChanged?: () => void
 }) {
   const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>('loading')
   const [actions, setActions] = useState<ActionTaken[]>([])
@@ -41,6 +45,14 @@ export function ActionsTakenPanel({
   const [cardError, setCardError] = useState<{ text: string; stale: boolean } | null>(null)
   const [busyId, setBusyId] = useState<number | null>(null)
   const [retryToken, setRetryToken] = useState(0)
+
+  const firstVersion = useRef(ticketVersion)
+  // A Cancel on the Ticket cancels Actions on the server, so the list follows the Ticket version quietly.
+  useEffect(() => {
+    if (ticketVersion === firstVersion.current) return
+    firstVersion.current = ticketVersion
+    fetchActions(ticketId).then(setActions).catch(() => {})
+  }, [ticketVersion, ticketId])
 
   const ticketLocked = LOCKED_TICKET_STATUSES.includes(ticketStatus)
   const canChange = canEdit && !ticketLocked
@@ -102,6 +114,7 @@ export function ActionsTakenPanel({
     setMode(null)
     setCardError(null)
     setAnnouncement('Action saved')
+    onChanged?.()
   }
 
   async function quickChange(action: ActionTaken, patch: Record<string, unknown>) {
@@ -111,6 +124,7 @@ export function ActionsTakenPanel({
       const saved = await updateAction(ticketId, action.id, { version: action.version, ...patch })
       setActions((current) => upsert(current, saved))
       setAnnouncement('Action saved')
+      onChanged?.()
     } catch (error) {
       setCardError({
         text: error instanceof ActionApiError ? error.message : QUICK_SAVE_FAILED,

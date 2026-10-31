@@ -41,8 +41,8 @@ Test files:
 | ACT-U01 | BR-L4-06, BR-L4-07 | Action field validation on create: required text, limits at and over, follow-up note pairing, `actionAt` format and future rule | Exact messages per field; at-limit accepted | `action-rules.unit.test.ts` | Pass |
 | ACT-U02 | BR-L4-05 | Action status moves and locks for every from and to pair, Cancelled and Completed edit locks | Matches the BR-L4-05 table exactly | `action-rules.unit.test.ts` | Pass |
 | ACT-U03 | BR-L4-04 | Unknown and protected fields in the body | Ignored, never copied into the result | `action-rules.unit.test.ts` | Pass |
-| WF-U01 | BR-L4-10 | Resolution gate over every combination of Action statuses and follow-ups, no database | Correct blocker list each time | `workflow-rules.unit.test.ts` | Planned |
-| WF-U02 | BR-L4-09 | Ticket transition matrix through the State classes | Matches the table exactly | `workflow-rules.unit.test.ts` | Planned |
+| WF-U01 | BR-L4-10 | Resolution gate over every combination of Action statuses and follow-ups, no database | Correct blocker list each time | `workflow-rules.unit.test.ts` | Pass |
+| WF-U02 | BR-L4-09 | Ticket transition matrix through the State classes | Matches the table exactly | `workflow-rules.unit.test.ts` | Pass |
 
 ### API: Actions Taken
 
@@ -75,24 +75,24 @@ File: `ticket-workflow.api.test.ts`
 
 | Test ID | Requirement/AC | What It Tests | Expected Result | Final |
 |---|---|---|---|---|
-| WF-01 | AC-L4-14, BR-L4-09 | Every allowed transition | 200 each | Planned |
-| WF-02 | AC-L4-14 | Every disallowed pair, including from Cancelled | 409 `INVALID_TRANSITION` with `allowed` | Planned |
-| WF-03 | AC-L4-12, BR-L4-10 | Resolve with no Completed Action; with a Planned and an In Progress Action; with an open follow-up | 409 `RESOLUTION_BLOCKED` listing each blocker | Planned |
-| WF-04 | AC-L4-12 | Resolve once the blockers are cleared; a follow-up on a Cancelled Action | 200 | Planned |
-| WF-05 | AC-L4-15 | Requester calls status, priority, reassign, claim | 403 each | Planned |
-| WF-06 | AC-L4-16, BR-L4-12 | Requester marks appears-resolved in each allowed status | 200; `requesterResolvedAt` set; status and `version` unchanged; repeat keeps the first time | Planned |
-| WF-07 | AC-L4-16 | Appears-resolved on another's Ticket, on New, on Closed; by staff; unknown id; no session | 403, 409 `NOT_APPLICABLE`, 409, 403, 404, 401 | Planned |
-| WF-08 | AC-L4-17 | Move to Reopened after an indication | `requesterResolvedAt` cleared | Planned |
-| WF-09 | AC-L4-18, BR-L4-16 | Create a Ticket and move it through several statuses, then read history | First row is creation; one row per change, in order, with actor | Planned |
-| WF-10 | AC-L4-18 | `POST`, `PATCH`, `DELETE` on history | 404 or 405; table unchanged | Planned |
-| WF-11 | AC-L4-19, BR-L4-13 | Cancel a Ticket with Planned and In Progress Actions | All become Cancelled in one transaction | Planned |
-| WF-12 | AC-L4-08, BR-L4-14 | Status, priority, reassign with an outdated `expectedVersion`; missing version | 409 `STALE_UPDATE`; 400 | Planned |
-| WF-13 | AC-L4-08 | Two simultaneous status changes with the same version | Exactly one succeeds | Planned |
-| WF-14 | AC-L4-13, BR-L4-11 | Resolve while a Planned Action is added at the same moment, repeated | Never Resolved with an open Action; each run ends in one valid ordering | Planned |
-| WF-15 | FR-L4-07 | `GET /api/tickets/:id` for staff and Requester | `version`, `actionsSummary`, and for staff `resolution` correct | Planned |
+| WF-01 | AC-L4-14, BR-L4-09 | Every allowed transition | 200 each | Pass |
+| WF-02 | AC-L4-14 | Every disallowed pair, including from Cancelled | 409 `INVALID_TRANSITION` with `allowed` | Pass |
+| WF-03 | AC-L4-12, BR-L4-10 | Resolve with no Completed Action; with a Planned and an In Progress Action; with an open follow-up | 409 `RESOLUTION_BLOCKED` listing each blocker | Pass |
+| WF-04 | AC-L4-12 | Resolve once the blockers are cleared; a follow-up on a Cancelled Action | 200 | Pass |
+| WF-05 | AC-L4-15 | Requester calls status, priority, reassign, claim | 403 each | Pass |
+| WF-06 | AC-L4-16, BR-L4-12 | Requester marks appears-resolved in each allowed status | 200; `requesterResolvedAt` set; status and `version` unchanged; repeat keeps the first time | Pass |
+| WF-07 | AC-L4-16 | Appears-resolved on another's Ticket, on New, on Closed; by staff; unknown id; no session | 403, 409 `NOT_APPLICABLE`, 409, 403, 404, 401 | Pass |
+| WF-08 | AC-L4-17 | Move to Reopened after an indication | `requesterResolvedAt` cleared | Pass |
+| WF-09 | AC-L4-18, BR-L4-16 | Create a Ticket and move it through several statuses, then read history | First row is creation; one row per change, in order, with actor | Pass |
+| WF-10 | AC-L4-18 | `POST`, `PATCH`, `DELETE` on history | 404 or 405; table unchanged | Pass |
+| WF-11 | AC-L4-19, BR-L4-13 | Cancel a Ticket with Planned and In Progress Actions | All become Cancelled in one transaction | Pass |
+| WF-12 | AC-L4-08, BR-L4-14 | Status, priority, reassign with an outdated `expectedVersion`; missing version | 409 `STALE_UPDATE`; 400 | Pass |
+| WF-13 | AC-L4-08 | Two simultaneous status changes with the same version | Exactly one succeeds | Pass |
+| WF-14 | AC-L4-13, BR-L4-11 | Resolve while a Planned Action is added at the same moment, repeated | Never Resolved with an open Action; each run ends in one valid ordering | Pass |
+| WF-15 | FR-L4-07 | `GET /api/tickets/:id` for staff and Requester | `version`, `actionsSummary`, and for staff `resolution` correct | Pass |
 | WF-16 | AC-L4-25 | `statusGroup` and `requesterReportedResolved` for both roles; unknown value | Correct rows; 400 | Planned |
-| WF-17 | AC-L4-20, BR-L4-14, BR-L4-15 | Which operations change `version` and which refresh `updatedAt` (claim, reassign, priority, status, Action, Comment, Note, Attachment) | As the table in BR-L4-14 and BR-L4-15 | Planned |
-| WF-18 | FR-L4-11 | Staff list and detail carry the indication; Requester list items do not | Present for staff only | Planned |
+| WF-17 | AC-L4-20, BR-L4-14, BR-L4-15 | Which operations change `version` and which refresh `updatedAt` (claim, reassign, priority, status, Action, Comment, Note, Attachment) | As the table in BR-L4-14 and BR-L4-15 | Pass |
+| WF-18 | FR-L4-11 | Staff list and detail carry the indication; Requester list items do not | Present for staff only | Pass |
 
 ### API: Requester Dashboard
 
@@ -176,12 +176,12 @@ File: `staff-dashboard.api.test.ts`
 | UI4-14 | AC-L4-08 | A 409 stale response | Conflict message with Reload; text kept | `ActionsTaken.test.tsx` | Pass |
 | UI4-15 | AC-L4-03 | Assignee select | Lists only the backend's assignable users | `ActionsTaken.test.tsx` | Pass |
 | UI4-16 | FR-L4-04 | Start, Complete, Cancel buttons | Only allowed moves appear and send the right request | `ActionsTaken.test.tsx` | Pass |
-| UI4-17 | FR-L4-06 | Ticket status control | Only permitted next statuses offered | `TicketWorkflow.test.tsx` | Planned |
-| UI4-18 | AC-L4-12 | Resolve blocked | Blocker lines from `resolution` and from a 409 | `TicketWorkflow.test.tsx` | Planned |
-| UI4-19 | AC-L4-19 | Cancel | Confirmation mentions open actions | `TicketWorkflow.test.tsx` | Planned |
-| UI4-20 | AC-L4-16 | Requester button and text; staff badge | Button then text; badge for staff only | `TicketWorkflow.test.tsx` | Planned |
-| UI4-21 | AC-L4-18 | History list | Ordered rows | `TicketWorkflow.test.tsx` | Planned |
-| UI4-22 | AC-L4-08 | A stale ticket update | Message and Reload; nothing overwritten | `TicketWorkflow.test.tsx` | Planned |
+| UI4-17 | FR-L4-06 | Ticket status control | Only permitted next statuses offered | `TicketWorkflow.test.tsx` | Pass |
+| UI4-18 | AC-L4-12 | Resolve blocked | Blocker lines from `resolution` and from a 409 | `TicketWorkflow.test.tsx` | Pass |
+| UI4-19 | AC-L4-19 | Cancel | Confirmation mentions open actions | `TicketWorkflow.test.tsx` | Pass |
+| UI4-20 | AC-L4-16 | Requester button and text; staff badge | Button then text; badge for staff only | `TicketWorkflow.test.tsx` | Pass |
+| UI4-21 | AC-L4-18 | History list | Ordered rows | `TicketWorkflow.test.tsx` | Pass |
+| UI4-22 | AC-L4-08 | A stale ticket update | Message and Reload; nothing overwritten | `TicketWorkflow.test.tsx` | Pass |
 | UI4-23 | AC-L4-27 | Reassign control, email field, specific messages, attachment controls | As specified; no Add or Remove for staff | `CarryOvers.test.tsx` | Pass |
 | UI4-24 | AC-L4-30, BR-L4-23 | Navigation per role, landing page, active-item marking | Right items, Dashboard first, `aria-current` on the active one | `Navigation.test.tsx` | Planned |
 
@@ -200,7 +200,7 @@ File: `staff-dashboard.api.test.ts`
 | Test ID | Requirement/AC | What It Tests | Expected Result | File | Final |
 |---|---|---|---|---|---|
 | E2E4-01 | AC-L4-01, AC-L4-05, AC-L4-07 | Staff adds an Action, another staff completes it with a follow-up, Requester views | Visible to all as specified; Requester has no controls | `actions-taken-flow.spec.ts` | Pass |
-| E2E4-02 | AC-L4-12, AC-L4-16, AC-L4-17 | Resolve blocked, clear the blockers, resolve; Requester indication; reopen | Matches the rules; history shows each step | `ticket-resolution.spec.ts` | Planned |
+| E2E4-02 | AC-L4-12, AC-L4-16, AC-L4-17 | Resolve blocked, clear the blockers, resolve; Requester indication; reopen | Matches the rules; history shows each step | `ticket-resolution.spec.ts` | Pass |
 | E2E4-03 | AC-L4-21, AC-L4-22, AC-L4-25, AC-L4-30 | Log in as each role, land on the Dashboard, open a card | The opened list size equals the count; Administrator sees users | `dashboards.spec.ts` | Planned |
 | E2E4-04 | AC-L4-32 | Walk every screen of every role, collecting console errors and failed requests | None | `dashboards.spec.ts` | Planned |
 
@@ -309,3 +309,7 @@ above exists.
 - Feature 25 also adds `ticket-history.api.test.ts` (first history row on create) and `touch-ticket.api.test.ts` (BR-L4-15 for Comments, Notes, Attachments), covered by AC-L4-18 and AC-L4-20.
 - Status-change history rows are written by the workflow Issue (the Lab 3 `PATCH /status` route is rewritten there), so until then only the baseline and creation rows exist.
 - Feature 26 checked in a real browser at 1280, 768 and 390 px on a Ticket with an Action: no horizontal scroll or clipped text, focus moves to the first invalid field, Save errors appear under the field with `aria-invalid` and `aria-describedby`. Editable inputs use the page background (`#f5f7f6`) and read-only fields `#eef2f0`, a faint difference that the hardening Issue should review.
+- WF-16 (`statusGroup` and `requesterReportedResolved`) ships with the dashboards Issue because only the drill-down links use it.
+- WF-17 covers Action, Comment, Note and appears-resolved here; Attachment upload and removal are covered by `touch-ticket.api.test.ts`.
+- The Lab 3 tests that call claim, reassign, priority and status now send `expectedVersion`, and the Lab 3 transition-path test records a Completed Action before resolving, because BR-L4-10 and BR-L4-14 changed those rules. The rules were not weakened.
+- Feature 27 checked in a real browser at 390 px: the cancel confirmation, History list and status control fit with no horizontal scroll, and focus lands on Keep ticket.

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { prisma } from '../../src/prisma.js'
 import { getTicketState } from '../../src/tickets/ticket-state/ticket-state-factory.js'
+import { addActionRow, versionOf } from '../helpers/tickets.js'
 import { loginAsItStaff, loginAsRequester, type AuthenticatedAgent } from '../helpers/session.js'
 
 async function createTicketAs(agent: AuthenticatedAgent) {
@@ -68,11 +69,11 @@ describe('POST /api/tickets/:id/reassign (STAFF-03)', () => {
     const { agent: staffAgent } = await loginAsItStaff()
     const ticket = await createTicketAs(requesterAgent)
 
-    const notStaff = await staffAgent.post(`/api/tickets/${ticket.id}/reassign`).send({ ticketOwnerId: requesterId })
+    const notStaff = await staffAgent.post(`/api/tickets/${ticket.id}/reassign`).send({ ticketOwnerId: requesterId, expectedVersion: ticket.version })
     expect(notStaff.status).toBe(400)
     expect(notStaff.body.error).toBe('VALIDATION_FAILED')
 
-    const unknown = await staffAgent.post(`/api/tickets/${ticket.id}/reassign`).send({ ticketOwnerId: 9999999 })
+    const unknown = await staffAgent.post(`/api/tickets/${ticket.id}/reassign`).send({ ticketOwnerId: 9999999, expectedVersion: ticket.version })
     expect(unknown.status).toBe(400)
   })
 
@@ -82,7 +83,7 @@ describe('POST /api/tickets/:id/reassign (STAFF-03)', () => {
     const { userId: targetStaffId } = await loginAsItStaff(1)
     const ticket = await createTicketAs(requesterAgent)
 
-    const response = await staffAgent.post(`/api/tickets/${ticket.id}/reassign`).send({ ticketOwnerId: targetStaffId })
+    const response = await staffAgent.post(`/api/tickets/${ticket.id}/reassign`).send({ ticketOwnerId: targetStaffId, expectedVersion: ticket.version })
 
     expect(response.status).toBe(200)
     expect(response.body.ticketOwnerId).toBe(targetStaffId)
@@ -96,7 +97,7 @@ describe('PATCH /api/tickets/:id/priority (STAFF-04)', () => {
     const ticket = await createTicketAs(requesterAgent)
     expect(ticket.requestedPriority).toBe('MEDIUM')
 
-    const response = await staffAgent.patch(`/api/tickets/${ticket.id}/priority`).send({ itPriority: 'HIGH' })
+    const response = await staffAgent.patch(`/api/tickets/${ticket.id}/priority`).send({ itPriority: 'HIGH', expectedVersion: ticket.version })
 
     expect(response.status).toBe(200)
     expect(response.body.itPriority).toBe('HIGH')
@@ -108,7 +109,7 @@ describe('PATCH /api/tickets/:id/priority (STAFF-04)', () => {
     const { agent: staffAgent } = await loginAsItStaff()
     const ticket = await createTicketAs(requesterAgent)
 
-    const response = await staffAgent.patch(`/api/tickets/${ticket.id}/priority`).send({ itPriority: 'URGENT' })
+    const response = await staffAgent.patch(`/api/tickets/${ticket.id}/priority`).send({ itPriority: 'URGENT', expectedVersion: ticket.version })
 
     expect(response.status).toBe(400)
   })
@@ -120,7 +121,7 @@ describe('PATCH /api/tickets/:id/status (STAFF-05, STAFF-06, STAFF-07, AC-L3-11,
     const { agent: staffAgent } = await loginAsItStaff()
     const ticket = await createTicketAs(requesterAgent)
 
-    const response = await staffAgent.patch(`/api/tickets/${ticket.id}/status`).send({ status: 'CLOSED' })
+    const response = await staffAgent.patch(`/api/tickets/${ticket.id}/status`).send({ status: 'CLOSED', expectedVersion: ticket.version })
 
     expect(response.status).toBe(409)
     expect(response.body.error).toBe('INVALID_TRANSITION')
@@ -133,7 +134,7 @@ describe('PATCH /api/tickets/:id/status (STAFF-05, STAFF-06, STAFF-07, AC-L3-11,
 
   it('accepts every allowed transition in the BR-L3-13 table', async () => {
     const { agent: requesterAgent } = await loginAsRequester()
-    const { agent: staffAgent } = await loginAsItStaff()
+    const { agent: staffAgent, userId: staffId } = await loginAsItStaff()
 
     const path: Array<[string, string]> = [
       ['NEW', 'OPEN'],
@@ -147,11 +148,15 @@ describe('PATCH /api/tickets/:id/status (STAFF-05, STAFF-06, STAFF-07, AC-L3-11,
     ]
 
     const ticket = await createTicketAs(requesterAgent)
+    // BR-L4-10: Resolved needs a Completed Action, so the path records one first.
+    await addActionRow(ticket.id, staffId, 'COMPLETED')
 
+    let version = ticket.version
     for (const [, to] of path) {
-      const response = await staffAgent.patch(`/api/tickets/${ticket.id}/status`).send({ status: to })
+      const response = await staffAgent.patch(`/api/tickets/${ticket.id}/status`).send({ status: to, expectedVersion: version })
       expect(response.status).toBe(200)
       expect(response.body.currentStatus).toBe(to)
+      version = response.body.version
     }
   })
 
@@ -160,11 +165,11 @@ describe('PATCH /api/tickets/:id/status (STAFF-05, STAFF-06, STAFF-07, AC-L3-11,
     const { agent: staffAgent } = await loginAsItStaff()
     const ticket = await createTicketAs(requesterAgent)
 
-    await staffAgent.patch(`/api/tickets/${ticket.id}/status`).send({ status: 'OPEN' })
-    await staffAgent.patch(`/api/tickets/${ticket.id}/status`).send({ status: 'CANCELLED' })
+    await staffAgent.patch(`/api/tickets/${ticket.id}/status`).send({ status: 'OPEN', expectedVersion: await versionOf(ticket.id) })
+    await staffAgent.patch(`/api/tickets/${ticket.id}/status`).send({ status: 'CANCELLED', expectedVersion: await versionOf(ticket.id) })
 
     for (const target of ['NEW', 'OPEN', 'IN_PROGRESS', 'WAITING_FOR_REQUESTER', 'RESOLVED', 'CLOSED', 'REOPENED']) {
-      const response = await staffAgent.patch(`/api/tickets/${ticket.id}/status`).send({ status: target })
+      const response = await staffAgent.patch(`/api/tickets/${ticket.id}/status`).send({ status: target, expectedVersion: await versionOf(ticket.id) })
       expect(response.status).toBe(409)
       expect(response.body.allowed).toEqual([])
     }

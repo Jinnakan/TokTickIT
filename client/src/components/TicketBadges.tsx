@@ -38,3 +38,11 @@ const ACTION_BADGE_CLASS: Record<ActionStatusValue, string> = {
 export function ActionStatusBadge({ status }: { status: ActionStatusValue }) {
   return <span className={`badge rounded-pill ${ACTION_BADGE_CLASS[status]}`}>{ACTION_STATUS_LABELS[status]}</span>
 }
+
+export function RequesterReportedBadge() {
+  return (
+    <span className="badge rounded-pill border border-success text-success-emphasis bg-success-subtle">
+      Requester reports resolved
+    </span>
+  )
+}

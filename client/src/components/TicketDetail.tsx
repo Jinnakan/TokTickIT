@@ -5,7 +5,9 @@ import type { Ticket } from '../types/ticket.js'
 import { PriorityBadge, StatusBadge } from './TicketBadges.js'
 import { AttachmentSection } from './AttachmentSection.js'
 import { ActionsTakenPanel } from './ActionsTakenPanel.js'
+import { AppearsResolved } from './AppearsResolved.js'
 import { CommentsPanel } from './CommentsPanel.js'
+import { HistoryPanel } from './HistoryPanel.js'
 
 type Status = 'loading' | 'ready' | 'not-found' | 'forbidden' | 'error'
 
@@ -134,12 +136,15 @@ export function TicketDetail({
               {ticket.description}
             </p>
           </div>
+
+          <AppearsResolved ticketId={ticket.id} status={ticket.currentStatus} requesterResolvedAt={ticket.requesterResolvedAt} />
         </div>
       </div>
 
-      <ActionsTakenPanel ticketId={ticket.id} ticketStatus={ticket.currentStatus} canEdit={false} />
+      <ActionsTakenPanel ticketId={ticket.id} ticketStatus={ticket.currentStatus} canEdit={false} ticketVersion={ticket.version} />
       <AttachmentSection ticketId={ticket.id} canEdit={true} />
       <CommentsPanel ticketId={ticket.id} />
+      <HistoryPanel ticketId={ticket.id} />
     </div>
   )
 }
