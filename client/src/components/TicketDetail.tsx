@@ -4,6 +4,7 @@ import { fetchTicket, TicketAccessError } from '../api/tickets.js'
 import type { Ticket } from '../types/ticket.js'
 import { PriorityBadge, StatusBadge } from './TicketBadges.js'
 import { AttachmentSection } from './AttachmentSection.js'
+import { ActionsTakenPanel } from './ActionsTakenPanel.js'
 import { CommentsPanel } from './CommentsPanel.js'
 
 type Status = 'loading' | 'ready' | 'not-found' | 'forbidden' | 'error'
@@ -136,6 +137,7 @@ export function TicketDetail({
         </div>
       </div>
 
+      <ActionsTakenPanel ticketId={ticket.id} ticketStatus={ticket.currentStatus} canEdit={false} />
       <AttachmentSection ticketId={ticket.id} canEdit={true} />
       <CommentsPanel ticketId={ticket.id} />
     </div>

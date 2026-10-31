@@ -167,15 +167,15 @@ File: `staff-dashboard.api.test.ts`
 | UI4-05 | AC-L4-22 | Staff dashboard cards, breakdowns, my actions | Render and link correctly | `StaffDashboard.test.tsx` | Planned |
 | UI4-06 | AC-L4-22 | Administrator users strip, absent for IT Staff | Shown only for Administrator | `StaffDashboard.test.tsx` | Planned |
 | UI4-07 | AC-L4-24 | Staff empty and zero states | Messages shown | `StaffDashboard.test.tsx` | Planned |
-| UI4-08 | FR-L4-01 | Actions list with several Actions; empty list | Cards in order; empty message | `ActionsTaken.test.tsx` | Planned |
-| UI4-09 | AC-L4-04 | Follow-up checkbox | Note field appears and is required | `ActionsTaken.test.tsx` | Planned |
-| UI4-10 | AC-L4-28 | A failed save | Entered values remain; message shown | `ActionsTaken.test.tsx` | Planned |
-| UI4-11 | AC-L4-28 | Rapid repeated Save clicks | One request | `ActionsTaken.test.tsx` | Planned |
-| UI4-12 | AC-L4-09 | Completed and Cancelled cards | Locked fields read-only; Cancelled has no Edit | `ActionsTaken.test.tsx` | Planned |
-| UI4-13 | AC-L4-05 | Requester view | No Add, Edit, buttons, or assignee control | `ActionsTaken.test.tsx` | Planned |
-| UI4-14 | AC-L4-08 | A 409 stale response | Conflict message with Reload; text kept | `ActionsTaken.test.tsx` | Planned |
-| UI4-15 | AC-L4-03 | Assignee select | Lists only the backend's assignable users | `ActionsTaken.test.tsx` | Planned |
-| UI4-16 | FR-L4-04 | Start, Complete, Cancel buttons | Only allowed moves appear and send the right request | `ActionsTaken.test.tsx` | Planned |
+| UI4-08 | FR-L4-01 | Actions list with several Actions; empty list | Cards in order; empty message | `ActionsTaken.test.tsx` | Pass |
+| UI4-09 | AC-L4-04 | Follow-up checkbox | Note field appears and is required | `ActionsTaken.test.tsx` | Pass |
+| UI4-10 | AC-L4-28 | A failed save | Entered values remain; message shown | `ActionsTaken.test.tsx` | Pass |
+| UI4-11 | AC-L4-28 | Rapid repeated Save clicks | One request | `ActionsTaken.test.tsx` | Pass |
+| UI4-12 | AC-L4-09 | Completed and Cancelled cards | Locked fields read-only; Cancelled has no Edit | `ActionsTaken.test.tsx` | Pass |
+| UI4-13 | AC-L4-05 | Requester view | No Add, Edit, buttons, or assignee control | `ActionsTaken.test.tsx` | Pass |
+| UI4-14 | AC-L4-08 | A 409 stale response | Conflict message with Reload; text kept | `ActionsTaken.test.tsx` | Pass |
+| UI4-15 | AC-L4-03 | Assignee select | Lists only the backend's assignable users | `ActionsTaken.test.tsx` | Pass |
+| UI4-16 | FR-L4-04 | Start, Complete, Cancel buttons | Only allowed moves appear and send the right request | `ActionsTaken.test.tsx` | Pass |
 | UI4-17 | FR-L4-06 | Ticket status control | Only permitted next statuses offered | `TicketWorkflow.test.tsx` | Planned |
 | UI4-18 | AC-L4-12 | Resolve blocked | Blocker lines from `resolution` and from a 409 | `TicketWorkflow.test.tsx` | Planned |
 | UI4-19 | AC-L4-19 | Cancel | Confirmation mentions open actions | `TicketWorkflow.test.tsx` | Planned |
@@ -199,7 +199,7 @@ File: `staff-dashboard.api.test.ts`
 
 | Test ID | Requirement/AC | What It Tests | Expected Result | File | Final |
 |---|---|---|---|---|---|
-| E2E4-01 | AC-L4-01, AC-L4-05, AC-L4-07 | Staff adds an Action, another staff completes it with a follow-up, Requester views | Visible to all as specified; Requester has no controls | `actions-taken-flow.spec.ts` | Planned |
+| E2E4-01 | AC-L4-01, AC-L4-05, AC-L4-07 | Staff adds an Action, another staff completes it with a follow-up, Requester views | Visible to all as specified; Requester has no controls | `actions-taken-flow.spec.ts` | Pass |
 | E2E4-02 | AC-L4-12, AC-L4-16, AC-L4-17 | Resolve blocked, clear the blockers, resolve; Requester indication; reopen | Matches the rules; history shows each step | `ticket-resolution.spec.ts` | Planned |
 | E2E4-03 | AC-L4-21, AC-L4-22, AC-L4-25, AC-L4-30 | Log in as each role, land on the Dashboard, open a card | The opened list size equals the count; Administrator sees users | `dashboards.spec.ts` | Planned |
 | E2E4-04 | AC-L4-32 | Walk every screen of every role, collecting console errors and failed requests | None | `dashboards.spec.ts` | Planned |
@@ -308,3 +308,4 @@ above exists.
   full suite passed 40 of 40 consecutive runs.
 - Feature 25 also adds `ticket-history.api.test.ts` (first history row on create) and `touch-ticket.api.test.ts` (BR-L4-15 for Comments, Notes, Attachments), covered by AC-L4-18 and AC-L4-20.
 - Status-change history rows are written by the workflow Issue (the Lab 3 `PATCH /status` route is rewritten there), so until then only the baseline and creation rows exist.
+- Feature 26 checked in a real browser at 1280, 768 and 390 px on a Ticket with an Action: no horizontal scroll or clipped text, focus moves to the first invalid field, Save errors appear under the field with `aria-invalid` and `aria-describedby`. Editable inputs use the page background (`#f5f7f6`) and read-only fields `#eef2f0`, a faint difference that the hardening Issue should review.

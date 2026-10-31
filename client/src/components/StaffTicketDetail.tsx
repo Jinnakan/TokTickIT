@@ -6,6 +6,7 @@ import { PriorityBadge, StatusBadge } from './TicketBadges.js'
 import { AttachmentSection } from './AttachmentSection.js'
 import { CommentsPanel } from './CommentsPanel.js'
 import { NotesPanel } from './NotesPanel.js'
+import { ActionsTakenPanel } from './ActionsTakenPanel.js'
 import { ServiceActionsPanel } from './ServiceActionsPanel.js'
 import { TicketDetailMediator } from '../staff/ticket-detail-mediator.js'
 
@@ -128,6 +129,12 @@ export function StaffTicketDetail({
       </div>
 
       <ServiceActionsPanel ticket={ticket} currentUserId={currentUserId} mediator={mediator} />
+      <ActionsTakenPanel
+        ticketId={ticket.id}
+        ticketStatus={ticket.currentStatus}
+        canEdit={true}
+        currentUserId={currentUserId}
+      />
       <AttachmentSection ticketId={ticket.id} canEdit={false} />
       <CommentsPanel ticketId={ticket.id} />
       <NotesPanel ticketId={ticket.id} />

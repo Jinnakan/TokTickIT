@@ -1,0 +1,1828 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Feature 26: Actions Taken UI (plan)</title>
+<style>
+  :root { --bg:#f6faf7; --fg:#1b2a22; --muted:#5b6b62; --card:#fff; --line:#cfe0d5; --accent:#2f7d52; --warn:#b4540a; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#101a14; --fg:#e4efe8; --muted:#9db3a5; --card:#18261e; --line:#2b4034; --accent:#6fcf97; --warn:#f0a35e; } }
+  body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.55 system-ui,sans-serif; }
+  main { max-width:1080px; margin:0 auto; padding:24px 16px 80px; }
+  h1 { font-size:1.7rem; margin:.2em 0; } h2 { margin-top:2em; border-bottom:2px solid var(--line); padding-bottom:.2em; }
+  .meta { color:var(--muted); }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px 18px; margin:14px 0; }
+  .pair { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  @media (max-width:760px) { .pair { grid-template-columns:1fr; } }
+  .pair h4 { margin:0 0 6px; } .before h4 { color:var(--warn); } .after h4 { color:var(--accent); }
+  table { border-collapse:collapse; width:100%; font-size:.93rem; } th,td { border:1px solid var(--line); padding:6px 9px; text-align:left; vertical-align:top; }
+  code, pre { font-family:ui-monospace,Menlo,monospace; font-size:.85rem; } pre { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:10px 12px; overflow:auto; }
+  #plan h3 { margin-top:2em; padding-top:.4em; border-top:1px dashed var(--line); } #plan ul { padding-left:1.2em; }
+  .mermaid { text-align:center; overflow:auto; }
+</style>
+</head>
+<body>
+<main>
+<h1>Feature 26: Actions Taken UI</h1>
+<p class="meta">Issue #49 · branch <code>feature/26-...</code> from feature 25 · client + one E2E spec · no server changes</p>
+
+<h2>A. Read this</h2>
+
+<div class="card">
+<p><strong>Goal.</strong> Put the Actions Taken API from feature 25 on screen. IT Staff and Administrators see a list of Action cards on Ticket Detail, add an Action, edit one, and use Start, Complete, Cancel and Mark-follow-up-done. Requesters see the same cards read-only. Everything from <code>ui-spec.md</code> §4 (list, create/edit form, feedback states) and §7 (Action badge) lands here.</p>
+<p><strong>Not in this feature.</strong> Status-workflow controls, blocker panel, history list, "Problem appears resolved", dashboards, navigation changes. Those are #50 and #51.</p>
+</div>
+
+<div class="card">
+<p><strong>Decisions the plan makes (veto before "Ready for feature 26").</strong></p>
+<ol>
+<li><strong>One panel owns its own data.</strong> <code>ActionsTakenPanel</code> fetches and holds the Action list. A save updates that list in place and announces "Action saved". It does <em>not</em> reload the whole Ticket, because the existing reload (claim, status) replaces the page with "Loading ticket…" and would throw away an open form. The Mediator gets a new <code>onActionChanged</code> in #50, when the Ticket summary needs the resolution blockers.</li>
+<li><strong>Validation is shared, not copied.</strong> The form builds the same request body it will send, runs it through <code>parseActionBody</code> from <code>@toktickit/shared</code> (feature 25), and shows those messages under the fields. The server stays the authority; the client just gets the same wording before a round trip.</li>
+<li><strong>Pure form logic is separate from React</strong> (<code>action-form.ts</code>: initial values, allowed statuses, locked fields, payload builder, validation). It is unit-tested without rendering.</li>
+<li><strong>Double submit is blocked by a ref, not only by disabled state.</strong> State updates are async, so two fast clicks could both pass a state check. A <code>useRef</code> flag is set synchronously.</li>
+<li><strong>One <code>requestId</code> per opened form</strong> (<code>act-&lt;uuid&gt;</code>), kept across retries, so a network retry cannot create a duplicate.</li>
+<li><strong>Stale edit keeps the user's text.</strong> The 409 message has a Reload button that refetches the list and re-bases the form on the fresh <code>version</code>; typed values stay.</li>
+<li><strong>Complete is a shortcut into the edit form</strong> with status preset to Completed and focus on Result (a Result is required, so one click cannot complete blindly). Start and Cancel action send one PATCH directly; Cancel asks first in an inline <code>role="alertdialog"</code>.</li>
+<li><strong>Locked Ticket (Closed or Cancelled):</strong> staff see the sentence "This ticket is closed, so actions can no longer be changed." instead of Add and Edit.</li>
+<li><strong>Placement:</strong> the panel sits right after Service Actions, so it is between Service Actions and Comments as the UI spec says; Attachments follow it.</li>
+<li><strong>Existing test stubs get the new URL.</strong> Several Lab 2/3/4 tests stub <code>fetch</code> with a fixed URL list that throws on anything else; they need <code>/api/tickets/42/actions</code>.</li>
+</ol>
+</div>
+
+<h3>Before and after: staff Ticket Detail</h3>
+<div class="pair">
+<div class="card before"><h4>Now</h4>
+<pre class="mermaid">
+flowchart TB
+  A[Ticket card] --> B[ServiceActionsPanel]
+  B --> C[AttachmentSection]
+  C --> D[CommentsPanel]
+  D --> E[NotesPanel]
+</pre></div>
+<div class="card after"><h4>After feature 26</h4>
+<pre class="mermaid">
+flowchart TB
+  A[Ticket card] --> B[ServiceActionsPanel]
+  B --> X["ActionsTakenPanel (new)"]
+  X --> C[AttachmentSection]
+  C --> D[CommentsPanel]
+  D --> E[NotesPanel]
+  X -.-> F["ActionCard x N"]
+  X -.-> G["ActionForm (create / edit)"]
+</pre></div>
+</div>
+
+<h3>Before and after: saving an Action</h3>
+<div class="pair">
+<div class="card before"><h4>Now (Lab 3 pattern)</h4>
+<pre class="mermaid">
+sequenceDiagram
+  participant U as Staff
+  participant P as Panel
+  participant API
+  U->>P: Save
+  P->>API: request
+  API-->>P: ok
+  P->>P: mediator reloads whole Ticket
+  Note over P: page shows Loading ticket, open forms lost
+</pre></div>
+<div class="card after"><h4>After</h4>
+<pre class="mermaid">
+sequenceDiagram
+  participant U as Staff
+  participant F as ActionForm
+  participant S as shared parseActionBody
+  participant P as ActionsTakenPanel
+  participant API
+  U->>F: Save (ref guard: one request)
+  F->>S: validate the payload it will send
+  S-->>F: field messages (stop here if any)
+  F->>P: onSubmit(payload with requestId or version)
+  P->>API: POST or PATCH
+  API-->>P: Action / 409 STALE_UPDATE / 5xx
+  P->>P: update list in place, announce Action saved
+  Note over F: on error the form stays open with all values and a message
+</pre></div>
+</div>
+
+<h3>What changes</h3>
+<table>
+<tr><th>Added</th><th>Modified</th></tr>
+<tr><td>
+<code>client/src/api/actions.ts</code><br>
+<code>client/src/actions/action-form.ts</code><br>
+<code>client/src/components/ActionForm.tsx</code>, <code>ActionCard.tsx</code>, <code>ActionsTakenPanel.tsx</code><br>
+tests: <code>client/tests/lab-04/{action-form.test.ts, ActionsTaken.test.tsx, actions-test-helpers.ts}</code><br>
+<code>e2e/lab-04/actions-taken-flow.spec.ts</code>
+</td><td>
+<code>client/src/components/TicketBadges.tsx</code> (Action badge)<br>
+<code>client/src/components/StaffTicketDetail.tsx</code>, <code>TicketDetail.tsx</code> (mount the panel)<br>
+<code>client/tests/lab-02/TicketDetail.test.tsx</code>, <code>lab-03/StaffTicketDetail.test.tsx</code>, <code>lab-04/CarryOvers.test.tsx</code> (stub the new URL)<br>
+<code>docs/lab-04/tests.md</code>
+</td></tr>
+</table>
+
+<h3>Parallelization analysis</h3>
+<table>
+<tr><th>Batch</th><th>Tasks</th><th>Why</th></tr>
+<tr><td>1</td><td>T1 API layer</td><td>Types used by everything else</td></tr>
+<tr><td>2</td><td>T2 pure form logic (+unit test)</td><td>Needs T1 types</td></tr>
+<tr><td>3</td><td>T3 badge + ActionForm, T7a E2E spec file</td><td>Disjoint files; the E2E only needs the final labels, which this plan fixes</td></tr>
+<tr><td>4</td><td>T4 ActionCard + ActionsTakenPanel</td><td>Needs T2, T3</td></tr>
+<tr><td>5</td><td>T5 mount in both screens + fix old stubs</td><td>Needs T4</td></tr>
+<tr><td>6</td><td>T6 component tests, then T7b E2E run + docs</td><td>Need everything</td></tr>
+</table>
+<p class="meta">Mostly a chain because each piece builds on the one before; the only true parallel gain is writing the E2E spec while components are built. Critical path: T1 → T2 → T3 → T4 → T5 → T6.</p>
+
+<h2>B. Implementation plan</h2>
+<div id="plan">Loading plan...</div>
+</main>
+
+<script type="text/plain" id="plan-md">
+# Feature 26: Actions Taken UI Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Show, add, edit, start, complete, cancel and follow-up Actions Taken on Ticket Detail for IT Staff and Administrators, and show them read-only to Requesters.
+
+**Architecture:** A pure `action-form.ts` (values, allowed statuses, locks, payload, validation via `@toktickit/shared`) feeds `ActionForm`; `ActionCard` renders one Action with its buttons; `ActionsTakenPanel` owns fetching, the list, and the form mode, and is mounted on both Ticket Detail screens.
+
+**Tech Stack:** React 19, TypeScript, Vite, Bootstrap "Zen Green", Vitest + Testing Library (jsdom), Playwright.
+
+**Spec:** `docs/lab-04/ui-spec.md` §4, §7, §8; `docs/lab-04/api-spec.md` §1; `docs/lab-04/tests.md` UI4-08 to UI4-16, E2E4-01; feature 25 API (`client` talks to `GET/POST /api/tickets/:id/actions`, `PATCH .../actions/:actionId`, `GET /api/users/assignable`).
+
+## Global Constraints
+
+- Working directory for commands: `/Users/jinnakanchaviengpob/Desktop/3rd Year/CPE_334/ToKTickIT`; client commands run in `client/`.
+- Do not create branches, push, open PRs or close issues. Stage only; commit only when the user says so.
+- Server code is not touched in this feature. If the API behaves differently from `api-spec.md`, stop and report.
+- Text from the server is rendered only through React text interpolation (no `dangerouslySetInnerHTML`).
+- Messages (exact): `This action was changed by someone else. Reload to see the latest.`, `This ticket is closed, so actions can no longer be changed.`, `No actions recorded yet.`, `Unable to save the action. Your text is still here.`, `Action saved`, `You cannot change actions on this ticket.`
+- Every control is reachable by keyboard; status is never shown by color alone (the badge always has its text label); dynamic results use `role="status"` or `role="alert"`; invalid fields set `aria-invalid` and `aria-describedby`.
+- Each task ends with `cd client && npx vitest run` green and `npx tsc --noEmit -p .` clean (the client test script is `npm test -w client`).
+- Existing UI patterns to copy: `client/src/components/NotesPanel.tsx` (panel layout, loading/error states), `ServiceActionsPanel.tsx` (select + button), Bootstrap classes only, `.field-readonly` for read-only values.
+
+## File Structure
+
+| File | Responsibility |
+|---|---|
+| `client/src/api/actions.ts` | `ActionTaken` type, `ActionApiError`, `fetchActions`, `createAction`, `updateAction` |
+| `client/src/actions/action-form.ts` | Pure form logic: `FormMode`, `FormValues`, `initialValues`, `statusOptions`, `lockedFields`, `buildPayload`, `validateValues`, `newRequestId`, `toLocalInput` |
+| `client/src/components/TicketBadges.tsx` | add `ActionStatusBadge` |
+| `client/src/components/ActionForm.tsx` | The create/edit form |
+| `client/src/components/ActionCard.tsx` | One Action: details, buttons, inline cancel confirmation |
+| `client/src/components/ActionsTakenPanel.tsx` | Fetch, list, mode, errors, announcements |
+| `client/tests/lab-04/actions-test-helpers.ts` | `makeAction`, `stubActionsApi` (stateful fake) |
+
+---
+
+### Task 1: API layer
+
+**Files:**
+- Create: `client/src/api/actions.ts`
+
+**Interfaces:**
+- Produces: `type ActionTaken`; `class ActionApiError extends Error { code: string; fields: Record<string,string>; detail: Record<string,unknown> }`; `fetchActions(ticketId: number, signal?: AbortSignal): Promise<ActionTaken[]>`; `createAction(ticketId: number, payload: Record<string, unknown>): Promise<ActionTaken>`; `updateAction(ticketId: number, actionId: number, payload: Record<string, unknown>): Promise<ActionTaken>`; constants `SAVE_FAILED_MESSAGE`.
+
+- [ ] **Step 1: Create the file:**
+
+```ts
+import type { ActionStatusValue } from '@toktickit/shared'
+
+export type ActionTaken = {
+  id: number
+  ticketId: number
+  version: number
+  actionAt: string
+  description: string
+  result: string | null
+  status: ActionStatusValue
+  createdById: number
+  createdByName: string
+  assigneeId: number
+  assigneeName: string
+  followUpRequired: boolean
+  followUpNote: string | null
+  followUpDoneAt: string | null
+  attachmentNotes: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export const SAVE_FAILED_MESSAGE = 'Unable to save the action. Your text is still here.'
+
+export class ActionApiError extends Error {
+  constructor(
+    readonly code: string,
+    message: string,
+    readonly fields: Record<string, string> = {},
+    readonly detail: Record<string, unknown> = {},
+  ) {
+    super(message)
+  }
+}
+
+const ERROR_MESSAGES: Record<string, string> = {
+  STALE_UPDATE: 'This action was changed by someone else. Reload to see the latest.',
+  TICKET_LOCKED: 'This ticket is closed, so actions can no longer be changed.',
+  ACTION_LOCKED: 'This action can no longer be changed.',
+  INVALID_ACTION_TRANSITION: 'That status change is not allowed for this action.',
+  ACTION_NOT_FOUND: 'This action no longer exists. Reload to see the latest.',
+  TICKET_NOT_FOUND: 'This ticket no longer exists.',
+  FORBIDDEN: 'You cannot change actions on this ticket.',
+  TICKET_FORBIDDEN: 'You do not have access to this ticket.',
+}
+
+async function readError(response: Response, fallback: string): Promise<ActionApiError> {
+  const body = (await response.json().catch(() => ({}))) as {
+    error?: string
+    fields?: Record<string, string>
+    [key: string]: unknown
+  }
+  const code = body.error ?? 'UNKNOWN_ERROR'
+  return new ActionApiError(code, ERROR_MESSAGES[code] ?? fallback, body.fields ?? {}, body)
+}
+
+const JSON_HEADERS = { 'Content-Type': 'application/json' }
+
+export async function fetchActions(ticketId: number, signal?: AbortSignal): Promise<ActionTaken[]> {
+  const response = await fetch(`/api/tickets/${ticketId}/actions`, { credentials: 'include', signal })
+  if (!response.ok) throw await readError(response, 'Unable to load the actions.')
+  return response.json() as Promise<ActionTaken[]>
+}
+
+export async function createAction(ticketId: number, payload: Record<string, unknown>): Promise<ActionTaken> {
+  const response = await fetch(`/api/tickets/${ticketId}/actions`, {
+    method: 'POST',
+    headers: JSON_HEADERS,
+    credentials: 'include',
+    body: JSON.stringify(payload),
+  })
+  if (!response.ok) throw await readError(response, SAVE_FAILED_MESSAGE)
+  return response.json() as Promise<ActionTaken>
+}
+
+export async function updateAction(
+  ticketId: number,
+  actionId: number,
+  payload: Record<string, unknown>,
+): Promise<ActionTaken> {
+  const response = await fetch(`/api/tickets/${ticketId}/actions/${actionId}`, {
+    method: 'PATCH',
+    headers: JSON_HEADERS,
+    credentials: 'include',
+    body: JSON.stringify(payload),
+  })
+  if (!response.ok) throw await readError(response, SAVE_FAILED_MESSAGE)
+  return response.json() as Promise<ActionTaken>
+}
+```
+
+- [ ] **Step 2: Typecheck.** `cd client && npx tsc --noEmit -p .` → clean.
+
+- [ ] **Step 3: Stage.** `git add client/src/api/actions.ts`
+
+---
+
+### Task 2: Pure form logic (unit-tested)
+
+**Files:**
+- Create: `client/src/actions/action-form.ts`
+- Test: `client/tests/lab-04/action-form.test.ts`
+
+**Interfaces:**
+- Consumes: `ActionTaken` (Task 1); from `@toktickit/shared`: `ACTION_CREATE_STATUSES`, `allowedActionMoves`, `parseActionBody`, `pickActionBody`, `type ActionDraft`, `type ActionStatusValue`.
+- Produces:
+  - `type FormMode = { kind: 'create' } | { kind: 'edit'; action: ActionTaken; presetStatus?: ActionStatusValue }`
+  - `type FormValues = { description: string; status: ActionStatusValue; result: string; actionAt: string; assigneeId: string; followUpRequired: boolean; followUpNote: string; attachmentNotes: string }`
+  - `type FieldKey = keyof FormValues`
+  - `initialValues(mode: FormMode, now: Date, currentUserId: number | undefined): FormValues`
+  - `statusOptions(mode: FormMode): ActionStatusValue[]`
+  - `lockedFields(mode: FormMode): ReadonlySet<FieldKey>`
+  - `buildPayload(mode: FormMode, values: FormValues, requestId: string, now?: Date): Record<string, unknown>`
+  - `validateValues(mode: FormMode, values: FormValues, now: Date): Record<string, string>`
+  - `newRequestId(): string`, `toLocalInput(date: Date): string`
+
+- [ ] **Step 1: Write the failing test** `client/tests/lab-04/action-form.test.ts`:
+
+```ts
+import { describe, expect, it } from 'vitest'
+import {
+  buildPayload,
+  initialValues,
+  lockedFields,
+  newRequestId,
+  statusOptions,
+  toLocalInput,
+  validateValues,
+  type FormMode,
+} from '../../src/actions/action-form.js'
+import type { ActionTaken } from '../../src/api/actions.js'
+
+const NOW = new Date('2026-10-31T10:00:30.000Z')
+
+function action(overrides: Partial<ActionTaken> = {}): ActionTaken {
+  return {
+    id: 5, ticketId: 42, version: 3, actionAt: '2026-10-31T08:00:00.000Z', description: 'Checked the dock.',
+    result: null, status: 'PLANNED', createdById: 9, createdByName: 'Alex Rivera', assigneeId: 10, assigneeName: 'Priya Nair',
+    followUpRequired: false, followUpNote: null, followUpDoneAt: null, attachmentNotes: null,
+    createdAt: '2026-10-31T07:00:00.000Z', updatedAt: '2026-10-31T07:00:00.000Z', ...overrides,
+  }
+}
+
+const create: FormMode = { kind: 'create' }
+
+describe('initialValues', () => {
+  it('defaults a new action to Planned, now (local, minutes), and the current user', () => {
+    const values = initialValues(create, NOW, 9)
+    expect(values).toMatchObject({ description: '', status: 'PLANNED', result: '', assigneeId: '9', followUpRequired: false })
+    expect(values.actionAt).toBe(toLocalInput(NOW))
+  })
+
+  it('fills an edit from the action and honours a preset status', () => {
+    const values = initialValues({ kind: 'edit', action: action({ result: 'r' }), presetStatus: 'COMPLETED' }, NOW, 9)
+    expect(values).toMatchObject({ description: 'Checked the dock.', status: 'COMPLETED', result: 'r', assigneeId: '10' })
+  })
+})
+
+describe('statusOptions and lockedFields (BR-L4-05)', () => {
+  it('offers Planned, In Progress, Completed on create', () => {
+    expect(statusOptions(create)).toEqual(['PLANNED', 'IN_PROGRESS', 'COMPLETED'])
+  })
+
+  it('offers the current status plus allowed moves on edit', () => {
+    expect(statusOptions({ kind: 'edit', action: action({ status: 'PLANNED' }) })).toEqual(['PLANNED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'])
+    expect(statusOptions({ kind: 'edit', action: action({ status: 'IN_PROGRESS' }) })).toEqual(['IN_PROGRESS', 'COMPLETED', 'CANCELLED'])
+    expect(statusOptions({ kind: 'edit', action: action({ status: 'COMPLETED' }) })).toEqual(['COMPLETED'])
+  })
+
+  it('locks everything except follow-up and attachment notes on a Completed action', () => {
+    const locked = lockedFields({ kind: 'edit', action: action({ status: 'COMPLETED', result: 'r' }) })
+    expect([...locked].sort()).toEqual(['actionAt', 'assigneeId', 'description', 'result', 'status'])
+    expect(lockedFields(create).size).toBe(0)
+    expect(lockedFields({ kind: 'edit', action: action() }).size).toBe(0)
+  })
+})
+
+describe('buildPayload', () => {
+  it('builds a create body with a trimmed text, ISO time, numeric assignee and the requestId', () => {
+    const values = { ...initialValues(create, NOW, 9), description: '  Replaced the dock.  ', followUpRequired: true, followUpNote: ' Check Friday ' }
+    const payload = buildPayload(create, values, 'act-12345678', NOW)
+    expect(payload).toMatchObject({
+      requestId: 'act-12345678',
+      description: 'Replaced the dock.',
+      status: 'PLANNED',
+      assigneeId: 9,
+      followUpRequired: true,
+      followUpNote: 'Check Friday',
+    })
+    expect(typeof payload.actionAt).toBe('string')
+    expect(payload.version).toBeUndefined()
+  })
+
+  it('omits assigneeId when none is chosen', () => {
+    const values = { ...initialValues(create, NOW, undefined), description: 'x' }
+    expect('assigneeId' in buildPayload(create, values, 'act-12345678', NOW)).toBe(false)
+  })
+
+  it('sends version and only changed or editable fields on edit', () => {
+    const mode: FormMode = { kind: 'edit', action: action() }
+    const values = { ...initialValues(mode, NOW, 9), description: 'Changed.' }
+    const payload = buildPayload(mode, values, 'act-ignored1', NOW)
+    expect(payload).toMatchObject({ version: 3, description: 'Changed.' })
+    expect(payload.requestId).toBeUndefined()
+    expect(payload.assigneeId).toBeUndefined()
+    expect(payload.status).toBeUndefined()
+    expect(payload.actionAt).toBeUndefined()
+  })
+
+  it('sends only follow-up fields and attachment notes for a Completed action', () => {
+    const mode: FormMode = { kind: 'edit', action: action({ status: 'COMPLETED', result: 'Fixed.' }) }
+    const values = { ...initialValues(mode, NOW, 9), followUpRequired: true, followUpNote: 'Later', attachmentNotes: 'photo.jpg' }
+    const payload = buildPayload(mode, values, 'act-ignored1', NOW)
+    expect(Object.keys(payload).sort()).toEqual(['attachmentNotes', 'followUpNote', 'followUpRequired', 'version'])
+  })
+})
+
+describe('validateValues (uses the shared rules)', () => {
+  it('returns the shared messages and the follow-up pairing rule', () => {
+    const errors = validateValues(create, { ...initialValues(create, NOW, 9), followUpRequired: true }, NOW)
+    expect(errors.description).toBe('Description must be 1-2000 characters.')
+    expect(errors.followUpNote).toBe('Follow-up note is required when follow-up is needed.')
+  })
+
+  it('requires a result when Completed', () => {
+    const values = { ...initialValues(create, NOW, 9), description: 'd', status: 'COMPLETED' as const }
+    expect(validateValues(create, values, NOW).result).toBe('Result is required when the action is completed.')
+  })
+
+  it('requires an action date', () => {
+    const values = { ...initialValues(create, NOW, 9), description: 'd', actionAt: '' }
+    expect(validateValues(create, values, NOW).actionAt).toBe('Action date and time is required.')
+  })
+
+  it('passes a valid create', () => {
+    expect(validateValues(create, { ...initialValues(create, NOW, 9), description: 'ok' }, NOW)).toEqual({})
+  })
+})
+
+describe('newRequestId', () => {
+  it('makes a safe, unique id', () => {
+    const a = newRequestId()
+    expect(a).toMatch(/^[A-Za-z0-9_-]{8,64}$/)
+    expect(newRequestId()).not.toBe(a)
+  })
+})
+```
+
+- [ ] **Step 2: Run to verify it fails.** `cd client && npx vitest run tests/lab-04/action-form.test.ts` → FAIL (module not found).
+
+- [ ] **Step 3: Implement `client/src/actions/action-form.ts`:**
+
+```ts
+import {
+  ACTION_CREATE_STATUSES,
+  allowedActionMoves,
+  parseActionBody,
+  pickActionBody,
+  type ActionDraft,
+  type ActionStatusValue,
+} from '@toktickit/shared'
+import type { ActionTaken } from '../api/actions.js'
+
+export type FormMode =
+  | { kind: 'create' }
+  | { kind: 'edit'; action: ActionTaken; presetStatus?: ActionStatusValue }
+
+export type FormValues = {
+  description: string
+  status: ActionStatusValue
+  result: string
+  actionAt: string
+  assigneeId: string
+  followUpRequired: boolean
+  followUpNote: string
+  attachmentNotes: string
+}
+export type FieldKey = keyof FormValues
+
+const pad = (value: number) => String(value).padStart(2, '0')
+
+/** Value for <input type="datetime-local">: local time, minutes precision. */
+export function toLocalInput(date: Date): string {
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
+function fromLocalInput(value: string): string | null {
+  if (value === '') return null
+  const parsed = new Date(value)
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString()
+}
+
+export function newRequestId(): string {
+  const random =
+    typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`
+  return `act-${random}`
+}
+
+export function initialValues(mode: FormMode, now: Date, currentUserId: number | undefined): FormValues {
+  if (mode.kind === 'create') {
+    return {
+      description: '',
+      status: 'PLANNED',
+      result: '',
+      actionAt: toLocalInput(now),
+      assigneeId: currentUserId === undefined ? '' : String(currentUserId),
+      followUpRequired: false,
+      followUpNote: '',
+      attachmentNotes: '',
+    }
+  }
+  const { action } = mode
+  return {
+    description: action.description,
+    status: mode.presetStatus ?? action.status,
+    result: action.result ?? '',
+    actionAt: toLocalInput(new Date(action.actionAt)),
+    assigneeId: String(action.assigneeId),
+    followUpRequired: action.followUpRequired,
+    followUpNote: action.followUpNote ?? '',
+    attachmentNotes: action.attachmentNotes ?? '',
+  }
+}
+
+export function statusOptions(mode: FormMode): ActionStatusValue[] {
+  if (mode.kind === 'create') return [...ACTION_CREATE_STATUSES]
+  return [mode.action.status, ...allowedActionMoves(mode.action.status)]
+}
+
+const COMPLETED_LOCKED: readonly FieldKey[] = ['description', 'status', 'result', 'actionAt', 'assigneeId']
+
+/** BR-L4-05: a Completed action may only change its follow-up fields and attachment notes. */
+export function lockedFields(mode: FormMode): ReadonlySet<FieldKey> {
+  if (mode.kind === 'edit' && mode.action.status === 'COMPLETED') return new Set(COMPLETED_LOCKED)
+  return new Set()
+}
+
+export function buildPayload(
+  mode: FormMode,
+  values: FormValues,
+  requestId: string,
+  now: Date = new Date(),
+): Record<string, unknown> {
+  const followUp: Record<string, unknown> = { followUpRequired: values.followUpRequired }
+  if (values.followUpRequired) followUp.followUpNote = values.followUpNote.trim()
+
+  if (mode.kind === 'create') {
+    const payload: Record<string, unknown> = {
+      requestId,
+      description: values.description.trim(),
+      status: values.status,
+      result: values.result.trim(),
+      attachmentNotes: values.attachmentNotes.trim(),
+      ...followUp,
+    }
+    const actionAt = fromLocalInput(values.actionAt)
+    payload.actionAt = actionAt ?? values.actionAt
+    if (values.assigneeId !== '') payload.assigneeId = Number(values.assigneeId)
+    void now
+    return payload
+  }
+
+  const { action } = mode
+  const initial = initialValues({ kind: 'edit', action }, now, undefined)
+  const payload: Record<string, unknown> = {
+    version: action.version,
+    attachmentNotes: values.attachmentNotes.trim(),
+    ...followUp,
+  }
+  if (lockedFields(mode).size > 0) return payload
+
+  payload.description = values.description.trim()
+  payload.result = values.result.trim()
+  if (values.status !== action.status) payload.status = values.status
+  if (values.actionAt !== initial.actionAt) payload.actionAt = fromLocalInput(values.actionAt) ?? values.actionAt
+  if (values.assigneeId !== '' && values.assigneeId !== initial.assigneeId) payload.assigneeId = Number(values.assigneeId)
+  return payload
+}
+
+function toDraft(action: ActionTaken): ActionDraft {
+  return {
+    description: action.description,
+    status: action.status,
+    result: action.result,
+    actionAt: new Date(action.actionAt),
+    followUpRequired: action.followUpRequired,
+    followUpNote: action.followUpNote,
+    attachmentNotes: action.attachmentNotes,
+  }
+}
+
+/** Same rules the server applies (shared package), so messages match before a round trip. */
+export function validateValues(mode: FormMode, values: FormValues, now: Date): Record<string, string> {
+  const { version: _version, requestId: _requestId, ...body } = buildPayload(mode, values, 'validate-only', now)
+  void _version
+  void _requestId
+  const existing = mode.kind === 'edit' ? toDraft(mode.action) : null
+  const errors: Record<string, string> = { ...parseActionBody(pickActionBody(body), existing, now).fields }
+  if (!lockedFields(mode).has('actionAt') && fromLocalInput(values.actionAt) === null) {
+    errors.actionAt = 'Action date and time is required.'
+  }
+  return errors
+}
+```
+
+- [ ] **Step 4: Run.** `npx vitest run tests/lab-04/action-form.test.ts` → PASS; `npx tsc --noEmit -p .` clean. If `buildPayload` for create leaves `result: ''`/`attachmentNotes: ''`, that is intended: the server trims and stores empty text as null.
+
+- [ ] **Step 5: Stage.** `git add client/src/actions client/tests/lab-04/action-form.test.ts`
+
+---
+
+### Task 3: Action badge and the form component
+
+**Files:**
+- Modify: `client/src/components/TicketBadges.tsx`
+- Create: `client/src/components/ActionForm.tsx`
+
+**Interfaces:**
+- Consumes: Task 1 and Task 2 exports; `AssignableUser` from `client/src/api/users.ts`.
+- Produces: `ActionStatusBadge({ status: ActionStatusValue })`; `ActionForm` props:
+  `{ mode: FormMode; assignable: AssignableUser[] | 'error' | null; currentUserId: number | undefined; onSubmit: (payload: Record<string, unknown>) => Promise<void>; onCancel: () => void; onReload: () => void }`.
+
+- [ ] **Step 1: Add the badge.** In `TicketBadges.tsx` change the shared import to `import { ACTION_STATUS_LABELS, PRIORITY_LABELS, STATUS_LABELS, type ActionStatusValue } from '@toktickit/shared'` and append:
+
+```tsx
+const ACTION_BADGE_CLASS: Record<ActionStatusValue, string> = {
+  PLANNED: 'bg-info-subtle text-info-emphasis',
+  IN_PROGRESS: 'bg-warning-subtle text-warning-emphasis',
+  COMPLETED: 'bg-success-subtle text-success-emphasis',
+  CANCELLED: 'bg-secondary-subtle text-secondary-emphasis text-decoration-line-through',
+}
+
+export function ActionStatusBadge({ status }: { status: ActionStatusValue }) {
+  return <span className={`badge rounded-pill ${ACTION_BADGE_CLASS[status]}`}>{ACTION_STATUS_LABELS[status]}</span>
+}
+```
+
+- [ ] **Step 2: Create `client/src/components/ActionForm.tsx`:**
+
+```tsx
+import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { ACTION_DESCRIPTION_MAX, ACTION_STATUS_LABELS, type ActionStatusValue } from '@toktickit/shared'
+import { ActionApiError, SAVE_FAILED_MESSAGE } from '../api/actions.js'
+import type { AssignableUser } from '../api/users.js'
+import {
+  buildPayload,
+  initialValues,
+  lockedFields,
+  newRequestId,
+  statusOptions,
+  validateValues,
+  type FieldKey,
+  type FormMode,
+  type FormValues,
+} from '../actions/action-form.js'
+
+const FIELD_ID: Record<FieldKey, string> = {
+  description: 'action-description',
+  status: 'action-status',
+  result: 'action-result',
+  actionAt: 'action-at',
+  assigneeId: 'action-assignee',
+  followUpRequired: 'action-follow-up-required',
+  followUpNote: 'action-follow-up-note',
+  attachmentNotes: 'action-attachment-notes',
+}
+const FOCUS_ORDER: FieldKey[] = ['description', 'status', 'result', 'actionAt', 'assigneeId', 'followUpNote', 'attachmentNotes']
+
+function FieldError({ field, message }: { field: FieldKey; message?: string }) {
+  if (!message) return null
+  return (
+    <div id={`${FIELD_ID[field]}-error`} className="invalid-feedback d-block">
+      {message}
+    </div>
+  )
+}
+
+export function ActionForm({
+  mode,
+  assignable,
+  currentUserId,
+  onSubmit,
+  onCancel,
+  onReload,
+}: {
+  mode: FormMode
+  assignable: AssignableUser[] | 'error' | null
+  currentUserId: number | undefined
+  onSubmit: (payload: Record<string, unknown>) => Promise<void>
+  onCancel: () => void
+  onReload: () => void
+}) {
+  const [values, setValues] = useState<FormValues>(() => initialValues(mode, new Date(), currentUserId))
+  const [errors, setErrors] = useState<Record<string, string>>({})
+  const [formError, setFormError] = useState('')
+  const [isStale, setIsStale] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
+  const [focusTick, setFocusTick] = useState(0)
+  const savingRef = useRef(false)
+  const requestIdRef = useRef(newRequestId())
+  const locked = lockedFields(mode)
+  const isCreate = mode.kind === 'create'
+  const presetCompleted = mode.kind === 'edit' && mode.presetStatus === 'COMPLETED'
+
+  useEffect(() => {
+    if (focusTick === 0) return
+    const first = FOCUS_ORDER.find((key) => errors[key])
+    if (first) document.getElementById(FIELD_ID[first])?.focus()
+  }, [focusTick]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  function set<K extends FieldKey>(key: K, value: FormValues[K]) {
+    setValues((current) => ({ ...current, [key]: value }))
+  }
+
+  function describedBy(field: FieldKey, extra?: string): string | undefined {
+    const ids = [errors[field] ? `${FIELD_ID[field]}-error` : '', extra ?? ''].filter(Boolean)
+    return ids.length > 0 ? ids.join(' ') : undefined
+  }
+
+  async function handleSubmit(event: FormEvent) {
+    event.preventDefault()
+    if (savingRef.current) return
+
+    const found = validateValues(mode, values, new Date())
+    if (Object.keys(found).length > 0) {
+      setErrors(found)
+      setFormError('')
+      setIsStale(false)
+      setFocusTick((tick) => tick + 1)
+      return
+    }
+
+    savingRef.current = true
+    setIsSaving(true)
+    setErrors({})
+    setFormError('')
+    setIsStale(false)
+    try {
+      await onSubmit(buildPayload(mode, values, requestIdRef.current))
+    } catch (error) {
+      if (error instanceof ActionApiError) {
+        setErrors(error.fields)
+        setFormError(error.code === 'VALIDATION_FAILED' ? 'Please fix the highlighted fields.' : error.message)
+        setIsStale(error.code === 'STALE_UPDATE')
+        if (Object.keys(error.fields).length > 0) setFocusTick((tick) => tick + 1)
+      } else {
+        setFormError(SAVE_FAILED_MESSAGE)
+      }
+    } finally {
+      savingRef.current = false
+      setIsSaving(false)
+    }
+  }
+
+  const remaining = ACTION_DESCRIPTION_MAX - values.description.length
+  const roClass = (key: FieldKey) => (locked.has(key) ? ' field-readonly' : '')
+
+  return (
+    <form onSubmit={(event) => void handleSubmit(event)} noValidate aria-label={isCreate ? 'Add action' : 'Edit action'} className="border rounded p-3 mb-3 bg-white">
+      <h3 className="h6 fw-bold mb-3">{isCreate ? 'Add action' : 'Edit action'}</h3>
+
+      {formError && (
+        <div className="alert alert-danger d-flex flex-wrap align-items-center gap-2" role="alert">
+          <span>{formError}</span>
+          {isStale && (
+            <button type="button" className="btn btn-outline-danger btn-sm" onClick={onReload}>
+              Reload
+            </button>
+          )}
+        </div>
+      )}
+
+      {mode.kind === 'edit' && (
+        <div className="row g-3 mb-3">
+          <div className="col-12 col-md-6">
+            <div className="form-label fw-semibold mb-1">Performed by</div>
+            <div className="form-control field-readonly" aria-readonly="true">{mode.action.createdByName}</div>
+          </div>
+          <div className="col-12 col-md-6">
+            <div className="form-label fw-semibold mb-1">Created</div>
+            <div className="form-control field-readonly" aria-readonly="true">
+              {new Date(mode.action.createdAt).toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="mb-3">
+        <label htmlFor={FIELD_ID.description} className="form-label fw-semibold">Description *</label>
+        <textarea
+          id={FIELD_ID.description}
+          className={`form-control${roClass('description')}${errors.description ? ' is-invalid' : ''}`}
+          rows={3}
+          value={values.description}
+          readOnly={locked.has('description')}
+          aria-readonly={locked.has('description') || undefined}
+          aria-invalid={errors.description ? true : undefined}
+          aria-describedby={describedBy('description', 'action-description-count')}
+          onChange={(event) => set('description', event.target.value)}
+        />
+        <div id="action-description-count" className="form-text">
+          {remaining >= 0 ? `${remaining} characters remaining` : `${-remaining} characters over the limit`}
+        </div>
+        <FieldError field="description" message={errors.description} />
+      </div>
+
+      <div className="row g-3 mb-3">
+        <div className="col-12 col-md-6">
+          <label htmlFor={FIELD_ID.status} className="form-label fw-semibold">Status</label>
+          <select
+            id={FIELD_ID.status}
+            className={`form-select${roClass('status')}${errors.status ? ' is-invalid' : ''}`}
+            value={values.status}
+            disabled={locked.has('status')}
+            aria-invalid={errors.status ? true : undefined}
+            aria-describedby={describedBy('status')}
+            onChange={(event) => set('status', event.target.value as ActionStatusValue)}
+          >
+            {statusOptions(mode).map((status) => (
+              <option key={status} value={status}>{ACTION_STATUS_LABELS[status]}</option>
+            ))}
+          </select>
+          <FieldError field="status" message={errors.status} />
+        </div>
+
+        <div className="col-12 col-md-6">
+          <label htmlFor={FIELD_ID.actionAt} className="form-label fw-semibold">Action date and time</label>
+          <input
+            id={FIELD_ID.actionAt}
+            type="datetime-local"
+            className={`form-control${roClass('actionAt')}${errors.actionAt ? ' is-invalid' : ''}`}
+            value={values.actionAt}
+            readOnly={locked.has('actionAt')}
+            aria-readonly={locked.has('actionAt') || undefined}
+            aria-invalid={errors.actionAt ? true : undefined}
+            aria-describedby={describedBy('actionAt')}
+            onChange={(event) => set('actionAt', event.target.value)}
+          />
+          <FieldError field="actionAt" message={errors.actionAt} />
+        </div>
+      </div>
+
+      <div className="mb-3">
+        <label htmlFor={FIELD_ID.result} className="form-label fw-semibold">
+          Result{values.status === 'COMPLETED' ? ' *' : ''}
+        </label>
+        <textarea
+          id={FIELD_ID.result}
+          className={`form-control${roClass('result')}${errors.result ? ' is-invalid' : ''}`}
+          rows={2}
+          value={values.result}
+          readOnly={locked.has('result')}
+          aria-readonly={locked.has('result') || undefined}
+          aria-invalid={errors.result ? true : undefined}
+          aria-describedby={describedBy('result')}
+          autoFocus={presetCompleted}
+          onChange={(event) => set('result', event.target.value)}
+        />
+        <FieldError field="result" message={errors.result} />
+      </div>
+
+      <div className="mb-3">
+        <label htmlFor={FIELD_ID.assigneeId} className="form-label fw-semibold">Assigned to</label>
+        {assignable === 'error' ? (
+          <p id="action-assignee-note" className="small text-danger mb-0">
+            Unable to load the staff list. The action will be assigned to you.
+          </p>
+        ) : (
+          <select
+            id={FIELD_ID.assigneeId}
+            className={`form-select${roClass('assigneeId')}${errors.assigneeId ? ' is-invalid' : ''}`}
+            value={values.assigneeId}
+            disabled={locked.has('assigneeId') || assignable === null}
+            aria-invalid={errors.assigneeId ? true : undefined}
+            aria-describedby={describedBy('assigneeId')}
+            onChange={(event) => set('assigneeId', event.target.value)}
+          >
+            {assignable === null && <option value={values.assigneeId}>Loading staff…</option>}
+            {(assignable ?? []).map((user) => (
+              <option key={user.id} value={user.id}>
+                {user.name}{user.role === 'ADMINISTRATOR' ? ' (Administrator)' : ''}
+              </option>
+            ))}
+          </select>
+        )}
+        <FieldError field="assigneeId" message={errors.assigneeId} />
+      </div>
+
+      <div className="form-check mb-2">
+        <input
+          id={FIELD_ID.followUpRequired}
+          type="checkbox"
+          className="form-check-input"
+          checked={values.followUpRequired}
+          onChange={(event) => set('followUpRequired', event.target.checked)}
+        />
+        <label htmlFor={FIELD_ID.followUpRequired} className="form-check-label">Follow-up required</label>
+      </div>
+
+      {values.followUpRequired && (
+        <div className="mb-3">
+          <label htmlFor={FIELD_ID.followUpNote} className="form-label fw-semibold">Follow-up note *</label>
+          <textarea
+            id={FIELD_ID.followUpNote}
+            className={`form-control${errors.followUpNote ? ' is-invalid' : ''}`}
+            rows={2}
+            value={values.followUpNote}
+            aria-invalid={errors.followUpNote ? true : undefined}
+            aria-describedby={describedBy('followUpNote')}
+            onChange={(event) => set('followUpNote', event.target.value)}
+          />
+          <FieldError field="followUpNote" message={errors.followUpNote} />
+        </div>
+      )}
+
+      <div className="mb-3">
+        <label htmlFor={FIELD_ID.attachmentNotes} className="form-label fw-semibold">Attachment notes</label>
+        <input
+          id={FIELD_ID.attachmentNotes}
+          type="text"
+          className={`form-control${errors.attachmentNotes ? ' is-invalid' : ''}`}
+          value={values.attachmentNotes}
+          aria-invalid={errors.attachmentNotes ? true : undefined}
+          aria-describedby={describedBy('attachmentNotes', 'action-attachment-help')}
+          onChange={(event) => set('attachmentNotes', event.target.value)}
+        />
+        <div id="action-attachment-help" className="form-text">Which file to look at</div>
+        <FieldError field="attachmentNotes" message={errors.attachmentNotes} />
+      </div>
+
+      <div className="d-flex gap-2">
+        <button type="submit" className="btn btn-primary" disabled={isSaving}>
+          {isSaving ? 'Saving…' : 'Save'}
+        </button>
+        <button type="button" className="btn btn-outline-secondary" onClick={onCancel} disabled={isSaving}>
+          Cancel
+        </button>
+      </div>
+    </form>
+  )
+}
+```
+
+- [ ] **Step 3: Typecheck.** `npx tsc --noEmit -p .` → clean. (The component is exercised by Task 6's tests; no separate test here.)
+
+- [ ] **Step 4: Stage.** `git add client/src/components/TicketBadges.tsx client/src/components/ActionForm.tsx`
+
+---
+
+### Task 4: Action card and panel
+
+**Files:**
+- Create: `client/src/components/ActionCard.tsx`, `client/src/components/ActionsTakenPanel.tsx`
+
+**Interfaces:**
+- Consumes: Tasks 1 to 3; `fetchAssignableUsers` and `AssignableUser` from `../api/users.js`; `TicketStatus` from `../types/ticket.js`.
+- Produces: `ActionsTakenPanel` props `{ ticketId: number; ticketStatus: TicketStatus; canEdit: boolean; currentUserId?: number }`.
+
+- [ ] **Step 1: Create `ActionCard.tsx`:**
+
+```tsx
+import { useState } from 'react'
+import type { ActionTaken } from '../api/actions.js'
+import { ActionStatusBadge } from './TicketBadges.js'
+
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleString(undefined, {
+    year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+  })
+}
+
+export function ActionCard({
+  action,
+  canChange,
+  busy,
+  onEdit,
+  onStart,
+  onComplete,
+  onCancelAction,
+  onMarkFollowUpDone,
+}: {
+  action: ActionTaken
+  canChange: boolean
+  busy: boolean
+  onEdit: () => void
+  onStart: () => void
+  onComplete: () => void
+  onCancelAction: () => void
+  onMarkFollowUpDone: () => void
+}) {
+  const [confirming, setConfirming] = useState(false)
+  const isFinal = action.status === 'CANCELLED'
+  const followUpOpen = action.followUpRequired && action.followUpDoneAt === null && action.status !== 'CANCELLED'
+
+  return (
+    <li className="border rounded p-3 bg-white" aria-label={`Action: ${action.description.slice(0, 60)}`}>
+      <div className="d-flex flex-wrap justify-content-between gap-2 mb-1">
+        <ActionStatusBadge status={action.status} />
+        <span className="small text-body-secondary">{formatDate(action.actionAt)}</span>
+      </div>
+      <p className="mb-1" style={{ whiteSpace: 'pre-wrap' }}>{action.description}</p>
+      {action.result && (
+        <p className="mb-1" style={{ whiteSpace: 'pre-wrap' }}>
+          <span className="fw-semibold">Result: </span>{action.result}
+        </p>
+      )}
+      <p className="small text-body-secondary mb-1">
+        Performed by {action.createdByName} · Assigned to {action.assigneeName}
+      </p>
+      {action.followUpRequired && (
+        <p className="small mb-1">
+          Follow-up needed: {action.followUpNote} ·{' '}
+          <strong>{action.followUpDoneAt ? `Done ${formatDate(action.followUpDoneAt)}` : 'Open'}</strong>
+        </p>
+      )}
+      {action.attachmentNotes && <p className="small mb-1">Attachment notes: {action.attachmentNotes}</p>}
+
+      {canChange && !isFinal && !confirming && (
+        <div className="d-flex flex-wrap gap-2 mt-2">
+          {action.status === 'PLANNED' && (
+            <button type="button" className="btn btn-outline-primary btn-sm" disabled={busy} onClick={onStart}>Start</button>
+          )}
+          {(action.status === 'PLANNED' || action.status === 'IN_PROGRESS') && (
+            <button type="button" className="btn btn-outline-primary btn-sm" disabled={busy} onClick={onComplete}>Complete</button>
+          )}
+          {followUpOpen && (
+            <button type="button" className="btn btn-outline-primary btn-sm" disabled={busy} onClick={onMarkFollowUpDone}>
+              Mark follow-up done
+            </button>
+          )}
+          <button type="button" className="btn btn-outline-secondary btn-sm" disabled={busy} onClick={onEdit}>Edit</button>
+          {(action.status === 'PLANNED' || action.status === 'IN_PROGRESS') && (
+            <button type="button" className="btn btn-outline-danger btn-sm" disabled={busy} onClick={() => setConfirming(true)}>
+              Cancel action
+            </button>
+          )}
+        </div>
+      )}
+
+      {confirming && (
+        <div
+          role="alertdialog"
+          aria-labelledby={`confirm-cancel-${action.id}`}
+          className="alert alert-warning mt-2 mb-0"
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') setConfirming(false)
+          }}
+        >
+          <p id={`confirm-cancel-${action.id}`} className="mb-2">
+            Cancel this action? It stays in the list as Cancelled and cannot be changed again.
+          </p>
+          <div className="d-flex gap-2">
+            <button type="button" className="btn btn-outline-secondary btn-sm" autoFocus onClick={() => setConfirming(false)}>
+              Keep action
+            </button>
+            <button
+              type="button"
+              className="btn btn-danger btn-sm"
+              onClick={() => {
+                setConfirming(false)
+                onCancelAction()
+              }}
+            >
+              Confirm cancel
+            </button>
+          </div>
+        </div>
+      )}
+    </li>
+  )
+}
+```
+
+- [ ] **Step 2: Create `ActionsTakenPanel.tsx`:**
+
+```tsx
+import { useEffect, useState } from 'react'
+import {
+  ActionApiError,
+  createAction,
+  fetchActions,
+  updateAction,
+  type ActionTaken,
+} from '../api/actions.js'
+import { fetchAssignableUsers, type AssignableUser } from '../api/users.js'
+import type { FormMode } from '../actions/action-form.js'
+import type { TicketStatus } from '../types/ticket.js'
+import { ActionCard } from './ActionCard.js'
+import { ActionForm } from './ActionForm.js'
+
+const LOCKED_TICKET_STATUSES: readonly TicketStatus[] = ['CLOSED', 'CANCELLED']
+const QUICK_SAVE_FAILED = 'Unable to save the action.'
+
+function upsert(list: ActionTaken[], saved: ActionTaken): ActionTaken[] {
+  const next = list.some((item) => item.id === saved.id)
+    ? list.map((item) => (item.id === saved.id ? saved : item))
+    : [...list, saved]
+  return next.sort((a, b) => new Date(a.actionAt).getTime() - new Date(b.actionAt).getTime() || a.id - b.id)
+}
+
+export function ActionsTakenPanel({
+  ticketId,
+  ticketStatus,
+  canEdit,
+  currentUserId,
+}: {
+  ticketId: number
+  ticketStatus: TicketStatus
+  canEdit: boolean
+  currentUserId?: number
+}) {
+  const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>('loading')
+  const [actions, setActions] = useState<ActionTaken[]>([])
+  const [mode, setMode] = useState<FormMode | null>(null)
+  const [assignable, setAssignable] = useState<AssignableUser[] | 'error' | null>(null)
+  const [announcement, setAnnouncement] = useState('')
+  const [cardError, setCardError] = useState<{ text: string; stale: boolean } | null>(null)
+  const [busyId, setBusyId] = useState<number | null>(null)
+  const [retryToken, setRetryToken] = useState(0)
+
+  const ticketLocked = LOCKED_TICKET_STATUSES.includes(ticketStatus)
+  const canChange = canEdit && !ticketLocked
+
+  useEffect(() => {
+    let ignore = false
+    setLoadState('loading')
+    fetchActions(ticketId)
+      .then((loaded) => {
+        if (ignore) return
+        setActions(loaded)
+        setLoadState('ready')
+      })
+      .catch(() => {
+        if (!ignore) setLoadState('error')
+      })
+    return () => {
+      ignore = true
+    }
+  }, [ticketId, retryToken])
+
+  useEffect(() => {
+    if (!mode || assignable !== null || !canChange) return
+    let ignore = false
+    fetchAssignableUsers()
+      .then((users) => {
+        if (!ignore) setAssignable(users)
+      })
+      .catch(() => {
+        if (!ignore) setAssignable('error')
+      })
+    return () => {
+      ignore = true
+    }
+  }, [mode, assignable, canChange])
+
+  async function reload() {
+    try {
+      const loaded = await fetchActions(ticketId)
+      setActions(loaded)
+      setCardError(null)
+      setMode((current) =>
+        current && current.kind === 'edit'
+          ? { ...current, action: loaded.find((item) => item.id === current.action.id) ?? current.action }
+          : current,
+      )
+    } catch {
+      setCardError({ text: 'Unable to reload the actions.', stale: false })
+    }
+  }
+
+  async function submit(payload: Record<string, unknown>) {
+    if (!mode) return
+    const saved =
+      mode.kind === 'create'
+        ? await createAction(ticketId, payload)
+        : await updateAction(ticketId, mode.action.id, payload)
+    setActions((current) => upsert(current, saved))
+    setMode(null)
+    setCardError(null)
+    setAnnouncement('Action saved')
+  }
+
+  async function quickChange(action: ActionTaken, patch: Record<string, unknown>) {
+    setBusyId(action.id)
+    setCardError(null)
+    try {
+      const saved = await updateAction(ticketId, action.id, { version: action.version, ...patch })
+      setActions((current) => upsert(current, saved))
+      setAnnouncement('Action saved')
+    } catch (error) {
+      setCardError({
+        text: error instanceof ActionApiError ? error.message : QUICK_SAVE_FAILED,
+        stale: error instanceof ActionApiError && error.code === 'STALE_UPDATE',
+      })
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  return (
+    <section className="mt-4" aria-labelledby="actions-heading">
+      <h2 id="actions-heading" className="h5 fw-bold mb-3">
+        Actions Taken{loadState === 'ready' ? ` (${actions.length})` : ''}
+      </h2>
+
+      <p className="visually-hidden" role="status">{announcement}</p>
+
+      {loadState === 'loading' && (
+        <p className="status-message text-body-secondary" role="status">
+          <span aria-hidden="true">⌛</span> Loading actions…
+        </p>
+      )}
+
+      {loadState === 'error' && (
+        <div className="alert alert-danger d-flex flex-wrap align-items-center gap-2" role="alert">
+          <span>Unable to load the actions.</span>
+          <button type="button" className="btn btn-outline-danger btn-sm" onClick={() => setRetryToken((token) => token + 1)}>
+            Retry
+          </button>
+        </div>
+      )}
+
+      {cardError && (
+        <div className="alert alert-danger d-flex flex-wrap align-items-center gap-2" role="alert">
+          <span>{cardError.text}</span>
+          {cardError.stale && (
+            <button type="button" className="btn btn-outline-danger btn-sm" onClick={() => void reload()}>
+              Reload
+            </button>
+          )}
+        </div>
+      )}
+
+      {loadState === 'ready' && actions.length === 0 && (
+        <p className="text-body-secondary" role="status">No actions recorded yet.</p>
+      )}
+
+      {loadState === 'ready' && actions.length > 0 && (
+        <ul className="list-unstyled d-flex flex-column gap-3 mb-3">
+          {actions.map((action) => (
+            <ActionCard
+              key={action.id}
+              action={action}
+              canChange={canChange && mode === null}
+              busy={busyId === action.id}
+              onEdit={() => setMode({ kind: 'edit', action })}
+              onStart={() => void quickChange(action, { status: 'IN_PROGRESS' })}
+              onComplete={() => setMode({ kind: 'edit', action, presetStatus: 'COMPLETED' })}
+              onCancelAction={() => void quickChange(action, { status: 'CANCELLED' })}
+              onMarkFollowUpDone={() => void quickChange(action, { followUpDone: true })}
+            />
+          ))}
+        </ul>
+      )}
+
+      {canEdit && ticketLocked && (
+        <p className="text-body-secondary">This ticket is closed, so actions can no longer be changed.</p>
+      )}
+
+      {mode && canChange && (
+        <ActionForm
+          key={mode.kind === 'create' ? 'create' : `edit-${mode.action.id}`}
+          mode={mode}
+          assignable={assignable}
+          currentUserId={currentUserId}
+          onSubmit={submit}
+          onCancel={() => setMode(null)}
+          onReload={() => void reload()}
+        />
+      )}
+
+      {canChange && mode === null && loadState === 'ready' && (
+        <button type="button" className="btn btn-primary" onClick={() => setMode({ kind: 'create' })}>
+          Add action
+        </button>
+      )}
+    </section>
+  )
+}
+```
+
+- [ ] **Step 3: Typecheck.** `npx tsc --noEmit -p .` → clean.
+
+- [ ] **Step 4: Stage.** `git add client/src/components/ActionCard.tsx client/src/components/ActionsTakenPanel.tsx`
+
+---
+
+### Task 5: Mount the panel and update old stubs
+
+**Files:**
+- Modify: `client/src/components/StaffTicketDetail.tsx`, `client/src/components/TicketDetail.tsx`
+- Modify (stubs): `client/tests/lab-02/TicketDetail.test.tsx`, `client/tests/lab-03/StaffTicketDetail.test.tsx`, `client/tests/lab-04/CarryOvers.test.tsx`
+
+- [ ] **Step 1: Staff screen.** In `StaffTicketDetail.tsx` add `import { ActionsTakenPanel } from './ActionsTakenPanel.js'` and, between `<ServiceActionsPanel ... />` and `<AttachmentSection ... />`, insert:
+
+```tsx
+      <ActionsTakenPanel
+        ticketId={ticket.id}
+        ticketStatus={ticket.currentStatus}
+        canEdit={true}
+        currentUserId={currentUserId}
+      />
+```
+
+- [ ] **Step 2: Requester screen.** In `TicketDetail.tsx` add the same import and, between the closing `</div>` of the ticket card and `<AttachmentSection ...>`, insert:
+
+```tsx
+      <ActionsTakenPanel ticketId={ticket.id} ticketStatus={ticket.currentStatus} canEdit={false} />
+```
+
+- [ ] **Step 3: Add `/api/tickets/42/actions` to every fixed-URL stub** that renders either detail screen, as `if (url === '/api/tickets/42/actions') return { ok: true, json: async () => [] } as Response` placed next to the existing `/api/tickets/42/comments` line:
+  - `tests/lab-02/TicketDetail.test.tsx` (the stub near line 30)
+  - `tests/lab-03/StaffTicketDetail.test.tsx` (both stubs: near line 34 and near line 116)
+  - `tests/lab-04/CarryOvers.test.tsx` (the `stubTicketFetch` stub; the inline Requester stub already returns `[]` for unknown URLs)
+
+- [ ] **Step 4: Run.** `cd client && npx vitest run` → all green. A stub that was missed does not fail loudly: the panel swallows the throw and shows its Retry state, so also grep the output for "Unable to load the actions" in tests that should not show it (62 plus the 14 new from Task 2). If a test fails with "Unexpected fetch", add the URL to that stub.
+
+- [ ] **Step 5: Stage.** `git add client`
+
+---
+
+### Task 6: Component tests (UI4-08 to UI4-16)
+
+**Files:**
+- Create: `client/tests/lab-04/actions-test-helpers.ts`, `client/tests/lab-04/ActionsTaken.test.tsx`
+
+- [ ] **Step 1: Helper** `client/tests/lab-04/actions-test-helpers.ts`:
+
+```ts
+import { vi } from 'vitest'
+import type { ActionTaken } from '../../src/api/actions.js'
+
+export function makeAction(overrides: Partial<ActionTaken> = {}): ActionTaken {
+  return {
+    id: 1, ticketId: 42, version: 1, actionAt: '2026-10-30T07:00:00.000Z', description: 'Checked the docking station.',
+    result: null, status: 'PLANNED', createdById: 9, createdByName: 'Alex Rivera', assigneeId: 9, assigneeName: 'Alex Rivera',
+    followUpRequired: false, followUpNote: null, followUpDoneAt: null, attachmentNotes: null,
+    createdAt: '2026-10-30T06:00:00.000Z', updatedAt: '2026-10-30T06:00:00.000Z', ...overrides,
+  }
+}
+
+export const assignableUsers = [
+  { id: 9, name: 'Alex Rivera', role: 'IT_STAFF' },
+  { id: 10, name: 'Priya Nair', role: 'IT_STAFF' },
+  { id: 20, name: 'Morgan Kim', role: 'ADMINISTRATOR' },
+]
+
+export type RecordedRequest = { url: string; method: string; body: Record<string, unknown> | null }
+
+type StubOptions = {
+  initial?: ActionTaken[]
+  /** Called for each POST/PATCH; return a Response-like to override, or undefined for the default success. */
+  writeOverride?: (request: RecordedRequest) => { status: number; body: unknown } | undefined
+  assignableOk?: boolean
+  listOk?: boolean
+  /** When a writeOverride answers 409, also bump the stored version so a reload sees the fresh one. */
+  bumpOnConflict?: boolean
+}
+
+/** A small stateful fake of the Actions API for component tests. */
+export function stubActionsApi(options: StubOptions = {}) {
+  let actions = [...(options.initial ?? [])]
+  const requests: RecordedRequest[] = []
+  let nextId = 100
+
+  const fetchStub = vi.fn(async (url: string, init?: RequestInit) => {
+    const method = init?.method ?? 'GET'
+    const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : null
+    const reply = (status: number, json: unknown) =>
+      ({ ok: status >= 200 && status < 300, status, json: async () => json }) as Response
+
+    if (url === '/api/users/assignable') {
+      return options.assignableOk === false ? reply(500, { error: 'INTERNAL_ERROR' }) : reply(200, assignableUsers)
+    }
+    if (url === '/api/tickets/42/actions' && method === 'GET') {
+      return options.listOk === false ? reply(500, { error: 'INTERNAL_ERROR' }) : reply(200, actions)
+    }
+    if (url.startsWith('/api/tickets/42/actions')) {
+      const request = { url, method, body }
+      requests.push(request)
+      const overridden = options.writeOverride?.(request)
+      if (overridden) {
+        if (overridden.status === 409 && options.bumpOnConflict) {
+          const id = Number(url.split('/').pop())
+          actions = actions.map((item) => (item.id === id ? { ...item, version: item.version + 1 } : item))
+        }
+        return reply(overridden.status, overridden.body)
+      }
+
+      if (method === 'POST') {
+        const created = makeAction({
+          id: nextId++, description: String(body?.description ?? ''), status: (body?.status as ActionTaken['status']) ?? 'PLANNED',
+          result: (body?.result as string) || null, assigneeId: Number(body?.assigneeId ?? 9),
+          followUpRequired: Boolean(body?.followUpRequired), followUpNote: (body?.followUpNote as string) ?? null,
+        })
+        actions = [...actions, created]
+        return reply(201, created)
+      }
+      if (method === 'PATCH') {
+        const id = Number(url.split('/').pop())
+        const current = actions.find((item) => item.id === id)
+        if (!current) return reply(404, { error: 'ACTION_NOT_FOUND' })
+        const { version: _version, followUpDone, ...rest } = body ?? {}
+        void _version
+        const updated: ActionTaken = {
+          ...current, ...(rest as Partial<ActionTaken>), version: current.version + 1,
+          ...(followUpDone === true ? { followUpDoneAt: '2026-10-31T09:00:00.000Z' } : {}),
+        }
+        actions = actions.map((item) => (item.id === id ? updated : item))
+        return reply(200, updated)
+      }
+    }
+    throw new Error(`Unexpected fetch: ${method} ${url}`)
+  })
+
+  return { fetchStub, requests, current: () => actions }
+}
+```
+
+- [ ] **Step 2: Tests** `client/tests/lab-04/ActionsTaken.test.tsx`:
+
+```tsx
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { ActionsTakenPanel } from '../../src/components/ActionsTakenPanel.js'
+import { assignableUsers, makeAction, stubActionsApi } from './actions-test-helpers.js'
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
+
+function mount(options: Parameters<typeof stubActionsApi>[0] = {}, props: Partial<Parameters<typeof ActionsTakenPanel>[0]> = {}) {
+  const api = stubActionsApi(options)
+  vi.stubGlobal('fetch', api.fetchStub)
+  render(<ActionsTakenPanel ticketId={42} ticketStatus="IN_PROGRESS" canEdit={true} currentUserId={9} {...props} />)
+  return api
+}
+
+async function openAddForm() {
+  fireEvent.click(await screen.findByRole('button', { name: 'Add action' }))
+  return screen.findByRole('form', { name: 'Add action' })
+}
+
+describe('Actions list (UI4-08, FR-L4-01)', () => {
+  it('shows a count in the heading and the cards in order', async () => {
+    mount({
+      initial: [
+        makeAction({ id: 1, description: 'First thing', actionAt: '2026-10-30T07:00:00.000Z' }),
+        makeAction({ id: 2, description: 'Second thing', status: 'COMPLETED', result: 'Done', actionAt: '2026-10-30T09:00:00.000Z' }),
+      ],
+    })
+
+    expect(await screen.findByRole('heading', { name: 'Actions Taken (2)' })).toBeInTheDocument()
+    const items = screen.getAllByRole('listitem')
+    expect(within(items[0]).getByText('First thing')).toBeInTheDocument()
+    expect(within(items[1]).getByText('Second thing')).toBeInTheDocument()
+    expect(within(items[1]).getByText('Completed')).toBeInTheDocument()
+    expect(within(items[1]).getByText(/Performed by Alex Rivera/)).toBeInTheDocument()
+  })
+
+  it('shows the empty message and still offers Add action to staff', async () => {
+    mount()
+    expect(await screen.findByText('No actions recorded yet.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Add action' })).toBeInTheDocument()
+  })
+
+  it('shows a safe failure with a working Retry', async () => {
+    const api = stubActionsApi({ listOk: false })
+    vi.stubGlobal('fetch', api.fetchStub)
+    render(<ActionsTakenPanel ticketId={42} ticketStatus="OPEN" canEdit={true} currentUserId={9} />)
+    expect(await screen.findByText('Unable to load the actions.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument()
+  })
+})
+
+describe('Create form', () => {
+  it('UI4-09 reveals the follow-up note and blocks a save without one', async () => {
+    const api = mount()
+    const form = await openAddForm()
+
+    fireEvent.change(within(form).getByLabelText('Description *'), { target: { value: 'Replaced the dock.' } })
+    expect(within(form).queryByLabelText('Follow-up note *')).not.toBeInTheDocument()
+    fireEvent.click(within(form).getByLabelText('Follow-up required'))
+    expect(within(form).getByLabelText('Follow-up note *')).toBeInTheDocument()
+
+    fireEvent.click(within(form).getByRole('button', { name: 'Save' }))
+
+    expect(await within(form).findByText('Follow-up note is required when follow-up is needed.')).toBeInTheDocument()
+    expect(within(form).getByLabelText('Follow-up note *')).toHaveAttribute('aria-invalid', 'true')
+    expect(api.requests).toHaveLength(0)
+  })
+
+  it('sends a trimmed body with a requestId and the current user as assignee, then lists the new card and announces it', async () => {
+    const api = mount()
+    const form = await openAddForm()
+
+    fireEvent.change(within(form).getByLabelText('Description *'), { target: { value: '  Replaced the dock.  ' } })
+    await waitFor(() => expect(within(form).getByLabelText('Assigned to')).toHaveValue('9'))
+    fireEvent.click(within(form).getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => expect(api.requests).toHaveLength(1))
+    expect(api.requests[0].method).toBe('POST')
+    expect(api.requests[0].body).toMatchObject({ description: 'Replaced the dock.', status: 'PLANNED', assigneeId: 9 })
+    expect(String(api.requests[0].body?.requestId)).toMatch(/^act-/)
+
+    expect(await screen.findByText('Replaced the dock.')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Actions Taken (1)' })).toBeInTheDocument()
+    expect(screen.getByText('Action saved')).toBeInTheDocument()
+    expect(screen.queryByRole('form', { name: 'Add action' })).not.toBeInTheDocument()
+  })
+
+  it('UI4-15 lists only the backend assignable users and defaults to the current user', async () => {
+    mount()
+    const form = await openAddForm()
+    const select = within(form).getByLabelText('Assigned to')
+    await waitFor(() => {
+      expect(within(select).getAllByRole('option')).toHaveLength(assignableUsers.length)
+    })
+    expect(within(select).getByRole('option', { name: 'Morgan Kim (Administrator)' })).toBeInTheDocument()
+    expect(select).toHaveValue('9')
+  })
+
+  it('UI4-10 keeps every entered value and shows the safe message when the save fails', async () => {
+    const api = mount({ writeOverride: () => ({ status: 500, body: { error: 'INTERNAL_ERROR' } }) })
+    const form = await openAddForm()
+
+    fireEvent.change(within(form).getByLabelText('Description *'), { target: { value: 'Keep this text.' } })
+    fireEvent.click(within(form).getByLabelText('Follow-up required'))
+    fireEvent.change(within(form).getByLabelText('Follow-up note *'), { target: { value: 'Check Friday' } })
+    fireEvent.click(within(form).getByRole('button', { name: 'Save' }))
+
+    expect(await screen.findByText('Unable to save the action. Your text is still here.')).toBeInTheDocument()
+    expect(within(form).getByLabelText('Description *')).toHaveValue('Keep this text.')
+    expect(within(form).getByLabelText('Follow-up note *')).toHaveValue('Check Friday')
+    expect(api.requests).toHaveLength(1)
+  })
+
+  it('UI4-11 sends one request for rapid repeated Save clicks', async () => {
+    let release: () => void = () => {}
+    const gate = new Promise<void>((resolve) => { release = resolve })
+    const api = mount({})
+    const original = api.fetchStub.getMockImplementation()!
+    api.fetchStub.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (init?.method === 'POST') await gate
+      return original(url, init)
+    })
+
+    const form = await openAddForm()
+    fireEvent.change(within(form).getByLabelText('Description *'), { target: { value: 'Once only.' } })
+    const save = within(form).getByRole('button', { name: 'Save' })
+    fireEvent.click(save)
+    fireEvent.click(save)
+    fireEvent.click(save)
+    release()
+
+    await screen.findByText('Once only.')
+    expect(api.requests.filter((request) => request.method === 'POST')).toHaveLength(1)
+  })
+})
+
+describe('Card buttons by status (UI4-16, FR-L4-04)', () => {
+  it('offers Start, Complete, Edit and Cancel action on a Planned card, and Start sends the right PATCH', async () => {
+    const api = mount({ initial: [makeAction({ id: 1, version: 4 })] })
+    const card = (await screen.findAllByRole('listitem'))[0]
+
+    expect(within(card).getByRole('button', { name: 'Complete' })).toBeInTheDocument()
+    expect(within(card).getByRole('button', { name: 'Edit' })).toBeInTheDocument()
+    expect(within(card).getByRole('button', { name: 'Cancel action' })).toBeInTheDocument()
+
+    fireEvent.click(within(card).getByRole('button', { name: 'Start' }))
+    await waitFor(() => expect(api.requests).toHaveLength(1))
+    expect(api.requests[0]).toMatchObject({ method: 'PATCH', url: '/api/tickets/42/actions/1', body: { version: 4, status: 'IN_PROGRESS' } })
+    expect(await within(card).findByText('In Progress')).toBeInTheDocument()
+    expect(within(card).queryByRole('button', { name: 'Start' })).not.toBeInTheDocument()
+  })
+
+  it('asks before cancelling and sends CANCELLED only after confirmation', async () => {
+    const api = mount({ initial: [makeAction({ id: 1, status: 'IN_PROGRESS' })] })
+    const card = (await screen.findAllByRole('listitem'))[0]
+
+    fireEvent.click(within(card).getByRole('button', { name: 'Cancel action' }))
+    const dialog = within(card).getByRole('alertdialog')
+    expect(api.requests).toHaveLength(0)
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Keep action' }))
+    expect(within(card).queryByRole('alertdialog')).not.toBeInTheDocument()
+    expect(api.requests).toHaveLength(0)
+
+    fireEvent.click(within(card).getByRole('button', { name: 'Cancel action' }))
+    fireEvent.click(within(card).getByRole('button', { name: 'Confirm cancel' }))
+    await waitFor(() => expect(api.requests).toHaveLength(1))
+    expect(api.requests[0].body).toMatchObject({ status: 'CANCELLED' })
+  })
+
+  it('Complete opens the edit form with Completed preselected and Result focused', async () => {
+    mount({ initial: [makeAction({ id: 1 })] })
+    const card = (await screen.findAllByRole('listitem'))[0]
+    fireEvent.click(within(card).getByRole('button', { name: 'Complete' }))
+
+    const form = await screen.findByRole('form', { name: 'Edit action' })
+    expect(within(form).getByLabelText('Status')).toHaveValue('COMPLETED')
+    expect(within(form).getByLabelText('Result *')).toHaveFocus()
+  })
+
+  it('Mark follow-up done sends followUpDone true for an open follow-up', async () => {
+    const api = mount({
+      initial: [makeAction({ id: 1, status: 'COMPLETED', result: 'Fixed.', followUpRequired: true, followUpNote: 'Check Friday' })],
+    })
+    const card = (await screen.findAllByRole('listitem'))[0]
+    expect(within(card).getByText('Open')).toBeInTheDocument()
+    fireEvent.click(within(card).getByRole('button', { name: 'Mark follow-up done' }))
+
+    await waitFor(() => expect(api.requests).toHaveLength(1))
+    expect(api.requests[0].body).toMatchObject({ followUpDone: true })
+    expect(await within(card).findByText(/Done /)).toBeInTheDocument()
+  })
+})
+
+describe('Locks (UI4-12, AC-L4-09)', () => {
+  it('shows a Cancelled card with no Edit and no buttons', async () => {
+    mount({ initial: [makeAction({ id: 1, status: 'CANCELLED' })] })
+    const card = (await screen.findAllByRole('listitem'))[0]
+    expect(within(card).getByText('Cancelled')).toBeInTheDocument()
+    expect(within(card).queryByRole('button')).not.toBeInTheDocument()
+  })
+
+  it('opens a Completed action with the locked fields read-only and follow-up still editable', async () => {
+    const api = mount({ initial: [makeAction({ id: 1, status: 'COMPLETED', result: 'Fixed.' })] })
+    const card = (await screen.findAllByRole('listitem'))[0]
+    expect(within(card).queryByRole('button', { name: 'Start' })).not.toBeInTheDocument()
+    expect(within(card).queryByRole('button', { name: 'Complete' })).not.toBeInTheDocument()
+    fireEvent.click(within(card).getByRole('button', { name: 'Edit' }))
+
+    const form = await screen.findByRole('form', { name: 'Edit action' })
+    expect(within(form).getByLabelText('Description *')).toHaveAttribute('readonly')
+    expect(within(form).getByLabelText('Result *')).toHaveAttribute('readonly')
+    expect(within(form).getByLabelText('Status')).toBeDisabled()
+    expect(within(form).getByLabelText('Follow-up required')).toBeEnabled()
+
+    fireEvent.click(within(form).getByLabelText('Follow-up required'))
+    fireEvent.change(within(form).getByLabelText('Follow-up note *'), { target: { value: 'Check Friday' } })
+    fireEvent.click(within(form).getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(api.requests).toHaveLength(1))
+    expect(Object.keys(api.requests[0].body ?? {}).sort()).toEqual(['attachmentNotes', 'followUpNote', 'followUpRequired', 'version'])
+  })
+
+  it('replaces Add action with a sentence on a Closed ticket and shows no card buttons', async () => {
+    mount({ initial: [makeAction({ id: 1 })] }, { ticketStatus: 'CLOSED' })
+    expect(await screen.findByText('This ticket is closed, so actions can no longer be changed.')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Add action' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Start' })).not.toBeInTheDocument()
+  })
+})
+
+describe('Requester view (UI4-13, AC-L4-05)', () => {
+  it('shows the cards with no Add, Edit, buttons, or assignee control, and never loads the staff list', async () => {
+    const api = mount({ initial: [makeAction({ id: 1, followUpRequired: true, followUpNote: 'Check Friday' })] }, { canEdit: false })
+    expect(await screen.findByText('Checked the docking station.')).toBeInTheDocument()
+    expect(screen.queryByRole('button')).not.toBeInTheDocument()
+    expect(screen.queryByText('This ticket is closed, so actions can no longer be changed.')).not.toBeInTheDocument()
+    expect(api.fetchStub.mock.calls.some(([url]) => url === '/api/users/assignable')).toBe(false)
+  })
+})
+
+describe('Forbidden write', () => {
+  it('shows the specific message in the form when the server answers 403 FORBIDDEN', async () => {
+    mount({ writeOverride: () => ({ status: 403, body: { error: 'FORBIDDEN' } }) })
+    const form = await openAddForm()
+    fireEvent.change(within(form).getByLabelText('Description *'), { target: { value: 'Try anyway.' } })
+    fireEvent.click(within(form).getByRole('button', { name: 'Save' }))
+    expect(await screen.findByText('You cannot change actions on this ticket.')).toBeInTheDocument()
+    expect(within(form).getByLabelText('Description *')).toHaveValue('Try anyway.')
+  })
+})
+
+describe('Stale update (UI4-14, AC-L4-08)', () => {
+  it('shows the conflict message with Reload, keeps the typed text, and re-saves against the fresh version', async () => {
+    let calls = 0
+    const api = mount({
+      initial: [makeAction({ id: 1, version: 1 })],
+      writeOverride: () => (++calls === 1 ? { status: 409, body: { error: 'STALE_UPDATE', currentVersion: 2 } } : undefined),
+      bumpOnConflict: true,
+    })
+    const card = (await screen.findAllByRole('listitem'))[0]
+    fireEvent.click(within(card).getByRole('button', { name: 'Edit' }))
+    const form = await screen.findByRole('form', { name: 'Edit action' })
+    fireEvent.change(within(form).getByLabelText('Description *'), { target: { value: 'My edit.' } })
+    fireEvent.click(within(form).getByRole('button', { name: 'Save' }))
+
+    expect(await screen.findByText('This action was changed by someone else. Reload to see the latest.')).toBeInTheDocument()
+    expect(within(form).getByLabelText('Description *')).toHaveValue('My edit.')
+
+    fireEvent.click(within(form).getByRole('button', { name: 'Reload' }))
+    await waitFor(() => expect(api.fetchStub.mock.calls.filter(([url, init]) => url === '/api/tickets/42/actions' && !init?.method)).toHaveLength(2))
+    fireEvent.click(within(form).getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(api.requests).toHaveLength(2))
+    expect(api.requests[1].body).toMatchObject({ version: 2, description: 'My edit.' })
+  })
+})
+```
+
+- [ ] **Step 3: Run.** `cd client && npx vitest run tests/lab-04/ActionsTaken.test.tsx`. Expected: all PASS. If a query is ambiguous (for example two "Open" texts), narrow it with `within(card)`; do not weaken the assertion. If `crypto.randomUUID` is missing in jsdom the fallback in `newRequestId` already covers it.
+
+- [ ] **Step 4: Full client suite and build.** `cd client && npx vitest run && npm run build -w client` → green and built.
+
+- [ ] **Step 5: Stage.** `git add client/tests`
+
+---
+
+### Task 7: E2E, real-browser check, docs
+
+**Files:**
+- Create: `e2e/lab-04/actions-taken-flow.spec.ts`
+- Modify: `docs/lab-04/tests.md`
+
+- [ ] **Step 1: Write the E2E spec** (E2E4-01). It creates its own Ticket as a Requester (no seeded data is changed), has staff Alex add an Action, staff Priya (not the owner) start and complete it with a follow-up, and the Requester see it read-only:
+
+```ts
+import { expect, test, type Page } from '@playwright/test'
+
+// E2E4-01 (AC-L4-01, AC-L4-05, AC-L4-07): one staff member adds an Action, a
+// different staff member completes it with a follow-up, the Requester reads it.
+// Uses seeded accounts only to log in; the Ticket and Actions are created here.
+
+async function login(page: Page, email: string) {
+  await page.goto('/')
+  await page.getByLabel('Email *').fill(email)
+  await page.getByLabel('Password *').fill('DevPass123!')
+  await page.getByRole('button', { name: 'Login' }).click()
+}
+
+async function logout(page: Page) {
+  await page.getByRole('button', { name: 'Logout' }).click()
+  await expect(page.getByRole('heading', { name: 'TokTickIT' })).toBeVisible()
+}
+
+async function openQueueTicket(page: Page, summary: string) {
+  await expect(page.getByRole('heading', { name: 'Ticket Queue' })).toBeVisible()
+  await page.getByPlaceholder('Search by ticket number or summary…').fill(summary)
+  await page.getByText(summary).first().click()
+  await expect(page.getByRole('heading', { name: /Ticket TKT-/ })).toBeVisible()
+}
+
+test.describe('Actions Taken flow', () => {
+  test('add, complete with a follow-up by another staff member, Requester reads it', async ({ page }) => {
+    const summary = `Actions E2E check ${Date.now()}`
+
+    // Requester creates a Ticket.
+    await login(page, 'sarah.johnson@toktickit.test')
+    await page.getByRole('button', { name: 'Create Ticket' }).first().click()
+    await page.locator('#ticket-category').selectOption({ label: 'Hardware' })
+    await page.locator('#ticket-related-system').selectOption({ label: 'Corporate Laptop' })
+    await page.locator('#ticket-priority').selectOption({ label: 'Medium' })
+    await page.locator('#ticket-summary').fill(summary)
+    await page.locator('#ticket-description').fill('Created by the Lab 4 Actions Taken E2E spec.')
+    await page.getByRole('button', { name: 'Submit' }).click()
+    await expect(page.getByText(/Your official Ticket Number is/)).toBeVisible()
+    await logout(page)
+
+    // Alex adds a Planned Action.
+    await login(page, 'alex.rivera@toktickit.test')
+    await openQueueTicket(page, summary)
+    await expect(page.getByText('No actions recorded yet.')).toBeVisible()
+    await page.getByRole('button', { name: 'Add action' }).click()
+    await page.getByLabel('Description *').fill('Replace the docking station firmware.')
+    await page.getByRole('button', { name: 'Save' }).click()
+    await expect(page.getByRole('heading', { name: 'Actions Taken (1)' })).toBeVisible()
+    await expect(page.getByText('Replace the docking station firmware.')).toBeVisible()
+    await logout(page)
+
+    // Priya (not the owner) starts it, then completes it with a follow-up.
+    await login(page, 'priya.nair@toktickit.test')
+    await openQueueTicket(page, summary)
+    await page.getByRole('button', { name: 'Start' }).click()
+    const actionCard = page.getByRole('listitem').filter({ hasText: 'Replace the docking station firmware.' })
+    await expect(actionCard.getByText('In Progress')).toBeVisible()
+    await page.getByRole('button', { name: 'Complete' }).click()
+    await page.getByLabel('Result *').fill('Dock detected after reboot.')
+    await page.getByLabel('Follow-up required').check()
+    await page.getByLabel('Follow-up note *').fill('Check again on Friday.')
+    await page.getByRole('button', { name: 'Save' }).click()
+    await expect(page.getByText('Dock detected after reboot.')).toBeVisible()
+    await expect(page.getByText(/Follow-up needed: Check again on Friday\./)).toBeVisible()
+    await page.getByRole('button', { name: 'Mark follow-up done' }).click()
+    await expect(page.getByText(/Done /).first()).toBeVisible()
+    await logout(page)
+
+    // The Requester reads it with no controls.
+    await login(page, 'sarah.johnson@toktickit.test')
+    await page.getByRole('button', { name: 'My Tickets' }).first().click()
+    await page.getByText(summary).first().click()
+    await expect(page.getByRole('heading', { name: 'Actions Taken (1)' })).toBeVisible()
+    await expect(page.getByText('Dock detected after reboot.')).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Add action' })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Edit' })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Start' })).toHaveCount(0)
+  })
+})
+```
+
+- [ ] **Step 2: Run it.** From the repo root: `npx playwright test e2e/lab-04/actions-taken-flow.spec.ts`. Playwright starts the dev servers itself if they are not running (`reuseExistingServer`). If a locator differs on the real page (for example the "My Tickets" nav label), fix the locator to match the real screen, not the assertion. Then run the whole E2E suite once: `npx playwright test` (Lab 2 and Lab 3 specs must still pass).
+
+- [ ] **Step 3: Check it in a real browser** (the server tests cannot see layout). Start the dev servers (`.claude/launch.json` or the existing dev scripts), log in as `alex.rivera@toktickit.test` / `DevPass123!` and open any Ticket. Check: list, Add action (validation under the fields, focus to the first error, remaining count), edit, Complete preset, Cancel action confirmation, a stale edit in two tabs, and a Closed ticket. Then log in as a Requester and confirm the read-only list. Repeat at 1280, 768 and 390 px widths (no clipped text, no horizontal scroll, visible focus ring). Save screenshots under `artifacts/lab-04/screenshots/actions-taken/` (list, create, edit, validation, conflict, locked, requester read-only) so the release Issue only has to review them.
+
+- [ ] **Step 4: Update `docs/lab-04/tests.md`.** Mark UI4-08 to UI4-16 and E2E4-01 `Pass` with the same script style used before (match rows by ID and replace the trailing `Planned |`). Tick these items in the `ui-spec.md` checklist only after Step 3 is done: Actions Taken modes, validation messages, failed save, badges, read-only vs editable, loading/empty/forbidden/conflict/failure states for the Actions screen.
+
+- [ ] **Step 5: Final run and stage.** `cd client && npx vitest run && npx tsc --noEmit -p . && npm run build -w client`; `cd ../server && npx vitest run` (unchanged, must still pass); `git add -A && git status --short`. Report counts, anything not run, and wait for "commit".
+
+---
+
+## Self-Review
+
+**Spec coverage.** ui-spec §4.1 list (count heading, empty state, oldest first, follow-up line, attachment notes) → Task 4, tests UI4-08. §4.2 form (all eight fields, remaining count, read-only style, Start/Complete/Cancel/Mark done, aria wiring, first-invalid focus, saving state, `requestId` once per open, recoverable failure keeps values, Cancelled no Edit, Completed limited fields) → Tasks 2 to 4, tests UI4-09 to 12, 15, 16. §4.3 Requester view → Task 5 + UI4-13. §4.4 states: loading, empty, validation, success announcement, forbidden (never rendered for Requesters), conflict 409 with Reload, locked ticket, safe failure → Tasks 4 and 6. §7 Action badge (four fills, struck-through Cancelled, text always) → Task 3. AC-L4-28 (values stay, one request) → UI4-10, UI4-11. FR-L4-01/04/05 → panel + E2E4-01. Not here on purpose: ui-spec §5 workflow controls, §1 navigation, dashboards.
+
+**Placeholders.** None. Two conditional notes (ambiguous test queries, a locator that differs on the real page) tell the executor to fix the query or locator, not weaken the assertion.
+
+**Type consistency.** `FormMode`/`FormValues`/`FieldKey` are defined in Task 2 and used unchanged in Tasks 3, 4 and 6. `ActionTaken` and `ActionApiError` are defined in Task 1. `ActionForm` props (Task 3) match the call in `ActionsTakenPanel` (Task 4). `ActionCard` callbacks (Task 4) match the panel's usage. The helper `stubActionsApi` records `{url, method, body}` and tests read exactly those keys. Payload keys (`version`, `requestId`, `followUpDone`, `status`) match the server's `ACTION_BODY_FIELDS`.
+</script>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
+<script>
+  try {
+    var md = document.getElementById('plan-md').textContent;
+    document.getElementById('plan').innerHTML = marked.parse(md);
+  } catch (e) {
+    document.getElementById('plan').innerHTML = '<pre></pre>';
+    document.querySelector('#plan pre').textContent = document.getElementById('plan-md').textContent;
+  }
+  try {
+    var dark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    mermaid.initialize({ startOnLoad: false, theme: dark ? 'dark' : 'neutral' });
+    mermaid.run({ querySelector: '.mermaid' });
+  } catch (e) {}
+</script>
+</body>
+</html>
