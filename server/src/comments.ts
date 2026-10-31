@@ -2,7 +2,7 @@ import { Router } from 'express'
 import { prisma } from './prisma.js'
 import { requireSession, requirePasswordAlreadyChanged } from './auth/require-session.js'
 import { requireRole } from './authorization/require-role.js'
-import { resolveOwnedTicket, respondOwnershipFailure } from './ticket-ownership.js'
+import { checkTicketAccess } from './authorization/ticket-access.js'
 
 export const commentsRouter = Router({ mergeParams: true })
 
@@ -30,33 +30,6 @@ function toCommentResponse(comment: { id: number; ticketId: number; authorId: nu
     body: comment.body,
     createdAt: comment.createdAt,
   }
-}
-
-/**
- * A Requester must own the ticket; IT Staff/Admin can access any ticket's
- * comments. Returns null (having already written the response) on failure.
- */
-async function checkTicketAccess(
-  ticketId: number,
-  userId: number,
-  role: string,
-  response: import('express').Response,
-): Promise<boolean> {
-  if (role !== 'REQUESTER') {
-    const ticket = await prisma.ticket.findUnique({ where: { id: ticketId } })
-    if (!ticket) {
-      response.status(404).json({ error: 'TICKET_NOT_FOUND' })
-      return false
-    }
-    return true
-  }
-
-  const ownership = await resolveOwnedTicket(ticketId, userId)
-  if (ownership.status !== 'ok') {
-    respondOwnershipFailure(response, ownership, { notFound: 'TICKET_NOT_FOUND', forbidden: 'TICKET_FORBIDDEN' })
-    return false
-  }
-  return true
 }
 
 commentsRouter.get('/', ...requireCommentAccess, async (request, response, next) => {

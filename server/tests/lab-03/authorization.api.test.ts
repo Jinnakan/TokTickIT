@@ -3,13 +3,13 @@ import cookieParser from 'cookie-parser'
 import request from 'supertest'
 import { describe, expect, it } from 'vitest'
 import type { Response } from 'express'
-import { app } from '../../src/app.js'
+import { app } from '../helpers/app.js'
 import { prisma } from '../../src/prisma.js'
 import { requireSession, requirePasswordAlreadyChanged } from '../../src/auth/require-session.js'
 import { requireRole } from '../../src/authorization/require-role.js'
 import { respondOwnershipFailure, type OwnershipResult } from '../../src/authorization/ownership.js'
 import { loginAsAdministrator, loginAsItStaff, loginAsRequester } from '../helpers/session.js'
-
+import { loginAsNewUser } from '../helpers/users.js'
 // AUTHZ-01/02 (AC-L3-05): requireRole has no real IT-Staff-only or
 // Administrator-only endpoint to exercise against yet in Issue 16 (those
 // land in Issues 18-20) -- a minimal test-only app exercises the guard
@@ -75,11 +75,11 @@ describe('requireRole (AUTHZ-01, AUTHZ-02)', () => {
 
 describe('Ticket ownership under session auth (AUTHZ-03, AC-L3-07)', () => {
   it('returns 403 TICKET_FORBIDDEN when a Requester requests a ticket they do not own', async () => {
-    // Indices 2/3 (not 0/1) so this doesn't add tickets to the same
-    // Requester identity the Lab 2 my-tickets/attachments/ticket-detail
-    // suites use as "agentA"/"agentB" and assert exact result sets against.
-    const owner = await loginAsRequester(2)
-    const otherRequester = await loginAsRequester(3)
+    // Two fresh Requesters, so this test neither adds tickets to the seeded
+    // identities other suites assert exact result sets against, nor depends on
+    // where a seeded account happens to fall in the id order.
+    const owner = await loginAsNewUser('REQUESTER')
+    const otherRequester = await loginAsNewUser('REQUESTER')
 
     const category = await prisma.category.findFirstOrThrow({ where: { isActive: true } })
     const relatedSystem = await prisma.relatedSystem.findFirstOrThrow({ where: { isActive: true } })

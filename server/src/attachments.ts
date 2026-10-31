@@ -10,6 +10,7 @@ import { prisma } from './prisma.js'
 import { requireSession, requirePasswordAlreadyChanged } from './auth/require-session.js'
 import { requireRole } from './authorization/require-role.js'
 import { resolveOwnedTicket, resolveOwnedAttachment, respondOwnershipFailure } from './ticket-ownership.js'
+import { checkTicketAccess } from './authorization/ticket-access.js'
 import {
   buildStoragePath,
   isFileContentValid,
@@ -54,30 +55,6 @@ function toInteger(value: unknown): number | null {
 }
 
 class AttachmentLimitReachedError extends Error {}
-
-/** Requester must own the ticket; IT Staff/Admin can read any ticket's attachments. */
-async function checkTicketReadAccess(
-  ticketId: number,
-  userId: number,
-  role: string,
-  response: Response,
-): Promise<boolean> {
-  if (role !== 'REQUESTER') {
-    const ticket = await prisma.ticket.findUnique({ where: { id: ticketId } })
-    if (!ticket) {
-      response.status(404).json({ error: 'TICKET_NOT_FOUND' })
-      return false
-    }
-    return true
-  }
-
-  const ownership = await resolveOwnedTicket(ticketId, userId)
-  if (ownership.status !== 'ok') {
-    respondOwnershipFailure(response, ownership, { notFound: 'TICKET_NOT_FOUND', forbidden: 'TICKET_FORBIDDEN' })
-    return false
-  }
-  return true
-}
 
 ticketAttachmentsRouter.post('/', ...requireRequester, handleUpload, async (request, response, next) => {
   try {
@@ -164,7 +141,7 @@ ticketAttachmentsRouter.get('/', ...requireReadAccess, async (request, response,
       return
     }
 
-    if (!(await checkTicketReadAccess(ticketId, userId, role, response))) return
+    if (!(await checkTicketAccess(ticketId, userId, role, response))) return
 
     const attachments = await prisma.attachment.findMany({
       where: { ticketId },

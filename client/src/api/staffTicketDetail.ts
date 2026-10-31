@@ -10,9 +10,18 @@ export class StaffTicketActionError extends Error {
   }
 }
 
+const ERROR_MESSAGES: Record<string, string> = {
+  ALREADY_CLAIMED: 'Someone else has already claimed this ticket. Reload to see the owner.',
+  INVALID_TRANSITION: 'That status change is not allowed from the current status.',
+  TICKET_NOT_FOUND: 'This ticket no longer exists.',
+}
+
 async function readError(response: Response): Promise<StaffTicketActionError> {
-  const body = (await response.json().catch(() => ({}))) as { error?: string; [key: string]: unknown }
-  return new StaffTicketActionError(body.error ?? 'UNKNOWN_ERROR', 'Request failed.', body)
+  const body = (await response.json().catch(() => ({}))) as { error?: string; fields?: Record<string, string>; [key: string]: unknown }
+  const code = body.error ?? 'UNKNOWN_ERROR'
+  const fieldMessage = Object.values(body.fields ?? {}).join(' ')
+  const message = ERROR_MESSAGES[code] ?? (code === 'VALIDATION_FAILED' && fieldMessage ? fieldMessage : 'Request failed.')
+  return new StaffTicketActionError(code, message, body)
 }
 
 export async function fetchStaffTicketDetail(ticketId: number, signal?: AbortSignal): Promise<StaffTicketDetail> {

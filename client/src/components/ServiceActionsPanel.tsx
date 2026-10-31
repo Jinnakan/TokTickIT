@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { PRIORITIES, PRIORITY_LABELS, STATUS_LABELS } from '@toktickit/shared'
-import { claimTicket, updateItPriority, updateStatus } from '../api/staffTicketDetail.js'
+import { claimTicket, reassignTicket, updateItPriority, updateStatus } from '../api/staffTicketDetail.js'
+import { fetchAssignableUsers, type AssignableUser } from '../api/users.js'
 import type { Priority, StaffTicketDetail, TicketStatus } from '../types/ticket.js'
 import type { TicketDetailMediator } from '../staff/ticket-detail-mediator.js'
 
@@ -17,6 +18,38 @@ export function ServiceActionsPanel({
   const [isChangingPriority, setIsChangingPriority] = useState(false)
   const [isChangingStatus, setIsChangingStatus] = useState(false)
   const [actionError, setActionError] = useState('')
+  const [assignable, setAssignable] = useState<AssignableUser[]>([])
+  const [assignableFailed, setAssignableFailed] = useState(false)
+  const [selectedOwner, setSelectedOwner] = useState('')
+  const [isReassigning, setIsReassigning] = useState(false)
+
+  useEffect(() => {
+    const controller = new AbortController()
+    fetchAssignableUsers(controller.signal)
+      .then((users) => {
+        setAssignable(users)
+        setAssignableFailed(false)
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setAssignableFailed(true)
+      })
+    return () => controller.abort()
+  }, [])
+
+  async function handleReassign() {
+    if (!selectedOwner) return
+    setActionError('')
+    setIsReassigning(true)
+    try {
+      await reassignTicket(ticket.id, Number(selectedOwner))
+      setSelectedOwner('')
+      mediator.onReassigned()
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Unable to reassign this ticket.')
+    } finally {
+      setIsReassigning(false)
+    }
+  }
 
   async function handleClaim() {
     setActionError('')
@@ -79,6 +112,42 @@ export function ServiceActionsPanel({
               {isClaiming ? 'Claiming…' : 'Claim Ticket'}
             </button>
           )}
+
+          <div className="mt-2">
+            <label htmlFor="reassign-select" className="form-label small fw-semibold mb-1">
+              {ticket.ticketOwner ? 'Reassign to' : 'Assign to'}
+            </label>
+            {assignableFailed ? (
+              <p className="small text-danger mb-0">Unable to load the staff list. Reload to try again.</p>
+            ) : (
+              <div className="d-flex gap-2">
+                <select
+                  id="reassign-select"
+                  className="form-select form-select-sm"
+                  value={selectedOwner}
+                  disabled={isReassigning}
+                  onChange={(event) => setSelectedOwner(event.target.value)}
+                >
+                  <option value="">Choose staff…</option>
+                  {assignable
+                    .filter((user) => user.id !== ticket.ticketOwnerId)
+                    .map((user) => (
+                      <option key={user.id} value={user.id}>
+                        {user.name}{user.role === 'ADMINISTRATOR' ? ' (Administrator)' : ''}
+                      </option>
+                    ))}
+                </select>
+                <button
+                  type="button"
+                  className="btn btn-outline-primary btn-sm text-nowrap"
+                  disabled={!selectedOwner || isReassigning}
+                  onClick={() => void handleReassign()}
+                >
+                  {isReassigning ? 'Saving…' : ticket.ticketOwner ? 'Reassign' : 'Assign'}
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="col-12 col-sm-6 col-lg-4">

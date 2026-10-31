@@ -1,6 +1,6 @@
 import request from 'supertest'
 import { describe, expect, it } from 'vitest'
-import { app } from '../../src/app.js'
+import { app } from '../helpers/app.js'
 
 describe('GET /api/categories', () => {
   it('returns the seeded categories in ID order', async () => {

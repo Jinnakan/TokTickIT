@@ -136,7 +136,7 @@ export function TicketDetail({
         </div>
       </div>
 
-      <AttachmentSection ticketId={ticket.id} />
+      <AttachmentSection ticketId={ticket.id} canEdit={true} />
       <CommentsPanel ticketId={ticket.id} />
     </div>
   )

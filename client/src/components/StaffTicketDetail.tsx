@@ -128,7 +128,7 @@ export function StaffTicketDetail({
       </div>
 
       <ServiceActionsPanel ticket={ticket} currentUserId={currentUserId} mediator={mediator} />
-      <AttachmentSection ticketId={ticket.id} />
+      <AttachmentSection ticketId={ticket.id} canEdit={false} />
       <CommentsPanel ticketId={ticket.id} />
       <NotesPanel ticketId={ticket.id} />
     </div>

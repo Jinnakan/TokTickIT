@@ -15,7 +15,18 @@ import { UserService } from './user-service.js'
 export const usersRouter = Router()
 
 const requireAdmin = [requireSession, requirePasswordAlreadyChanged, requireRole('ADMINISTRATOR')]
+const requireStaff = [requireSession, requirePasswordAlreadyChanged, requireRole('IT_STAFF', 'ADMINISTRATOR')]
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const EMAIL_MAX_LENGTH = 254
 const userService = new UserService(prisma)
+
+function isValidEmail(email: string): boolean {
+  return email.length <= EMAIL_MAX_LENGTH && EMAIL_PATTERN.test(email)
+}
+
+function isUniqueViolation(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && (error as { code?: string }).code === 'P2002'
+}
 
 function toInteger(value: unknown): number | null {
   const parsed = typeof value === 'number' ? value : Number(value)
@@ -55,6 +66,21 @@ async function wouldRemoveLastActiveAdmin(userId: number, nextIsActive: boolean,
   })
   return otherActiveAdmins === 0
 }
+
+// Role: IT, ADM. Minimal fields only: this feeds the reassign selector, so it
+// exposes no email, status flag, or anything else about a user.
+usersRouter.get('/assignable', ...requireStaff, async (_request, response, next) => {
+  try {
+    const users = await prisma.user.findMany({
+      where: { isActive: true, role: { in: ['IT_STAFF', 'ADMINISTRATOR'] } },
+      select: { id: true, name: true, role: true },
+      orderBy: [{ name: 'asc' }, { id: 'asc' }],
+    })
+    response.status(200).json(users)
+  } catch (error) {
+    next(error)
+  }
+})
 
 usersRouter.get('/', ...requireAdmin, async (request, response, next) => {
   try {
@@ -109,6 +135,7 @@ usersRouter.post('/', ...requireAdmin, async (request, response, next) => {
     const fields: FieldErrors = {}
     if (!name) fields.name = 'Name is required.'
     if (!email) fields.email = 'Email is required.'
+    else if (!isValidEmail(email)) fields.email = 'Email must be a valid address.'
     if (typeof role !== 'string' || !(ROLES as readonly string[]).includes(role)) fields.role = 'Role is invalid.'
     if (Object.keys(fields).length > 0) {
       response.status(400).json({ error: 'VALIDATION_FAILED', fields })
@@ -145,8 +172,11 @@ usersRouter.patch('/:id', ...requireAdmin, async (request, response, next) => {
     const name = request.body?.name
     const role = request.body?.role
     const isActive = request.body?.isActive
+    const rawEmail = request.body?.email
+    const email = typeof rawEmail === 'string' ? rawEmail.trim().toLowerCase() : undefined
 
     const fields: FieldErrors = {}
+    if (rawEmail !== undefined && (email === undefined || !isValidEmail(email))) fields.email = 'Email must be a valid address.'
     if (name !== undefined && (typeof name !== 'string' || !name.trim())) fields.name = 'Name is invalid.'
     if (role !== undefined && (typeof role !== 'string' || !(ROLES as readonly string[]).includes(role))) {
       fields.role = 'Role is invalid.'
@@ -155,6 +185,14 @@ usersRouter.patch('/:id', ...requireAdmin, async (request, response, next) => {
     if (Object.keys(fields).length > 0) {
       response.status(400).json({ error: 'VALIDATION_FAILED', fields })
       return
+    }
+
+    if (email !== undefined && email !== current.email) {
+      const taken = await prisma.user.findUnique({ where: { email } })
+      if (taken) {
+        response.status(400).json({ error: 'EMAIL_TAKEN' })
+        return
+      }
     }
 
     const nextIsActive = isActive ?? current.isActive
@@ -177,6 +215,7 @@ usersRouter.patch('/:id', ...requireAdmin, async (request, response, next) => {
     const updated = await prisma.user.update({
       where: { id: userId },
       data: {
+        ...(email !== undefined ? { email } : {}),
         ...(name !== undefined ? { name: (name as string).trim() } : {}),
         ...(role !== undefined ? { role: role as Role } : {}),
       },
@@ -184,6 +223,10 @@ usersRouter.patch('/:id', ...requireAdmin, async (request, response, next) => {
 
     response.status(200).json(toUserResponse(updated))
   } catch (error) {
+    if (isUniqueViolation(error)) {
+      response.status(400).json({ error: 'EMAIL_TAKEN' })
+      return
+    }
     next(error)
   }
 })

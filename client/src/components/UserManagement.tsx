@@ -76,7 +76,7 @@ export function UserManagement() {
     setIsSaving(true)
     try {
       if (editing) {
-        await updateUser(editing.id, { name, role })
+        await updateUser(editing.id, { name, role, ...(email.trim().toLowerCase() !== editing.email ? { email } : {}) })
       } else {
         const created = await createUser({ name, email, role })
         setShownPassword({ email: created.email, password: created.initialPassword })
@@ -94,8 +94,8 @@ export function UserManagement() {
     try {
       const result = await resetPassword(user.id)
       setShownPassword({ email: user.email, password: result.initialPassword })
-    } catch {
-      setFormError('Unable to reset the password.')
+    } catch (error) {
+      setFormError(error instanceof UserActionError ? error.message : 'Unable to reset the password.')
     }
   }
 
@@ -105,8 +105,8 @@ export function UserManagement() {
       await deactivateUser(pendingDeactivate.id)
       setPendingDeactivate(null)
       reload()
-    } catch {
-      setFormError('Unable to deactivate this user.')
+    } catch (error) {
+      setFormError(error instanceof UserActionError ? error.message : 'Unable to deactivate this user.')
       setPendingDeactivate(null)
     }
   }
@@ -115,8 +115,8 @@ export function UserManagement() {
     try {
       await activateUser(user.id)
       reload()
-    } catch {
-      setFormError('Unable to activate this user.')
+    } catch (error) {
+      setFormError(error instanceof UserActionError ? error.message : 'Unable to activate this user.')
     }
   }
 
@@ -288,7 +288,6 @@ export function UserManagement() {
                     className="form-control mb-3"
                     value={email}
                     onChange={(event) => setEmail(event.target.value)}
-                    disabled={!!editing}
                     required
                   />
 

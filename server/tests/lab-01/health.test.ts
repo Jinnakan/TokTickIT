@@ -1,6 +1,6 @@
 import request from 'supertest'
 import { describe, expect, it } from 'vitest'
-import { app } from '../../src/app.js'
+import { app } from '../helpers/app.js'
 
 describe('GET /api/health', () => {
   it('returns the TokTickIT API health payload', async () => {
