@@ -2,13 +2,14 @@ import express from 'express'
 import helmet from 'helmet'
 import cookieParser from 'cookie-parser'
 import { prisma } from './prisma.js'
-import { ticketsRouter } from './tickets.js'
-import { attachmentsRouter, ticketAttachmentsRouter } from './attachments.js'
+import { ticketsRouter } from './tickets/tickets-router.js'
+import { attachmentsRouter, ticketAttachmentsRouter } from './attachments/attachments-router.js'
 import { authRouter } from './auth/auth-router.js'
-import { commentsRouter } from './comments.js'
-import { notesRouter } from './notes.js'
+import { commentsRouter } from './tickets/comments-router.js'
+import { notesRouter } from './tickets/notes-router.js'
 import { actionsRouter } from './actions/actions-router.js'
 import { ticketWorkflowRouter } from './tickets/ticket-workflow-router.js'
+import { errorHandler, notFoundHandler } from './http/error-handlers.js'
 import { dashboardRouter } from './dashboard/dashboard-router.js'
 import { usersRouter } from './users/users-router.js'
 import { registerSessionInvalidationListener } from './users/session-invalidation-listener.js'
@@ -70,3 +71,6 @@ app.use('/api/attachments', attachmentsRouter)
 app.use('/api/tickets', ticketsRouter)
 app.use('/api/users', usersRouter)
 app.use('/api/dashboard', dashboardRouter)
+
+app.use(notFoundHandler)
+app.use(errorHandler)

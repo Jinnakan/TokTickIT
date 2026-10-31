@@ -7,9 +7,16 @@
     "packages/*"
   ],
   "scripts": {
-    "test:e2e": "playwright test"
+    "typecheck": "npm run typecheck -w server && npm run typecheck -w client",
+    "test": "npm test -w server && npm test -w client",
+    "build": "npm run build -w server && npm run build -w client",
+    "check": "npm run typecheck && npm test && npm run build",
+    "test:e2e": "playwright test",
+    "test:repeat": "bash scripts/repeat-server-tests.sh"
   },
   "devDependencies": {
-    "@playwright/test": "^1.63.0"
+    "@axe-core/playwright": "4.10.2",
+    "@playwright/test": "^1.63.0",
+    "jsdom": "29.1.1"
   }
 }

@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { RequesterDashboard } from '../../src/components/RequesterDashboard.js'
+import { RequesterDashboard } from '../../src/components/dashboard/RequesterDashboard.js'
 import { emptyRequesterDashboard, requesterDashboard } from './dashboard-test-helpers.js'
 
 afterEach(() => {

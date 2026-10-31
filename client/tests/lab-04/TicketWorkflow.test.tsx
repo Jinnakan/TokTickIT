@@ -1,8 +1,8 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { StaffTicketQueue } from '../../src/components/StaffTicketQueue.js'
-import { StaffTicketDetail } from '../../src/components/StaffTicketDetail.js'
-import { TicketDetail } from '../../src/components/TicketDetail.js'
+import { StaffTicketQueue } from '../../src/components/tickets/StaffTicketQueue.js'
+import { StaffTicketDetail } from '../../src/components/tickets/StaffTicketDetail.js'
+import { TicketDetail } from '../../src/components/tickets/TicketDetail.js'
 
 const categories = [{ id: 1, name: 'Hardware' }]
 const relatedSystems = [{ id: 7, name: 'Corporate Laptop' }]
@@ -252,5 +252,14 @@ describe('Queue indication (UI4-20, FR-L4-11)', () => {
     const rowTwo = screen.getAllByText('Queue ticket 2')[0].closest('tr') as HTMLElement
     expect(within(rowOne).getByText('Requester reports resolved')).toBeInTheDocument()
     expect(within(rowTwo).queryByText('Requester reports resolved')).not.toBeInTheDocument()
+  })
+})
+
+describe('Reported-resolved badge is words with an outline, not a color alone (ST4-01)', () => {
+  it('carries its text and a border so it reads without color', async () => {
+    stubApi({ ticket: staffTicket({ requesterResolvedAt: '2026-10-30T09:00:00.000Z' }) })
+    mountStaff()
+    const badge = await screen.findByText('Requester reports resolved')
+    expect(badge.className).toMatch(/border/)
   })
 })

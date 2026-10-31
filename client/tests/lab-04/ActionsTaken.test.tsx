@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { ActionsTakenPanel } from '../../src/components/ActionsTakenPanel.js'
+import { ActionsTakenPanel } from '../../src/components/actions/ActionsTakenPanel.js'
 import { assignableUsers, makeAction, stubActionsApi } from './actions-test-helpers.js'
 
 afterEach(() => {
@@ -276,5 +276,29 @@ describe('Stale update (UI4-14, AC-L4-08)', () => {
     fireEvent.click(within(form).getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(api.requests).toHaveLength(2))
     expect(api.requests[1].body).toMatchObject({ version: 2, description: 'My edit.' })
+  })
+})
+
+describe('Badges and field styling (ST4-01, ST4-02, AC-L4-29)', () => {
+  it('ST4-01 every Action status badge carries its text, with a distinct class each', async () => {
+    mount({
+      initial: [
+        makeAction({ id: 1, status: 'PLANNED' }),
+        makeAction({ id: 2, status: 'IN_PROGRESS' }),
+        makeAction({ id: 3, status: 'COMPLETED', result: 'Done.' }),
+        makeAction({ id: 4, status: 'CANCELLED' }),
+      ],
+    })
+    const badges = await Promise.all(['Planned', 'In Progress', 'Completed', 'Cancelled'].map((label) => screen.findByText(label)))
+    expect(new Set(badges.map((badge) => badge.className)).size).toBe(4)
+    expect(badges[3].className).toMatch(/line-through/)
+  })
+
+  it('ST4-02 read-only fields look different from editable ones', async () => {
+    mount({ initial: [makeAction({ id: 1, status: 'COMPLETED', result: 'Fixed.' })] })
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit' }))
+    const form = await screen.findByRole('form', { name: 'Edit action' })
+    expect(within(form).getByLabelText('Description *').className).toMatch(/field-readonly/)
+    expect(within(form).getByLabelText('Attachment notes').className).not.toMatch(/field-readonly/)
   })
 })

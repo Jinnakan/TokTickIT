@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { generateTicketNumber } from '../../src/tickets.js'
+import { generateTicketNumber } from '../../src/tickets/tickets-router.js'
 
 describe('generateTicketNumber (unit, no database)', () => {
   it('returns the required TKT-YYYY-NNNNNN format', () => {

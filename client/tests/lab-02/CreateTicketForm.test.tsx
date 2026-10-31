@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { CreateTicketForm } from '../../src/components/CreateTicketForm.js'
+import { CreateTicketForm } from '../../src/components/tickets/CreateTicketForm.js'
 
 const categories = [{ id: 1, name: 'Hardware' }]
 const relatedSystems = [{ id: 6, name: 'Corporate Laptop' }]

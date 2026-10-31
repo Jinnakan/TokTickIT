@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { CommentsPanel } from '../../src/components/CommentsPanel.js'
+import { CommentsPanel } from '../../src/components/tickets/CommentsPanel.js'
 
 afterEach(() => {
   vi.unstubAllGlobals()

@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { AttachmentSection } from '../../src/components/AttachmentSection.js'
+import { AttachmentSection } from '../../src/components/tickets/AttachmentSection.js'
 
 const activeAttachment = {
   id: 1,

@@ -1,0 +1,1343 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Feature 29: Final hardening (plan)</title>
+<style>
+  :root { --bg:#f6faf7; --fg:#1b2a22; --muted:#5b6b62; --card:#fff; --line:#cfe0d5; --accent:#2f7d52; --warn:#b4540a; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#101a14; --fg:#e4efe8; --muted:#9db3a5; --card:#18261e; --line:#2b4034; --accent:#6fcf97; --warn:#f0a35e; } }
+  body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.55 system-ui,sans-serif; }
+  main { max-width:1080px; margin:0 auto; padding:24px 16px 80px; }
+  h1 { font-size:1.7rem; margin:.2em 0; } h2 { margin-top:2em; border-bottom:2px solid var(--line); padding-bottom:.2em; }
+  .meta { color:var(--muted); }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px 18px; margin:14px 0; }
+  .pair { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  @media (max-width:760px) { .pair { grid-template-columns:1fr; } }
+  .pair h4 { margin:0 0 6px; } .before h4 { color:var(--warn); } .after h4 { color:var(--accent); }
+  table { border-collapse:collapse; width:100%; font-size:.93rem; } th,td { border:1px solid var(--line); padding:6px 9px; text-align:left; vertical-align:top; }
+  code, pre { font-family:ui-monospace,Menlo,monospace; font-size:.85rem; } pre { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:10px 12px; overflow:auto; }
+  #plan h3 { margin-top:2em; padding-top:.4em; border-top:1px dashed var(--line); } #plan ul { padding-left:1.2em; }
+  .mermaid { text-align:center; overflow:auto; }
+</style>
+</head>
+<body>
+<main>
+<h1>Feature 29: Final hardening</h1>
+<p class="meta">Issue #52 · branch <code>feature/29-Final-hardening</code> from <code>lab4-staging</code> (needs feature 28 merged) · server, client, E2E, docs, tooling</p>
+
+<h2>A. Read this</h2>
+
+<div class="card">
+<p><strong>Goal.</strong> Finish Lab 4's contract (regression, security, accessibility, responsive, double-submit, clean console, stable tests) and, because the next sprint is unknown, spend the rest of the effort where the audit found real friction: things a new feature would otherwise copy-paste, break silently, or have to untangle first.</p>
+<p><strong>How "scalable and flexible" is handled here.</strong> Not by adding abstractions for features nobody has asked for. Every item below comes from something the audit actually found, and each one lowers the cost of the next change: a single place for HTTP rules, a safety net that fails loudly, and a map of where things live.</p>
+</div>
+
+<div class="card">
+<p><strong>What the audit found (so the plan is not guesswork).</strong></p>
+<table>
+<tr><th>Finding</th><th>Evidence</th><th>Why it matters</th></tr>
+<tr><td>Bad JSON returns an HTML page with a stack trace</td><td>probe: <code>POST /api/auth/login</code> with <code>{bad json</code> gives 400 <code>text/html</code> with the SyntaxError text; there is no error handler in <code>app.ts</code></td><td>Breaks the contract ("never a stack trace", api-spec §0) and leaks internals</td></tr>
+<tr><td>Only one form blocks a double submit</td><td>only <code>ActionForm</code> has the ref guard; Create Ticket, Comments, Notes, Login, Change Password, User form, Upload, Claim rely on a disabled button</td><td>FR-L4-18 and AC-L4-28; a disabled button cannot stop two submits in one tick</td></tr>
+<tr><td>9 dependency advisories in production packages (1 critical, 7 high)</td><td><code>npm audit --omit=dev</code>: proxy-addr, body-parser, multer, prisma, vite, others; fixes available</td><td>Real exposure; also noise in every review</td></tr>
+<tr><td>The same helper is copy-pasted</td><td>7 copies of <code>toInteger</code>, 12 copies of the role-guard array, 11 copies of <code>formatDate</code></td><td>Every new route or screen copies them again; a fix must be made in 7 or 12 places</td></tr>
+<tr><td>Tests fill the development database</td><td>the dev database holds about 30,000 Tickets created by test runs; the demo seed sits among them</td><td>Slow, confusing demos, counts that depend on history</td></tr>
+<tr><td>No single "is everything OK" command and no repeat-run proof</td><td>root <code>package.json</code> has only <code>test:e2e</code>; REG-04 (ten clean runs) has no script or log</td><td>A new contributor cannot tell if a change broke something</td></tr>
+<tr><td>Contract rows still Planned</td><td><code>tests.md</code>: SEC4-01 to 05, REG-01 to 04, ST4-01/02, RESP4-01, A11Y4-01/02 and the whole §9 checklist</td><td>This Issue's own definition of done</td></tr>
+<tr><td>Leftovers</td><td>Lab 1 health panel <code>SystemStatusCheck</code> is reachable from nowhere (only Lab 1 tests render it); README still describes Labs 2 and 3</td><td>AC-L4-32 "no placeholders or obsolete elements"</td></tr>
+</table>
+</div>
+
+<div class="card">
+<p><strong>Decisions the plan makes (veto any before "Ready for feature 29").</strong></p>
+<ol>
+<li><strong>Must do</strong> (contract and defects): global JSON error and 404 handlers, double-submit guard on every mutating form, security regression suite, automated accessibility and responsive checks, dependency fixes, cleanup, ten-run script, checklists.</li>
+<li><strong>Should do</strong> (lowers the cost of any next sprint): one <code>http/</code> module for IDs and role guards, one <code>lib/format.ts</code>, startup config check, root <code>npm run check</code>, and <code>docs/architecture.md</code> plus short decision records.</li>
+<li><strong>Time-boxed spike, default ON:</strong> run server tests in their own database schema (<code>test_suite</code>), rebuilt each run. Go only if all tests pass three times in a row; otherwise it is reverted and documented. This stops tests polluting the development database.</li>
+<li><strong>Pure file moves, default ON, done last:</strong> loose server files into feature folders, and client components into folders by area. Moves only (<code>git mv</code> plus import fixes, no behavior change), so the diff is reviewable as renames and the tests prove nothing changed.</li>
+<li><strong>GitHub Actions workflow, default OFF.</strong> A <code>ci.yml</code> that runs <code>npm run check</code> on pull requests would run on your GitHub the moment it is merged. You said to leave your GitHub alone, so it stays out unless you say yes; the plan lists the file so you can add it yourself.</li>
+<li><strong>New dev dependency:</strong> <code>@axe-core/playwright</code> (pinned <code>4.10.2</code>) for automated accessibility checks. Serious and critical findings fail the test; lesser ones are reported, not blocking.</li>
+<li><strong>Not doing:</strong> a design-system rewrite, a router library, an ORM abstraction, a permissions framework, full-text search, a general rate limiter. None has evidence of need; the architecture doc names the seam where each would go.</li>
+</ol>
+</div>
+
+<h3>Before and after: how an error leaves the API</h3>
+<div class="pair">
+<div class="card before"><h4>Now</h4>
+<pre class="mermaid">
+flowchart LR
+  A[bad JSON, unknown route, thrown error] --> B[Express default handler]
+  B --> C["HTML page, stack trace in development"]
+</pre></div>
+<div class="card after"><h4>After</h4>
+<pre class="mermaid">
+flowchart LR
+  A[bad JSON, unknown route, thrown error] --> B["notFoundHandler + errorHandler"]
+  B --> C["JSON: INVALID_JSON 400, NOT_FOUND 404, PAYLOAD_TOO_LARGE 413, INTERNAL_ERROR 500"]
+  B --> D["details logged on the server only"]
+</pre></div>
+</div>
+
+<h3>Before and after: where code lives (server)</h3>
+<div class="pair">
+<div class="card before"><h4>Now</h4>
+<pre class="mermaid">
+flowchart TB
+  S[server/src] --> A["loose: tickets.ts, comments.ts, notes.ts, attachments.ts, ticket-ownership.ts"]
+  S --> B["folders: actions/, dashboard/, tickets/, users/, auth/, staff/ (one file)"]
+  A --> C["each copies toInteger and the role-guard array"]
+</pre></div>
+<div class="card after"><h4>After</h4>
+<pre class="mermaid">
+flowchart TB
+  S[server/src] --> H["http/: parseId, guardFor, error handlers"]
+  S --> T["tickets/: router, comments, notes, workflow, query builder"]
+  S --> AT["attachments/"]
+  S --> O["actions/, dashboard/, users/, auth/, authorization/"]
+  T --> H
+  AT --> H
+  O --> H
+</pre></div>
+</div>
+
+<h3>What changes</h3>
+<table>
+<tr><th>Added</th><th>Modified</th></tr>
+<tr><td>
+<code>server/src/http/{error-handlers,params,guards}.ts</code>, <code>server/src/config.ts</code><br>
+<code>client/src/lib/{format,useSingleFlight}.ts(x)</code><br>
+<code>server/tests/lab-04/{security.api.test,error-contract.api.test,config.unit.test}.ts</code>, <code>server/tests/setup/global-setup.ts</code><br>
+<code>client/tests/lab-04/DoubleSubmit.test.tsx</code><br>
+<code>e2e/lab-04/accessibility.spec.ts</code><br>
+<code>scripts/repeat-server-tests.sh</code>, <code>docs/architecture.md</code>, <code>docs/adr/000{1..4}-*.md</code>
+</td><td>
+<code>server/src/app.ts</code>, <code>server.ts</code>, every router that has the copied helpers<br>
+<code>client</code>: eleven components (date format), nine forms and buttons (double submit), accessibility fixes found by the checks<br>
+<code>package.json</code> (root scripts), <code>package-lock.json</code> (advisory fixes), <code>client/package.json</code><br>
+<code>README.md</code>, <code>docs/lab-04/{tests.md,ui-spec.md}</code><br>
+removed: <code>SystemStatusCheck.tsx</code> and its three Lab 1 tests<br>
+moves (last): server loose files, client components into folders
+</td></tr>
+</table>
+
+<h3>Parallelization analysis</h3>
+<table>
+<tr><th>Batch</th><th>Tasks</th><th>Why</th></tr>
+<tr><td>1</td><td>T1 error contract and config (server), T4 client lib and double submit</td><td>Server vs client files</td></tr>
+<tr><td>2</td><td>T2 server helper dedupe, T6 accessibility and responsive automation</td><td>T2 edits routers; T6 adds an E2E spec and fixes client markup/CSS. T6's fixes touch components T4 also touched, so T6 starts after T4 is done</td></tr>
+<tr><td>3</td><td>T3 security suite (needs T1, T2), T5 cleanup</td><td>New test file vs deleting Lab 1 client files</td></tr>
+<tr><td>4</td><td>T7 dependency fixes</td><td>Changes the lockfile and installed packages, so everything is re-run after it; do it alone</td></tr>
+<tr><td>5</td><td>T8 test-schema spike, T9 scripts and repeat log</td><td>T9's ten-run log must run after T8's decision</td></tr>
+<tr><td>6</td><td>T10 file moves</td><td>Touches nearly every file; nothing else may run beside it</td></tr>
+<tr><td>7</td><td>T11 docs, T12 final verification</td><td>Docs describe the final layout</td></tr>
+</table>
+<p class="meta">Critical path: T1 → T2 → T3 → T7 → T8 → T9 → T10 → T12. Longest tasks: T6 (open-ended triage of what the accessibility checks find) and T8 (spike).</p>
+
+<h2>B. Implementation plan</h2>
+<div id="plan">Loading plan...</div>
+</main>
+
+<script type="text/plain" id="plan-md">
+# Feature 29: Final Hardening Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Meet the Lab 4 hardening contract and make the codebase cheaper to extend: consistent HTTP error contract, one home for shared server and client helpers, a safety net that fails loudly, and a map of the code.
+
+**Architecture:** No new runtime patterns. A small `server/src/http/` module (ID parsing, role guards, error and not-found handlers), a `client/src/lib/` pair (date format, single-flight guard), automated accessibility and responsive checks in Playwright, and pure file moves into feature folders at the end.
+
+**Tech Stack:** Express 5, Prisma 6, Vitest, supertest, React 19, Playwright, `@axe-core/playwright` 4.10.2 (new, dev only).
+
+**Spec:** `docs/lab-04/specification.md` §10 (security), AC-L4-28 to 32, FR-L4-18, FR-L4-20; `docs/lab-04/api-spec.md` §0 (error contract); `docs/lab-04/ui-spec.md` §8, §9; `docs/lab-04/tests.md` SEC4-01 to 05, REG-01 to 04, ST4-01, ST4-02, RESP4-01, A11Y4-01, A11Y4-02 and the checklists.
+
+## Global Constraints
+
+- Repo root: `/Users/jinnakanchaviengpob/Desktop/3rd Year/CPE_334/ToKTickIT`. Server commands in `server/`, client in `client/`.
+- Do not create branches, push, open PRs or close issues. Stage only; commit only when the user says so. Do not add `.github/` files (decision 5). No migration in this feature.
+- Behavior must not change except where a task says so. Tasks 2, 5 (moves part) and 10 are mechanical: run the full suites before and after and they must agree.
+- Raw SQL in `server/src` stays tagged-template only; the static guards must keep passing.
+- After every task: `cd server && npx tsc --noEmit -p . && npx vitest run` and `cd client && npx tsc --noEmit -p tsconfig.app.json && npx vitest run` (the ones the task touches). Known baseline before this feature: server 246 tests, client 127 tests, 9 E2E specs (run `npm run prisma:seed` in `server/` before each full E2E run).
+- Error bodies: `{ "error": "<CODE>" }` only; never a stack trace, a message from a thrown error, or SQL.
+
+## File Structure
+
+| File | Responsibility |
+|---|---|
+| `server/src/http/params.ts` | `parseId(value): number | null` |
+| `server/src/http/guards.ts` | `guardFor(...roles)` and the three common chains |
+| `server/src/http/error-handlers.ts` | `notFoundHandler`, `errorHandler` |
+| `server/src/config.ts` | `loadConfig(env)` startup check |
+| `client/src/lib/format.ts` | `formatDateTime` |
+| `client/src/lib/useSingleFlight.ts` | synchronous in-flight guard hook |
+| `server/tests/lab-04/security.api.test.ts` | SEC4-01 to SEC4-05 |
+| `server/tests/lab-04/error-contract.api.test.ts` | JSON errors for bad JSON, unknown routes, forced failures |
+| `e2e/lab-04/accessibility.spec.ts` | RESP4-01, A11Y4-01, axe checks |
+| `scripts/repeat-server-tests.sh` | REG-04 ten-run proof with a log |
+| `docs/architecture.md`, `docs/adr/*.md` | map of the code and four decision records |
+
+---
+
+### Task 1: Error contract and startup config
+
+**Files:**
+- Create: `server/src/http/error-handlers.ts`, `server/src/config.ts`
+- Modify: `server/src/app.ts`, `server/src/server.ts`
+- Test: `server/tests/lab-04/error-contract.api.test.ts`, `server/tests/lab-04/config.unit.test.ts`
+
+**Interfaces:**
+- Produces: `notFoundHandler`, `errorHandler` (Express handlers); `loadConfig(env: NodeJS.ProcessEnv): { port: number; databaseUrl: string; appOrigins: string[] }` which throws one `Error` listing every problem.
+
+- [ ] **Step 1: Write the failing tests** `server/tests/lab-04/error-contract.api.test.ts`:
+
+```ts
+import request from 'supertest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { app } from '../helpers/app.js'
+import { prisma } from '../../src/prisma.js'
+import { loginAsNewUser } from '../helpers/users.js'
+
+afterEach(() => {
+  vi.restoreAllMocks()
+})
+
+const looksLikeLeak = (text: string) => /\bat\s+\S+\s+\(|node_modules|SyntaxError|prisma|boom/i.test(text)
+
+describe('JSON error contract (SEC4-04, api-spec §0)', () => {
+  it('answers malformed JSON with 400 INVALID_JSON as JSON, with no stack trace', async () => {
+    const response = await request(app).post('/api/auth/login').set('Content-Type', 'application/json').send('{bad json')
+    expect(response.status).toBe(400)
+    expect(response.headers['content-type']).toMatch(/application\/json/)
+    expect(response.body).toEqual({ error: 'INVALID_JSON' })
+    expect(looksLikeLeak(response.text)).toBe(false)
+  })
+
+  it('answers an unknown route with 404 NOT_FOUND as JSON', async () => {
+    const response = await request(app).get('/api/this-route-does-not-exist')
+    expect(response.status).toBe(404)
+    expect(response.headers['content-type']).toMatch(/application\/json/)
+    expect(response.body).toEqual({ error: 'NOT_FOUND' })
+  })
+
+  it('answers an oversized JSON body with 413 PAYLOAD_TOO_LARGE', async () => {
+    const response = await request(app)
+      .post('/api/auth/login')
+      .set('Content-Type', 'application/json')
+      .send(JSON.stringify({ email: 'x@y.test', password: 'a'.repeat(2_000_000) }))
+    expect(response.status).toBe(413)
+    expect(response.body).toEqual({ error: 'PAYLOAD_TOO_LARGE' })
+  })
+
+  it('answers an unexpected failure with 500 INTERNAL_ERROR and hides the cause', async () => {
+    const { agent } = await loginAsNewUser('IT_STAFF')
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.spyOn(prisma.ticket, 'findUnique').mockRejectedValueOnce(new Error('boom: secret database detail'))
+
+    const response = await agent.get('/api/tickets/1')
+    expect(response.status).toBe(500)
+    expect(response.headers['content-type']).toMatch(/application\/json/)
+    expect(response.body).toEqual({ error: 'INTERNAL_ERROR' })
+    expect(looksLikeLeak(response.text)).toBe(false)
+  })
+
+  it('logs the cause on the server so it can be found', async () => {
+    const { agent } = await loginAsNewUser('IT_STAFF')
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.spyOn(prisma.ticket, 'findUnique').mockRejectedValueOnce(new Error('boom: secret database detail'))
+
+    await agent.get('/api/tickets/1')
+    expect(logged).toHaveBeenCalled()
+    expect(String(logged.mock.calls[0].join(' '))).toMatch(/GET \/api\/tickets\/1/)
+  })
+})
+```
+
+`server/tests/lab-04/config.unit.test.ts`:
+
+```ts
+import { describe, expect, it } from 'vitest'
+import { loadConfig } from '../../src/config.js'
+
+const valid = { DATABASE_URL: 'postgresql://u:p@localhost:5434/db?schema=public', PORT: '3000', APP_ORIGIN: 'http://localhost:5173' }
+
+describe('loadConfig', () => {
+  it('reads the three settings', () => {
+    expect(loadConfig(valid)).toEqual({ port: 3000, databaseUrl: valid.DATABASE_URL, appOrigins: ['http://localhost:5173'] })
+  })
+
+  it('defaults the port and the origin like the rest of the app', () => {
+    expect(loadConfig({ DATABASE_URL: valid.DATABASE_URL })).toMatchObject({ port: 3000, appOrigins: ['http://localhost:5173'] })
+  })
+
+  it('splits several origins and trims them', () => {
+    expect(loadConfig({ ...valid, APP_ORIGIN: 'http://a.test, http://b.test' }).appOrigins).toEqual(['http://a.test', 'http://b.test'])
+  })
+
+  it('reports every problem in one error, naming the setting', () => {
+    expect(() => loadConfig({ PORT: 'abc', APP_ORIGIN: 'not a url' })).toThrowError(/DATABASE_URL[\s\S]*PORT[\s\S]*APP_ORIGIN/)
+  })
+})
+```
+
+- [ ] **Step 2: Run to verify they fail.** `cd server && npx vitest run tests/lab-04/error-contract.api.test.ts tests/lab-04/config.unit.test.ts` → FAIL.
+
+- [ ] **Step 3: `server/src/http/error-handlers.ts`:**
+
+```ts
+import type { ErrorRequestHandler, RequestHandler } from 'express'
+
+/** An API-only server: an unknown path is a JSON 404, never an HTML page. */
+export const notFoundHandler: RequestHandler = (_request, response) => {
+  response.status(404).json({ error: 'NOT_FOUND' })
+}
+
+type ParserError = { type?: string; status?: number }
+
+/**
+ * Last handler in the chain. Client mistakes keep their own stable code;
+ * everything else is a 500 whose cause stays in the server log, never in the
+ * response (api-spec §0).
+ */
+export const errorHandler: ErrorRequestHandler = (error, request, response, next) => {
+  if (response.headersSent) {
+    next(error)
+    return
+  }
+
+  const parserError = (error ?? {}) as ParserError
+  if (parserError.type === 'entity.parse.failed') {
+    response.status(400).json({ error: 'INVALID_JSON' })
+    return
+  }
+  if (parserError.type === 'entity.too.large') {
+    response.status(413).json({ error: 'PAYLOAD_TOO_LARGE' })
+    return
+  }
+
+  console.error(`${request.method} ${request.originalUrl} failed:`, error)
+  response.status(500).json({ error: 'INTERNAL_ERROR' })
+}
+```
+
+- [ ] **Step 4: Mount them.** In `app.ts` add `import { errorHandler, notFoundHandler } from './http/error-handlers.js'` and, after the last `app.use('/api/...')` line, add:
+
+```ts
+app.use(notFoundHandler)
+app.use(errorHandler)
+```
+
+- [ ] **Step 5: `server/src/config.ts`:**
+
+```ts
+export type AppConfig = { port: number; databaseUrl: string; appOrigins: string[] }
+
+/**
+ * Fail fast at startup with one message that lists every problem, instead of
+ * a confusing failure on the first request. Defaults match the rest of the app
+ * (PORT 3000, APP_ORIGIN http://localhost:5173, see auth/origin-check.ts).
+ */
+export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
+  const problems: string[] = []
+
+  const databaseUrl = env.DATABASE_URL?.trim() ?? ''
+  if (!databaseUrl) problems.push('DATABASE_URL is required.')
+
+  const port = env.PORT === undefined || env.PORT === '' ? 3000 : Number(env.PORT)
+  if (!Number.isInteger(port) || port < 1 || port > 65535) problems.push('PORT must be a whole number from 1 to 65535.')
+
+  const appOrigins = (env.APP_ORIGIN ?? 'http://localhost:5173').split(',').map((origin) => origin.trim()).filter(Boolean)
+  for (const origin of appOrigins) {
+    try {
+      new URL(origin)
+    } catch {
+      problems.push(`APP_ORIGIN contains "${origin}", which is not a URL.`)
+    }
+  }
+
+  if (problems.length > 0) throw new Error(`Invalid configuration:\n- ${problems.join('\n- ')}`)
+  return { port, databaseUrl, appOrigins }
+}
+```
+
+- [ ] **Step 6: Use it at startup.** Replace `server/src/server.ts` body with:
+
+```ts
+import 'dotenv/config'
+import { app } from './app.js'
+import { loadConfig } from './config.js'
+
+const config = loadConfig(process.env)
+
+app.listen(config.port, '127.0.0.1', () => {
+  console.log(`API listening at http://127.0.0.1:${config.port}`)
+})
+```
+
+- [ ] **Step 7: Run.** The two new files → PASS; full `npx vitest run` → green. If the oversized-body test is slow or Express's default 100 KB limit does not trigger, send `'a'.repeat(200_000)` instead of 2,000,000.
+
+- [ ] **Step 8: Stage.** `git add server`
+
+---
+
+### Task 2: One home for ID parsing and role guards (server, no behavior change)
+
+**Files:**
+- Create: `server/src/http/params.ts`, `server/src/http/guards.ts`
+- Modify: every server file with a copied `toInteger` or role-guard array
+
+**Interfaces:**
+- Produces: `parseId(value: unknown): number | null` (same rule as the copies: a number or numeric string that is an integer); `guardFor(...roles: Role[])`; `requireRequester`, `requireStaff`, `requireAnyRole`.
+
+- [ ] **Step 1: `params.ts`:**
+
+```ts
+/** A route parameter that must be a whole number, or null. One rule for every router. */
+export function parseId(value: unknown): number | null {
+  const parsed = typeof value === 'number' ? value : Number(value)
+  return Number.isInteger(parsed) ? parsed : null
+}
+```
+
+- [ ] **Step 2: `guards.ts`:**
+
+```ts
+import type { Role } from '@prisma/client'
+import { requireSession, requirePasswordAlreadyChanged } from '../auth/require-session.js'
+import { requireRole } from '../authorization/require-role.js'
+
+/** Session, then forced-password-change, then role (BR-L3-08): the order every protected route needs. */
+export function guardFor(...roles: Role[]) {
+  return [requireSession, requirePasswordAlreadyChanged, requireRole(...roles)]
+}
+
+export const requireRequester = guardFor('REQUESTER')
+export const requireStaff = guardFor('IT_STAFF', 'ADMINISTRATOR')
+export const requireAnyRole = guardFor('REQUESTER', 'IT_STAFF', 'ADMINISTRATOR')
+```
+
+- [ ] **Step 3: Record the baseline.** `cd server && npx vitest run 2>&1 | grep -E "Tests "` (expect 246 plus Task 1's new tests) and `grep -rn "function toInteger" src | wc -l` (expect 7) and `grep -rn "requireSession, requirePasswordAlreadyChanged, requireRole" src | wc -l`.
+
+- [ ] **Step 4: Replace the copies** with this script (run from `server/`), then review `git diff --stat`:
+
+```bash
+python3 - <<'EOF'
+import re, pathlib
+root = pathlib.Path('src')
+param_def = re.compile(r"function toInteger\(value: unknown\): number \| null \{\n  const parsed = typeof value === 'number' \? value : Number\(value\)\n  return Number\.isInteger\(parsed\) \? parsed : null\n\}\n\n?")
+chain = re.compile(r"\[\s*requireSession,\s*requirePasswordAlreadyChanged,\s*requireRole\(([^)]*)\),?\s*\]")
+skip = {'http/params.ts', 'http/guards.ts'}
+for path in sorted(root.rglob('*.ts')):
+    rel = path.relative_to(root).as_posix()
+    if rel in skip:
+        continue
+    text = path.read_text()
+    new = text
+    depth = '../' * (len(path.relative_to(root).parts) - 1) or './'
+    if param_def.search(new):
+        new = param_def.sub('', new)
+        new = re.sub(r'\btoInteger\(', 'parseId(', new)
+        new = f"import {{ parseId }} from '{depth}http/params.js'\n" + new
+    if chain.search(new):
+        new = chain.sub(lambda m: f"guardFor({m.group(1)})", new)
+        new = f"import {{ guardFor }} from '{depth}http/guards.js'\n" + new
+    if new != text:
+        path.write_text(new)
+        print('edited', rel)
+EOF
+```
+
+- [ ] **Step 5: Clean the imports and finish by hand.** Run `npx tsc --noEmit -p .`. For each file it reports: remove imports that are now unused (`requireSession`, `requirePasswordAlreadyChanged`, `requireRole`); where a file used the same chain under three names, you may import `requireStaff` and friends from `http/guards.js` instead of calling `guardFor` (do this only if the names and role lists match exactly). Move each new import line below the file's existing imports if the editor ordering looks wrong. Then `grep -rn "function toInteger" src | wc -l` must be 0 and `grep -rn "requireSession, requirePasswordAlreadyChanged, requireRole" src | wc -l` must be 0 except `http/guards.ts` (1).
+
+- [ ] **Step 6: Run.** `npx tsc --noEmit -p .` clean; full `npx vitest run` → same count as the baseline, all pass. Any change in a test result means the replacement changed behavior: revert that file and do it by hand.
+
+- [ ] **Step 7: Stage.** `git add server`
+
+---
+
+### Task 3: Security regression suite (SEC4-01 to SEC4-05)
+
+**Files:**
+- Modify: `server/tests/helpers/session.ts`
+- Create: `server/tests/lab-04/security.api.test.ts`
+
+**Interfaces:** Produces `loginWithoutOrigin(email)` returning a plain supertest agent (no default Origin) and its user id.
+
+- [ ] **Step 1: Helper.** Append to `server/tests/helpers/session.ts`:
+
+```ts
+/** An agent that does NOT add an Origin header, for tests of the Origin check itself (BR-L3-09). */
+export async function loginWithoutOrigin(email: string, password: string = SEED_PASSWORD) {
+  const agent = request.agent(app)
+  const response = await agent.post('/api/auth/login').send({ email, password })
+  if (response.status !== 200) throw new Error(`Test login failed for ${email}: ${response.status}`)
+  return { agent, userId: response.body.id as number }
+}
+```
+(login itself is unauthenticated, so it needs no Origin.)
+
+- [ ] **Step 2: Write the suite** `security.api.test.ts`:
+
+```ts
+import { readdirSync, readFileSync } from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+import request from 'supertest'
+import { beforeAll, describe, expect, it } from 'vitest'
+import { app } from '../helpers/app.js'
+import { prisma } from '../../src/prisma.js'
+import { loginWithoutOrigin } from '../helpers/session.js'
+import { createUser, loginAsNewUser } from '../helpers/users.js'
+import { addActionRow, createTicketRow, createTicketVia } from '../helpers/tickets.js'
+
+type Actor = Awaited<ReturnType<typeof loginAsNewUser>>
+let owner: Actor
+let intruder: Actor
+let staff: Actor
+let admin: Actor
+let ticketId: number
+let actionId: number
+
+beforeAll(async () => {
+  ;[owner, intruder, staff, admin] = await Promise.all([
+    loginAsNewUser('REQUESTER'),
+    loginAsNewUser('REQUESTER'),
+    loginAsNewUser('IT_STAFF'),
+    loginAsNewUser('ADMINISTRATOR'),
+  ])
+  ticketId = (await createTicketVia(owner.agent)).id
+  actionId = (await addActionRow(ticketId, staff.userId, 'PLANNED')).id
+}, 90_000)
+
+describe('IDOR sweep (SEC4-01, BR-L4-22)', () => {
+  it('lets only the owner or staff read Actions, history and Ticket detail', async () => {
+    for (const path of [`/api/tickets/${ticketId}`, `/api/tickets/${ticketId}/actions`, `/api/tickets/${ticketId}/history`]) {
+      expect((await owner.agent.get(path)).status, `owner ${path}`).toBe(200)
+      expect((await staff.agent.get(path)).status, `staff ${path}`).toBe(200)
+      expect((await admin.agent.get(path)).status, `admin ${path}`).toBe(200)
+      const foreign = await intruder.agent.get(path)
+      expect(foreign.status, `intruder ${path}`).toBe(403)
+      expect(foreign.body.error).toBe('TICKET_FORBIDDEN')
+      expect((await request(app).get(path)).status, `anonymous ${path}`).toBe(401)
+    }
+  })
+
+  it('refuses a Requester every write on Actions and workflow, even on their own Ticket', async () => {
+    const writes: Array<[string, string, object]> = [
+      ['post', `/api/tickets/${ticketId}/actions`, { description: 'x' }],
+      ['patch', `/api/tickets/${ticketId}/actions/${actionId}`, { version: 1, description: 'x' }],
+      ['patch', `/api/tickets/${ticketId}/status`, { status: 'OPEN', expectedVersion: 1 }],
+      ['patch', `/api/tickets/${ticketId}/priority`, { itPriority: 'HIGH', expectedVersion: 1 }],
+      ['post', `/api/tickets/${ticketId}/reassign`, { ticketOwnerId: staff.userId, expectedVersion: 1 }],
+      ['post', `/api/tickets/${ticketId}/claim`, {}],
+    ]
+    for (const [method, path, body] of writes) {
+      const response = await (owner.agent as unknown as Record<string, (p: string) => request.Test>)[method](path).send(body)
+      expect(response.status, `${method} ${path}`).toBe(403)
+    }
+  })
+
+  it('refuses staff the Requester-only indication, and scopes the Requester dashboard to the session user', async () => {
+    expect((await staff.agent.post(`/api/tickets/${ticketId}/appears-resolved`)).status).toBe(403)
+    expect((await staff.agent.get('/api/dashboard/requester')).status).toBe(403)
+    expect((await owner.agent.get('/api/dashboard/staff')).status).toBe(403)
+    // The Requester dashboard takes no id: another user's numbers cannot be asked for.
+    const other = await intruder.agent.get('/api/dashboard/requester?requesterId=' + owner.userId)
+    expect(other.body.cards.find((card: { key: string }) => card.key === 'open').count).toBe(0)
+  })
+
+  it('answers an Action addressed through another Ticket with 404, not 403', async () => {
+    const otherTicket = (await createTicketVia(intruder.agent)).id
+    const response = await staff.agent.patch(`/api/tickets/${otherTicket}/actions/${actionId}`).send({ version: 1, description: 'x' })
+    expect(response.status).toBe(404)
+    expect(response.body.error).toBe('ACTION_NOT_FOUND')
+  })
+})
+
+describe('Mass assignment (SEC4-02, §10)', () => {
+  it('ignores protected and unknown fields on Action create and edit', async () => {
+    const created = await staff.agent.post(`/api/tickets/${ticketId}/actions`).send({
+      description: 'Mass assignment probe', createdById: admin.userId, ticketId: 999999999, version: 50, id: 123456789, isAdmin: true,
+    })
+    expect(created.status).toBe(201)
+    expect(created.body).toMatchObject({ createdById: staff.userId, ticketId, version: 1 })
+    expect(created.body.id).not.toBe(123456789)
+    expect(created.body.isAdmin).toBeUndefined()
+
+    const edited = await staff.agent.patch(`/api/tickets/${ticketId}/actions/${created.body.id}`).send({
+      version: 1, description: 'Edited', createdById: admin.userId, ticketId: 999999999, createdAt: '2000-01-01T00:00:00.000Z',
+    })
+    expect(edited.status).toBe(200)
+    expect(edited.body).toMatchObject({ createdById: staff.userId, ticketId, version: 2 })
+    expect(new Date(edited.body.createdAt).getFullYear()).toBeGreaterThan(2000)
+  })
+
+  it('ignores protected fields on Ticket mutations', async () => {
+    const ticket = await createTicketRow({ requesterId: owner.userId, status: 'OPEN' })
+    const response = await staff.agent.patch(`/api/tickets/${ticket.id}/priority`).send({
+      itPriority: 'HIGH', expectedVersion: ticket.version, requesterId: intruder.userId, ticketNumber: 'HACKED', currentStatus: 'CLOSED', version: 99,
+    })
+    expect(response.status).toBe(200)
+    const stored = await prisma.ticket.findUniqueOrThrow({ where: { id: ticket.id } })
+    expect(stored).toMatchObject({ itPriority: 'HIGH', requesterId: owner.userId, currentStatus: 'OPEN', version: ticket.version + 1 })
+    expect(stored.ticketNumber).not.toBe('HACKED')
+  })
+})
+
+describe('Origin check on every new mutating route (SEC4-03, BR-L3-09)', () => {
+  it('answers 403 ORIGIN_MISMATCH for a wrong or missing Origin', async () => {
+    const staffUser = await createUser({ role: 'IT_STAFF' })
+    const requesterUser = await createUser({ role: 'REQUESTER' })
+    const { agent: rawStaff } = await loginWithoutOrigin(staffUser.email)
+    const { agent: rawRequester } = await loginWithoutOrigin(requesterUser.email)
+
+    const routes: Array<[typeof rawStaff, string, string, object]> = [
+      [rawStaff, 'post', `/api/tickets/${ticketId}/actions`, { description: 'x' }],
+      [rawStaff, 'patch', `/api/tickets/${ticketId}/actions/${actionId}`, { version: 1, description: 'x' }],
+      [rawStaff, 'patch', `/api/tickets/${ticketId}/status`, { status: 'OPEN', expectedVersion: 1 }],
+      [rawStaff, 'patch', `/api/tickets/${ticketId}/priority`, { itPriority: 'HIGH', expectedVersion: 1 }],
+      [rawStaff, 'post', `/api/tickets/${ticketId}/reassign`, { ticketOwnerId: staffUser.id, expectedVersion: 1 }],
+      [rawStaff, 'post', `/api/tickets/${ticketId}/claim`, {}],
+      [rawRequester, 'post', `/api/tickets/${ticketId}/appears-resolved`, {}],
+    ]
+    for (const [agent, method, path, body] of routes) {
+      const send = (agent as unknown as Record<string, (p: string) => request.Test>)[method]
+      const missing = await send.call(agent, path).send(body)
+      expect(missing.status, `no Origin: ${method} ${path}`).toBe(403)
+      expect(missing.body.error).toBe('ORIGIN_MISMATCH')
+      const wrong = await send.call(agent, path).set('Origin', 'http://evil.example').send(body)
+      expect(wrong.status, `wrong Origin: ${method} ${path}`).toBe(403)
+      expect(wrong.body.error).toBe('ORIGIN_MISMATCH')
+    }
+    expect((await prisma.ticket.findUniqueOrThrow({ where: { id: ticketId } })).version).toBe(1)
+  })
+})
+
+describe('Static guards (SEC4-05, §10)', () => {
+  const SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'src')
+
+  function files(dir: string): string[] {
+    return readdirSync(dir, { withFileTypes: true }).flatMap((entry) =>
+      entry.isDirectory() ? files(path.join(dir, entry.name)) : entry.name.endsWith('.ts') ? [path.join(dir, entry.name)] : [],
+    )
+  }
+  const sources = () => files(SRC).map((file) => ({ file: path.relative(SRC, file), text: readFileSync(file, 'utf8') }))
+
+  it('uses raw SQL only as bound tagged templates, and only in the two files that need row locks', () => {
+    const allowed = new Set(['tickets/lock-ticket.ts', 'attachments/attachments-router.ts', 'attachments.ts'])
+    for (const { file, text } of sources()) {
+      expect(/\$(queryRawUnsafe|executeRawUnsafe)/.test(text), `${file} uses an unsafe raw call`).toBe(false)
+      if (/\$queryRaw|\$executeRaw/.test(text)) expect(allowed.has(file), `${file} uses raw SQL`).toBe(true)
+    }
+  })
+
+  it('never runs a shell command and never builds HTML from user text', () => {
+    for (const { file, text } of sources()) {
+      expect(/child_process|\bexec\(|\bspawn\(/.test(text), `${file} runs a command`).toBe(false)
+      expect(/res(ponse)?\.send\(`<|\.send\('<|innerHTML/.test(text), `${file} builds markup`).toBe(false)
+    }
+  })
+
+  it('never returns an error message or stack from a caught error to the client', () => {
+    for (const { file, text } of sources()) {
+      expect(/json\(\{[^}]*(error\.message|error\.stack|err\.message|err\.stack)/.test(text), `${file} leaks an error`).toBe(false)
+    }
+  })
+})
+```
+
+- [ ] **Step 3: Run.** `npx vitest run tests/lab-04/security.api.test.ts`. If a route in the Origin test answers 401/403 for a different reason than the Origin check (for example `claim` finds the Ticket already claimed), the assertion on `error` shows it: keep the route list, fix the setup (use a fresh Ticket per route), not the assertion. The `allowed` set lists both the current and the post-move path of the attachments router so Task 10 does not break the guard.
+
+- [ ] **Step 4: Mutation check.** Temporarily make `originMatches` in `auth/origin-check.ts` return `true`; the Origin test must fail; restore.
+
+- [ ] **Step 5: Full suite and stage.** `npx vitest run` green; `git add server`
+
+---
+
+### Task 4: Client shared helpers and the double-submit guard (FR-L4-18, AC-L4-28)
+
+**Files:**
+- Create: `client/src/lib/format.ts`, `client/src/lib/useSingleFlight.ts`
+- Modify: eleven components (date format), nine handlers (guard)
+- Test: `client/tests/lab-04/DoubleSubmit.test.tsx`
+
+**Interfaces:** `formatDateTime(iso: string): string`; `useSingleFlight(): { begin(): boolean; end(): void }`.
+
+- [ ] **Step 1: Helpers.**
+
+`client/src/lib/format.ts`:
+
+```ts
+/** Local date and time in one format for the whole app (dashboards, cards, history). */
+export function formatDateTime(iso: string): string {
+  return new Date(iso).toLocaleString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  })
+}
+```
+
+`client/src/lib/useSingleFlight.ts`:
+
+```ts
+import { useRef } from 'react'
+
+/**
+ * A synchronous "one request at a time" guard. Setting state to disable a
+ * button is asynchronous, so two submits in the same tick (a double click, Enter
+ * plus click) can both pass. A ref flips immediately.
+ *
+ *   if (!flight.begin()) return
+ *   try { await save() } finally { flight.end() }
+ */
+export function useSingleFlight() {
+  const inFlight = useRef(false)
+  return {
+    begin(): boolean {
+      if (inFlight.current) return false
+      inFlight.current = true
+      return true
+    },
+    end(): void {
+      inFlight.current = false
+    },
+  }
+}
+```
+
+- [ ] **Step 2: Write the failing double-submit tests** `client/tests/lab-04/DoubleSubmit.test.tsx`. Each test fires three submits (or clicks) inside one `act()`, so React cannot re-render between them, and expects exactly one write request:
+
+```tsx
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { AppearsResolved } from '../../src/components/AppearsResolved.js'
+import { ChangePassword } from '../../src/components/ChangePassword.js'
+import { CommentsPanel } from '../../src/components/CommentsPanel.js'
+import { CreateTicketForm } from '../../src/components/CreateTicketForm.js'
+import { Login } from '../../src/components/Login.js'
+import { NotesPanel } from '../../src/components/NotesPanel.js'
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
+
+/** A fetch stub that answers reads quickly and holds every write open until released, counting them. */
+function stubWrites(isWrite: (url: string, method: string) => boolean, answer: unknown = {}) {
+  let release: () => void = () => {}
+  const gate = new Promise<void>((resolve) => { release = resolve })
+  const writes: string[] = []
+  vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+    const method = init?.method ?? 'GET'
+    if (isWrite(url, method)) {
+      writes.push(`${method} ${url}`)
+      await gate
+      return { ok: true, status: 200, json: async () => answer } as Response
+    }
+    if (url === '/api/categories' || url === '/api/related-systems') {
+      return { ok: true, status: 200, json: async () => [{ id: 1, name: 'Hardware' }] } as Response
+    }
+    return { ok: true, status: 200, json: async () => [] } as Response
+  }))
+  return { writes, release }
+}
+
+function submitThrice(form: HTMLElement) {
+  act(() => {
+    fireEvent.submit(form)
+    fireEvent.submit(form)
+    fireEvent.submit(form)
+  })
+}
+
+describe('Repeated submits send one request (FR-L4-18, AC-L4-28)', () => {
+  it('Login', async () => {
+    const { writes, release } = stubWrites((url, method) => method === 'POST' && url === '/api/auth/login', { id: 1 })
+    const { container } = render(<Login onLoggedIn={() => {}} />)
+    fireEvent.change(screen.getByLabelText('Email *'), { target: { value: 'alex.rivera@toktickit.test' } })
+    fireEvent.change(screen.getByLabelText('Password *'), { target: { value: 'DevPass123!' } })
+    submitThrice(container.querySelector('form') as HTMLElement)
+    release()
+    await waitFor(() => expect(writes.length).toBeGreaterThan(0))
+    expect(writes).toHaveLength(1)
+  })
+
+  it('Change Password', async () => {
+    const { writes, release } = stubWrites((url, method) => method === 'POST' && url.includes('/api/auth/'), { success: true })
+    const { container } = render(<ChangePassword mandatory onChanged={() => {}} />)
+    fireEvent.change(screen.getByLabelText('Current Password *'), { target: { value: 'DevPass123!' } })
+    fireEvent.change(screen.getByLabelText('New Password *', { exact: true }), { target: { value: 'BrandNewPass456!' } })
+    fireEvent.change(screen.getByLabelText('Confirm New Password *'), { target: { value: 'BrandNewPass456!' } })
+    submitThrice(container.querySelector('form') as HTMLElement)
+    release()
+    await waitFor(() => expect(writes.length).toBeGreaterThan(0))
+    expect(writes).toHaveLength(1)
+  })
+
+  it('Public Comment', async () => {
+    const { writes, release } = stubWrites((url, method) => method === 'POST' && url.endsWith('/comments'), {
+      id: 1, ticketId: 42, authorId: 1, authorName: 'A', body: 'Hello', createdAt: '2026-01-01T00:00:00.000Z',
+    })
+    const { container } = render(<CommentsPanel ticketId={42} />)
+    const box = await waitFor(() => {
+      const element = container.querySelector('#new-comment') as HTMLTextAreaElement | null
+      if (!element) throw new Error('not ready')
+      return element
+    })
+    fireEvent.change(box, { target: { value: 'Hello' } })
+    submitThrice(container.querySelector('form') as HTMLElement)
+    release()
+    await waitFor(() => expect(writes.length).toBeGreaterThan(0))
+    expect(writes).toHaveLength(1)
+  })
+
+  it('Internal Note', async () => {
+    const { writes, release } = stubWrites((url, method) => method === 'POST' && url.endsWith('/notes'), {
+      id: 1, ticketId: 42, authorId: 1, authorName: 'A', body: 'Note', createdAt: '2026-01-01T00:00:00.000Z',
+    })
+    const { container } = render(<NotesPanel ticketId={42} />)
+    const box = await waitFor(() => {
+      const element = container.querySelector('#new-note') as HTMLTextAreaElement | null
+      if (!element) throw new Error('not ready')
+      return element
+    })
+    fireEvent.change(box, { target: { value: 'Note' } })
+    submitThrice(container.querySelector('form') as HTMLElement)
+    release()
+    await waitFor(() => expect(writes.length).toBeGreaterThan(0))
+    expect(writes).toHaveLength(1)
+  })
+
+  it('Create Ticket', async () => {
+    const { writes, release } = stubWrites((url, method) => method === 'POST' && url === '/api/tickets', {
+      id: 1, ticketNumber: 'TKT-2026-000001',
+    })
+    const { container } = render(<CreateTicketForm requesterName="Sarah Johnson" onViewMyTickets={() => {}} />)
+    await waitFor(() => expect(container.querySelectorAll('#ticket-category option').length).toBeGreaterThan(1))
+    fireEvent.change(container.querySelector('#ticket-category') as HTMLSelectElement, { target: { value: '1' } })
+    fireEvent.change(container.querySelector('#ticket-related-system') as HTMLSelectElement, { target: { value: '1' } })
+    fireEvent.change(container.querySelector('#ticket-priority') as HTMLSelectElement, { target: { value: 'MEDIUM' } })
+    fireEvent.change(container.querySelector('#ticket-summary') as HTMLInputElement, { target: { value: 'Laptop will not start' } })
+    fireEvent.change(container.querySelector('#ticket-description') as HTMLTextAreaElement, { target: { value: 'It does not power on at all.' } })
+    submitThrice(container.querySelector('form') as HTMLElement)
+    release()
+    await waitFor(() => expect(writes.length).toBeGreaterThan(0))
+    expect(writes).toHaveLength(1)
+  })
+
+  it('Problem appears resolved', async () => {
+    const { writes, release } = stubWrites((url, method) => method === 'POST' && url.endsWith('/appears-resolved'), {
+      id: 42, requesterResolvedAt: '2026-10-31T09:00:00.000Z', currentStatus: 'IN_PROGRESS',
+    })
+    render(<AppearsResolved ticketId={42} status="IN_PROGRESS" requesterResolvedAt={null} />)
+    const button = screen.getByRole('button', { name: 'Problem appears resolved' })
+    act(() => {
+      fireEvent.click(button)
+      fireEvent.click(button)
+      fireEvent.click(button)
+    })
+    release()
+    await waitFor(() => expect(writes.length).toBeGreaterThan(0))
+    expect(writes).toHaveLength(1)
+  })
+})
+```
+
+- [ ] **Step 3: Run to verify they fail.** `cd client && npx vitest run tests/lab-04/DoubleSubmit.test.tsx`. Expect FAIL for every case that relies on disabled state alone (writes length 3). If a case already passes, its handler is already safe (note it, keep the test). If an element id or label differs from the real component, read the component and fix the test's query, not the component.
+
+- [ ] **Step 4: Add the guard to each handler.** For each file below add `import { useSingleFlight } from '../lib/useSingleFlight.js'`, `const flight = useSingleFlight()` next to the existing `useState` lines, then place `if (!flight.begin()) return` **immediately before** the `setIs...(true)` line named here (after any validation that returns early, so a rejected form never takes the slot) and `flight.end()` **immediately after** the matching `setIs...(false)` inside `finally`:
+
+| File | Handler | State setter |
+|---|---|---|
+| `CreateTicketForm.tsx` | `handleSubmit` | `setIsSubmitting` |
+| `CommentsPanel.tsx` | `handleSubmit` | `setIsPosting` |
+| `NotesPanel.tsx` | `handleSubmit` | `setIsPosting` |
+| `Login.tsx` | `handleSubmit` | `setIsSubmitting` |
+| `ChangePassword.tsx` | `handleSubmit` | `setIsSubmitting` |
+| `UserManagement.tsx` | `handleSubmit` | `setIsSaving` |
+| `AttachmentSection.tsx` | `handleFileChange` | `setIsUploading` |
+| `AppearsResolved.tsx` | `handleClick` | `setIsSending` |
+| `ServiceActionsPanel.tsx` | `handleClaim`, `handleReassign`, `handlePriorityChange`, `handleStatusChange` | `setIsClaiming`, `setIsReassigning`, `setIsChangingPriority`, `setIsChangingStatus` (one flight per handler: `claimFlight`, `reassignFlight`, `priorityFlight`, `statusFlight`) |
+
+Do not touch `ActionForm.tsx` (it already has its own ref guard) or `ActionsTakenPanel`'s quick actions (they already disable per card; add `quickFlight` the same way in `quickChange` before `setBusyId(action.id)` and `.end()` in its `finally`).
+
+- [ ] **Step 5: One date format.** Replace the eleven local `formatDate` functions: run from `client/`:
+
+```bash
+python3 - <<'EOF'
+import re, pathlib
+src = pathlib.Path('src/components')
+pattern = re.compile(r"function formatDate\(iso: string\): string \{.*?\n\}\n\n?", re.S)
+for path in sorted(src.glob('*.tsx')):
+    text = path.read_text()
+    if not pattern.search(text):
+        continue
+    new = pattern.sub('', text, count=1)
+    new = re.sub(r"(import [^\n]*\n)(?!import)", r"\1", new, count=1)
+    new = "import { formatDateTime as formatDate } from '../lib/format.js'\n" + new
+    path.write_text(new)
+    print('edited', path.name)
+EOF
+```
+`DashboardParts.tsx` exports its own `formatDate`; replace that definition with `export { formatDateTime as formatDate } from '../lib/format.js'` by hand. Then `grep -rn "function formatDate" src | wc -l` must be 0. Fix any import order or unused-import report from `npx tsc --noEmit -p tsconfig.app.json`.
+
+- [ ] **Step 6: Run.** `npx vitest run` → all green including `DoubleSubmit.test.tsx`; `npx tsc --noEmit -p tsconfig.app.json`; `npm run build`.
+
+- [ ] **Step 7: Mutation check.** In `useSingleFlight.begin()` return `true` always; the double-submit tests must fail; restore.
+
+- [ ] **Step 8: Stage.** `git add client`
+
+---
+
+### Task 5: Cleanup of leftovers
+
+**Files:**
+- Delete: `client/src/components/SystemStatusCheck.tsx`, `client/tests/lab-01/{heading,category-list,error-state}.test.tsx`
+- Modify: `docs/lab-04/tests.md` (REG note), nothing else here; README is in Task 11
+
+- [ ] **Step 1: Confirm it is unreachable.** `grep -rn "SystemStatusCheck" client/src` must list only the component file itself. `grep -rn "api/health\|api/categories" client/src` shows the categories endpoint is used by forms (keep the server routes; only the client panel goes).
+
+- [ ] **Step 2: Remove.** `git rm client/src/components/SystemStatusCheck.tsx client/tests/lab-01/heading.test.tsx client/tests/lab-01/category-list.test.tsx client/tests/lab-01/error-state.test.tsx`; if `client/tests/lab-01` is now empty it disappears with them. Check `client/src` for CSS only that panel used (`.service-card`, `.system-result` in `styles.css`): `grep -rn "service-card\|system-result\|brand-mark" client/src --include=*.tsx`; remove CSS rules with no user, keep `.brand-mark` (the header uses it).
+
+- [ ] **Step 3: Server side Lab 1 tests stay** (`health`, `categories`): the endpoints are still used (categories) or still a useful ops check (health).
+
+- [ ] **Step 4: Run.** `cd client && npx vitest run && npx tsc --noEmit -p tsconfig.app.json && npm run build`; the client test count drops by exactly the removed Lab 1 tests (record the new baseline).
+
+- [ ] **Step 5: Stage.** `git add -A client`
+
+---
+
+### Task 6: Automated accessibility and responsive checks (RESP4-01, A11Y4-01/02, ST4-01/02)
+
+**Files:**
+- Modify: `package.json` (root dev dependency)
+- Create: `e2e/lab-04/accessibility.spec.ts`
+- Modify: client components and `styles.css` for what the checks find
+- Test: `client/tests/lab-04/ActionsTaken.test.tsx`, `StaffDashboard.test.tsx` (ST4-01, ST4-02, A11Y4-02 additions)
+
+- [ ] **Step 1: Add the dependency.** From the repo root: `npm install --save-dev --save-exact @axe-core/playwright@4.10.2`. Confirm `package.json` lists it under `devDependencies` and the lockfile changed only for it.
+
+- [ ] **Step 2: Write the spec** `e2e/lab-04/accessibility.spec.ts`:
+
+```ts
+import AxeBuilder from '@axe-core/playwright'
+import { expect, test, type Page } from '@playwright/test'
+
+const WIDTHS = [
+  { name: '1280', width: 1280, height: 900 },
+  { name: '768', width: 768, height: 1024 },
+  { name: '390', width: 390, height: 844 },
+]
+
+const ROLES = [
+  { name: 'requester', email: 'sarah.johnson@toktickit.test', screens: ['Dashboard', 'My Tickets', 'Create Ticket'] },
+  { name: 'staff', email: 'alex.rivera@toktickit.test', screens: ['Dashboard', 'Ticket Queue'] },
+  { name: 'administrator', email: 'morgan.kim@toktickit.test', screens: ['Dashboard', 'Ticket Queue', 'User Management'] },
+]
+
+async function login(page: Page, email: string) {
+  await page.goto('/')
+  await page.getByLabel('Email *').fill(email)
+  await page.getByLabel('Password *').fill('DevPass123!')
+  await page.getByRole('button', { name: 'Login' }).click()
+  await expect(page.getByRole('button', { name: 'Logout' })).toBeVisible()
+}
+
+async function expectNoOverflow(page: Page, where: string) {
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
+  expect(overflow, `horizontal overflow on ${where}`).toBeLessThanOrEqual(0)
+}
+
+async function expectNoSeriousViolations(page: Page, where: string) {
+  const result = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze()
+  const blocking = result.violations.filter((violation) => violation.impact === 'serious' || violation.impact === 'critical')
+  const summary = blocking.map((violation) => `${violation.id} (${violation.impact}): ${violation.nodes.slice(0, 3).map((node) => node.target.join(' ')).join(' | ')}`)
+  expect(summary, `accessibility on ${where}`).toEqual([])
+}
+
+for (const role of ROLES) {
+  for (const size of WIDTHS) {
+    test(`RESP4-01 and axe: ${role.name} screens at ${size.name}px`, async ({ page }) => {
+      await page.setViewportSize({ width: size.width, height: size.height })
+      await login(page, role.email)
+
+      for (const screen of role.screens) {
+        await page.getByRole('button', { name: screen, exact: true }).click()
+        await page.waitForLoadState('networkidle')
+        await expectNoOverflow(page, `${role.name} ${screen} ${size.name}`)
+        await expectNoSeriousViolations(page, `${role.name} ${screen} ${size.name}`)
+      }
+
+      // Ticket Detail, with Actions and History, for roles that have Tickets to open.
+      if (role.name !== 'administrator') {
+        await page.getByRole('button', { name: role.name === 'requester' ? 'My Tickets' : 'Ticket Queue', exact: true }).click()
+        await page.waitForLoadState('networkidle')
+        await page.locator('text=/^TKT-\\d{4}-\\d+$/').locator('visible=true').first().click()
+        await expect(page.getByRole('heading', { name: /Ticket TKT-/ })).toBeVisible()
+        await page.waitForLoadState('networkidle')
+        await expectNoOverflow(page, `${role.name} Ticket Detail ${size.name}`)
+        await expectNoSeriousViolations(page, `${role.name} Ticket Detail ${size.name}`)
+      }
+    })
+  }
+}
+
+test.describe('A11Y4-01 keyboard walk', () => {
+  test('every interactive element on the Staff Dashboard is reachable in order and shows a focus indicator', async ({ page }) => {
+    await login(page, 'alex.rivera@toktickit.test')
+    await expect(page.getByRole('heading', { name: /Welcome/ })).toBeVisible()
+    await page.waitForLoadState('networkidle')
+
+    const stops: Array<{ tag: string; name: string; indicator: boolean; inHeader: boolean }> = []
+    for (let i = 0; i < 40; i += 1) {
+      await page.keyboard.press('Tab')
+      stops.push(
+        await page.evaluate(() => {
+          const element = document.activeElement as HTMLElement
+          const style = getComputedStyle(element)
+          const hasOutline = style.outlineStyle !== 'none' && parseFloat(style.outlineWidth) > 0
+          const hasShadow = style.boxShadow !== 'none'
+          return {
+            tag: element.tagName.toLowerCase(),
+            name: (element.getAttribute('aria-label') ?? element.textContent ?? '').trim().slice(0, 60),
+            indicator: hasOutline || hasShadow,
+            inHeader: !!element.closest('header'),
+          }
+        }),
+      )
+    }
+
+    const navigationFirst = stops.findIndex((stop) => stop.inHeader) < stops.findIndex((stop) => !stop.inHeader && stop.tag === 'a')
+    expect(navigationFirst, 'the navigation comes before the dashboard cards').toBe(true)
+    expect(stops.filter((stop) => stop.tag === 'a').length, 'cards and breakdown rows are reachable').toBeGreaterThanOrEqual(10)
+    const without = stops.filter((stop) => !stop.indicator && stop.tag !== 'body')
+    expect(without.map((stop) => `${stop.tag}: ${stop.name}`), 'focused elements without a visible indicator').toEqual([])
+  })
+})
+```
+
+- [ ] **Step 3: Run once and read the findings.** `npx playwright test e2e/lab-04/accessibility.spec.ts`. This is the open-ended step: the checks list real problems. Triage rule: every `serious` or `critical` finding is fixed in the component or `styles.css` (color contrast tokens, missing labels, duplicate ids, buttons without a name, tables without headers); a finding that is a false positive is excluded by adding `.exclude('<selector>')` to that one `AxeBuilder` call with a one-line comment saying why. Do not weaken the severity filter. Repeat until the whole spec passes. Keep a list of what was fixed for the commit message and `tests.md`.
+
+- [ ] **Step 4: Component tests for ST4-01, ST4-02, A11Y4-02.** Append to `client/tests/lab-04/ActionsTaken.test.tsx` inside a new `describe('Badges and field styling (ST4-01, ST4-02, AC-L4-29)')`:
+
+```tsx
+describe('Badges and field styling (ST4-01, ST4-02, AC-L4-29)', () => {
+  it('ST4-01 every Action status badge carries its text, with a distinct class each', async () => {
+    mount({
+      initial: [
+        makeAction({ id: 1, status: 'PLANNED' }),
+        makeAction({ id: 2, status: 'IN_PROGRESS' }),
+        makeAction({ id: 3, status: 'COMPLETED', result: 'Done.' }),
+        makeAction({ id: 4, status: 'CANCELLED' }),
+      ],
+    })
+    const badges = await Promise.all(['Planned', 'In Progress', 'Completed', 'Cancelled'].map((label) => screen.findByText(label)))
+    expect(new Set(badges.map((badge) => badge.className)).size).toBe(4)
+    expect(badges[3].className).toMatch(/line-through/)
+  })
+
+  it('ST4-02 read-only fields look different from editable ones', async () => {
+    mount({ initial: [makeAction({ id: 1, status: 'COMPLETED', result: 'Fixed.' })] })
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit' }))
+    const form = await screen.findByRole('form', { name: 'Edit action' })
+    expect(within(form).getByLabelText('Description *').className).toMatch(/field-readonly/)
+    expect(within(form).getByLabelText('Attachment notes').className).not.toMatch(/field-readonly/)
+  })
+})
+```
+and to `StaffDashboard.test.tsx` (A11Y4-02): a test that every `link` in the dashboard has an accessible name containing a number and a label (`expect(link.getAttribute('aria-label')).toMatch(/.+, \d+ tickets?$/)` for all cards and breakdown rows), and that the status badges used in "By status" each show their text (`within(byStatus).getByText('Waiting for Requester')`).
+
+- [ ] **Step 5: Run everything.** `cd client && npx vitest run`; full E2E with a fresh seed (`cd server && npm run prisma:seed`, then `npx playwright test`) → all green; the new spec is 9 role-width tests plus the keyboard walk.
+
+- [ ] **Step 6: Stage.** `git add -A`
+
+---
+
+### Task 7: Dependency advisories
+
+**Files:** `package-lock.json`, possibly `package.json` files.
+
+- [ ] **Step 1: Baseline.** `npm audit --omit=dev 2>&1 | tail -5` (expect 9 vulnerabilities) and run all suites once so a regression after the update is attributable.
+
+- [ ] **Step 2: Fix within allowed ranges.** `npm audit fix` (no `--force`). Then `npm audit --omit=dev` again. Anything that still needs a major version is listed, not forced.
+
+- [ ] **Step 3: Regenerate and re-verify everything.** `cd server && npm run prisma:generate && npx prisma migrate deploy` (nothing new should apply), then server `npx tsc --noEmit -p . && npx vitest run`, client `npx tsc --noEmit -p tsconfig.app.json && npx vitest run && npm run build`, `npm run prisma:seed` then `npx playwright test` from the root. All must match the baseline counts.
+
+- [ ] **Step 4: Record the outcome** in `docs/lab-04/tests.md` under a new note: which advisories were fixed, which remain and why (for example a transitive package whose fix needs a major bump), and the date.
+
+- [ ] **Step 5: Stage.** `git add -A`
+
+---
+
+### Task 8: Isolated test schema (spike with a go or no-go)
+
+**Files:**
+- Create: `server/tests/setup/global-setup.ts`
+- Modify: `server/vitest.config.ts`
+
+**Go criteria:** the full server suite passes three times in a row with the new setup. **No-go:** any failure that is not fixed within one hour of work: revert both files, and record in `docs/adr/0004-test-isolation.md` (Task 11) that it was tried and why it was dropped.
+
+- [ ] **Step 1: `server/tests/setup/global-setup.ts`:**
+
+```ts
+import 'dotenv/config'
+import { execFileSync } from 'node:child_process'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { PrismaClient } from '@prisma/client'
+import { runSeed } from '../../prisma/seed-data.js'
+
+const SCHEMA = 'test_suite'
+const SERVER_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
+
+/**
+ * Runs the server tests in their own schema, rebuilt for every run, so test
+ * data never lands in the development database or the demo seed's tables.
+ * Workers are started after this runs, so they inherit DATABASE_URL.
+ */
+export default async function setup() {
+  const base = process.env.DATABASE_URL
+  if (!base) throw new Error('DATABASE_URL is not set.')
+
+  const url = new URL(base)
+  url.searchParams.set('schema', SCHEMA)
+
+  const admin = new PrismaClient({ datasources: { db: { url: base } } })
+  await admin.$executeRawUnsafe(`DROP SCHEMA IF EXISTS "${SCHEMA}" CASCADE`)
+  await admin.$executeRawUnsafe(`CREATE SCHEMA "${SCHEMA}"`)
+  await admin.$disconnect()
+
+  execFileSync('npx', ['prisma', 'migrate', 'deploy'], {
+    cwd: SERVER_DIR,
+    env: { ...process.env, DATABASE_URL: url.toString() },
+    stdio: 'pipe',
+  })
+
+  const seeded = new PrismaClient({ datasources: { db: { url: url.toString() } } })
+  await runSeed(seeded)
+  await seeded.$disconnect()
+
+  process.env.DATABASE_URL = url.toString()
+}
+```
+
+- [ ] **Step 2: Config.** In `server/vitest.config.ts` add `globalSetup: ['tests/setup/global-setup.ts'],` inside `test`.
+
+- [ ] **Step 3: Verify the tests really use the new schema.** Add a temporary test or run `npx vitest run tests/lab-01` with a `console.log(process.env.DATABASE_URL)` in a test: it must end with `schema=test_suite`. Confirm the dev schema stops growing: count `Ticket` rows in `public` before and after a full run (`cd server && npx tsx -e` is not usable with top-level await here; write a small `.mts` file as in earlier tasks, run it, delete it). The count must be unchanged.
+
+- [ ] **Step 4: Run the full suite three times.** `for i in 1 2 3; do npx vitest run 2>&1 | grep -E "Tests |×"; done`. All 246 plus the tests added in this feature must pass each time. Fix tests that assumed pre-existing data (look for assertions on seeded Tickets or counts); they should create their own, as the rules already require.
+
+- [ ] **Step 5: Decide.** Go: keep, and add one line to `server/package.json` scripts: `"test:reset-db": "tsx -e \"...\""` is **not** needed (the schema is rebuilt every run). No-go: `git checkout server/vitest.config.ts && rm server/tests/setup/global-setup.ts`.
+
+- [ ] **Step 6: Stage.** `git add server`
+
+---
+
+### Task 9: One command to check everything, and the ten-run proof (REG-01 to REG-04)
+
+**Files:**
+- Modify: `package.json` (root), `client/package.json` (if `typecheck` is missing)
+- Create: `scripts/repeat-server-tests.sh`, `artifacts/lab-04/regression/server-repeat.log` (generated)
+
+- [ ] **Step 1: Root scripts.** Replace the `scripts` block of the root `package.json` with:
+
+```json
+  "scripts": {
+    "typecheck": "npm run typecheck -w server && npm run typecheck -w client",
+    "test": "npm test -w server && npm test -w client",
+    "build": "npm run build -w server && npm run build -w client",
+    "check": "npm run typecheck && npm test && npm run build",
+    "test:e2e": "playwright test",
+    "test:repeat": "bash scripts/repeat-server-tests.sh"
+  },
+```
+If `client/package.json` has no `typecheck` script add `"typecheck": "tsc -b --noEmit"` (the README already uses that command).
+
+- [ ] **Step 2: `scripts/repeat-server-tests.sh`:**
+
+```bash
+#!/usr/bin/env bash
+# REG-04: run the whole server suite N times (default 10) and keep a log.
+# A run counts as bad if any test failed or was skipped.
+set -u
+RUNS="${1:-10}"
+LOG="artifacts/lab-04/regression/server-repeat.log"
+mkdir -p "$(dirname "$LOG")"
+: > "$LOG"
+bad=0
+for i in $(seq 1 "$RUNS"); do
+  out=$(npm test -w server 2>&1)
+  summary=$(echo "$out" | grep -E "^ +Tests " | sed 's/^ *//')
+  echo "run $i: $summary" | tee -a "$LOG"
+  if echo "$out" | grep -qE "failed|skipped"; then
+    bad=$((bad + 1))
+    echo "$out" | grep -E "FAIL|×|Error" | head -10 >> "$LOG"
+  fi
+done
+echo "$bad of $RUNS runs had a failure or a skipped test" | tee -a "$LOG"
+[ "$bad" -eq 0 ]
+```
+
+- [ ] **Step 3: Verify the scripts.** `npm run check` from the root → all stages pass. `npm run test:repeat` → the log shows ten lines "Tests ... passed" and "0 of 10 runs...". Keep the log file in the repo (it is the REG-04 evidence).
+
+- [ ] **Step 4 (not added, listed for you):** a CI workflow would be one file, `.github/workflows/ci.yml`, with a Postgres service, `npm ci`, `npx prisma migrate deploy`, and `npm run check`. It is deliberately not created (decision 5).
+
+- [ ] **Step 5: Stage.** `git add package.json client/package.json scripts artifacts`
+
+---
+
+### Task 10: File moves into feature folders (pure moves, last)
+
+**Files:** many; **no content changes except import paths**.
+
+**Rule:** run the full suites before (record counts) and after; they must be identical. If anything fails, the failure is an import path, never behavior.
+
+- [ ] **Step 1: Server moves.** From the repo root:
+
+```bash
+cd server/src
+mkdir -p attachments
+git mv tickets.ts tickets/tickets-router.ts
+git mv comments.ts tickets/comments-router.ts
+git mv notes.ts tickets/notes-router.ts
+git mv staff/ticket-query-builder.ts tickets/ticket-query-builder.ts
+git mv attachments.ts attachments/attachments-router.ts
+git mv attachment-storage.ts attachments/attachment-storage.ts
+git mv ticket-ownership.ts authorization/ticket-ownership.ts
+rmdir staff 2>/dev/null || true
+```
+
+- [ ] **Step 2: Fix every import automatically.** Run this from `server/` (rewrites relative imports in `src`, `tests`, `prisma` for the moved files, resolving each specifier to its old absolute path first):
+
+```bash
+python3 - <<'EOF'
+import os, re, pathlib
+root = pathlib.Path('.').resolve()
+moves = {
+ 'src/tickets.ts': 'src/tickets/tickets-router.ts',
+ 'src/comments.ts': 'src/tickets/comments-router.ts',
+ 'src/notes.ts': 'src/tickets/notes-router.ts',
+ 'src/staff/ticket-query-builder.ts': 'src/tickets/ticket-query-builder.ts',
+ 'src/attachments.ts': 'src/attachments/attachments-router.ts',
+ 'src/attachment-storage.ts': 'src/attachments/attachment-storage.ts',
+ 'src/ticket-ownership.ts': 'src/authorization/ticket-ownership.ts',
+}
+moved_to_old = {str(root / new): str(root / old) for old, new in moves.items()}
+old_to_new = {str(root / old): str(root / new) for old, new in moves.items()}
+spec = re.compile(r"""(from\s+|import\s*\(\s*)(['"])(\.{1,2}/[^'"]+)\.js\2""")
+
+def resolve(file_old_location: str, specifier: str) -> str:
+    return os.path.normpath(os.path.join(os.path.dirname(file_old_location), specifier))
+
+for path in list(root.glob('src/**/*.ts')) + list(root.glob('tests/**/*.ts')) + list(root.glob('prisma/**/*.ts')):
+    current = str(path)
+    old_location = moved_to_old.get(current, current)   # where this file used to live
+    text = path.read_text()
+    def rewrite(match):
+        target_old = resolve(old_location, match.group(3)) + '.ts'
+        target_new = old_to_new.get(target_old, target_old)
+        rel = os.path.relpath(target_new[:-3], os.path.dirname(current))
+        if not rel.startswith('.'):
+            rel = './' + rel
+        return f"{match.group(1)}{match.group(2)}{rel}.js{match.group(2)}"
+    new = spec.sub(rewrite, text)
+    if new != text:
+        path.write_text(new)
+        print('fixed', path.relative_to(root))
+EOF
+```
+
+- [ ] **Step 3: Update the static-guard allowlist and docs.** In `tests/lab-04/security.api.test.ts` (Task 3) and `tests/lab-03/security-audit.api.test.ts`, replace any path that names a moved file with its new path (the Task 3 allowlist already lists the new attachments path). `grep -rn "src/tickets.ts\|src/comments.ts\|src/notes.ts\|src/attachments.ts\|staff/ticket-query-builder\|staff-ticket-actions" ../docs ../README.md` and update every hit to the new path.
+
+- [ ] **Step 5 (verify server):** `npx tsc --noEmit -p . && npx vitest run` → identical counts, all pass; `git status` shows renames (`R`), not deletes plus adds.
+
+- [ ] **Step 6: Client moves.** Folders: `auth/` (Login, ChangePassword), `shell/` (AppShell), `tickets/` (CreateTicketForm, MyTicketsList, TicketDetail, StaffTicketQueue, StaffTicketDetail, ServiceActionsPanel, CommentsPanel, NotesPanel, AttachmentSection, HistoryPanel, AppearsResolved, ResolutionBlockers), `actions/` (ActionForm, ActionCard, ActionsTakenPanel), `dashboard/` (DashboardParts, RequesterDashboard, StaffDashboard), `admin/` (UserManagement), `common/` (TicketBadges). From `client/src/components`:
+
+```bash
+mkdir -p auth shell tickets actions dashboard admin common
+git mv Login.tsx ChangePassword.tsx auth/
+git mv AppShell.tsx shell/
+git mv CreateTicketForm.tsx MyTicketsList.tsx TicketDetail.tsx StaffTicketQueue.tsx StaffTicketDetail.tsx ServiceActionsPanel.tsx CommentsPanel.tsx NotesPanel.tsx AttachmentSection.tsx HistoryPanel.tsx AppearsResolved.tsx ResolutionBlockers.tsx tickets/
+git mv ActionForm.tsx ActionCard.tsx ActionsTakenPanel.tsx actions/
+git mv DashboardParts.tsx RequesterDashboard.tsx StaffDashboard.tsx dashboard/
+git mv UserManagement.tsx admin/
+git mv TicketBadges.tsx common/
+```
+(The pure logic folder `client/src/actions/` already exists for `action-form.ts`; the component folder is `client/src/components/actions/`, which is a different path.) Then run the same rewrite script with `root = client`, the `moves` map built from the lines above (old path `src/components/X.tsx` → new `src/components/<folder>/X.tsx`) and the file globs `src/**/*.ts*` and `tests/**/*.ts*`. The specifier regex is the same; keep `.js` extensions.
+
+- [ ] **Step 7 (verify client):** `npx tsc --noEmit -p tsconfig.app.json && npx vitest run && npm run build` → identical counts and a clean build. Then the root `npm run check`, and a final full E2E with a fresh seed.
+
+- [ ] **Step 8: Stage.** `git add -A`; `git status --short | grep -c "^R"` shows the renames.
+
+---
+
+### Task 11: Documentation: architecture, decisions, README
+
+**Files:**
+- Create: `docs/architecture.md`, `docs/adr/0001-version-and-lock-for-concurrency.md`, `0002-dashboard-metrics-as-strategy-classes.md`, `0003-navigation-reducer-and-list-snapshots.md`, `0004-test-isolation.md`
+- Modify: `README.md`
+
+- [ ] **Step 1: `docs/architecture.md`.** Write it so a new contributor can add a feature without asking anyone. Required sections, in this order, each short:
+  1. **Layout.** The monorepo (`server`, `client`, `packages/shared`, `e2e`, `docs`, `scripts`) and the folder map of `server/src` (`http/`, `auth/`, `authorization/`, `tickets/`, `actions/`, `attachments/`, `dashboard/`, `users/`) and `client/src` (`api/`, `components/<area>/`, `nav/`, `actions/`, `workflow/`, `lib/`), one line per folder saying what belongs there and what does not.
+  2. **Request flow.** `app.ts` → guard chain from `http/guards.ts` (session, password change, role) → router (parses input, calls a service) → service (one transaction, locks the Ticket row when a rule spans rows) → Prisma → JSON; errors go to `http/error-handlers.ts`.
+  3. **Patterns in use and where.** State (`tickets/ticket-state`), Facade (`ticket-workflow-service.ts`), Strategy (`dashboard/metrics`), Builder (`ticket-query-builder.ts`), Factory (`nav/role-navigation-factory.ts`), Mediator (`staff/ticket-detail-mediator.ts`), Observer (`users/user-events.ts`).
+  4. **Rules that must hold.** Server decides, client explains (the UI reads `allowedStatuses` and `resolution`, never reimplements them); a version column plus a row lock for any rule that reads other rows; allowlisted request bodies; JSON errors with stable codes only; one date format; one single-flight guard per mutating control.
+  5. **How to add a feature (checklist).** Spec rows first, route behind `guardFor`, service with a transaction if it spans rows, shared rules in `packages/shared` when the client needs the same validation, tests that create their own data, a Playwright path, a line in `tests.md`.
+  6. **Known limits and where the seam is.** Search uses case-insensitive `contains` (slow on very large tables: add a trigram index or move to full-text search behind `TicketQueryBuilder.withSearch`); session and login lockout are per process (move the limiter to a shared store when running several servers); file attachments are on local disk (`attachment-storage.ts` is the seam for object storage); navigation is state, not URLs (a router would replace `nav/app-navigation.ts`).
+  7. **Commands.** `npm run check`, `npm run test:repeat`, `npm run test:e2e` (seed first), seed and migration commands.
+
+- [ ] **Step 2: The four decision records** (`docs/adr/`), each one page with the headings Context, Decision, Consequences, Alternatives considered:
+  - 0001: Ticket and Action `version` plus `SELECT ... FOR UPDATE` in one transaction, instead of timestamps or optimistic retries (reasons: the resolution gate reads other rows; exact integers; no lock held while a person types).
+  - 0002: dashboard numbers as one class per metric, assembled by a service that takes the database client (reasons: independent testing, scratch-schema performance tests, adding a metric touches one file).
+  - 0003: one navigation reducer and list snapshots instead of a router now (reasons: scope; Back must restore filters; list screens unmount so hidden rows cannot confuse tests or assistive technology; the reducer is the seam for a router later).
+  - 0004: test isolation: the outcome of Task 8 (go: tests run in the `test_suite` schema rebuilt per run; no-go: why not, and the cleanup advice instead).
+
+- [ ] **Step 3: `README.md`.** Bring it to Lab 4: what the app does now (roles, Actions Taken, workflow and resolution gate, dashboards), setup and seed order (`npm install`, `prisma migrate deploy`, `prisma:seed`, optional `prisma:seed:demo`), the commands from Task 9, how to run the E2E (seed first because of the New Hire account), the default password and the dev-only warning, and links to `docs/architecture.md` and the four Lab docs sets. Remove statements that are no longer true (the Dev Requester selector, "Lab 2 delivered the MVP" as the headline).
+
+- [ ] **Step 4: Check the facts in the docs.** Every path and command named in the docs exists: `ls` each path; run each command once (or `--help` for long ones).
+
+- [ ] **Step 5: Stage.** `git add docs README.md`
+
+---
+
+### Task 12: Final verification and the checklists
+
+**Files:** `docs/lab-04/tests.md`, `docs/lab-04/ui-spec.md`
+
+- [ ] **Step 1: Everything green.** From the repo root: `npm run check`; `npm run test:repeat` (ten server runs, zero failed or skipped); `cd server && npm run prisma:seed && cd .. && npm run test:e2e` (all specs).
+
+- [ ] **Step 2: Real-browser spot check.** Start the dev servers (`.claude/launch.json`), log in as each role and, at 1280, 768 and 390 px, look at: Dashboard, the list, Ticket Detail with Actions and History, the cancel confirmation, a stale update in two tabs, and an empty and a zero dashboard (log in as a Requester with no Tickets, created through the Administrator screen). The automated checks cover overflow, contrast and names; this step is for what they cannot judge: overlap, awkward wrapping, focus order feeling. Console must show only the expected pre-login 401.
+
+- [ ] **Step 3: Tick the checklists.** In `docs/lab-04/ui-spec.md` §9 tick each box that the accessibility spec or the browser pass proved, leaving a box unticked with a note if something is not fully done. In `tests.md` mark `Pass`: SEC4-01 to SEC4-05, REG-01 to REG-04, ST4-01, ST4-02, RESP4-01, A11Y4-01, A11Y4-02 (script style as before: match by ID, replace the trailing `Planned |`), tick the four checklist lines at the bottom, and add notes: the accessibility findings fixed in Task 6, the advisory outcome (Task 7), the test-schema decision (Task 8), and the file moves (Task 10).
+
+- [ ] **Step 4: Stage and report.** `git add -A && git status --short`. Report counts (server, client, E2E, repeat log), what the accessibility checks found and fixed, remaining advisories, and the go or no-go of the test schema; then wait for "commit".
+
+---
+
+## Self-Review
+
+**Spec coverage.** SEC4-01 (IDOR sweep), 02 (mass assignment), 03 (Origin on new mutating routes), 04 (forced errors, no stack trace), 05 (static guards) → Tasks 1 and 3. REG-01 to REG-04 → Tasks 9 and 12 (full suites, E2E, ten-run log). AC-L4-28 and FR-L4-18 (one request on repeated clicks) → Task 4, extended from Actions to every mutating control. AC-L4-29 (three widths, no overflow, keyboard, names not color only) → Task 6 (RESP4-01, A11Y4-01/02, ST4-01/02). AC-L4-31 (ten consecutive passes) → Task 9. AC-L4-32 and FR-L4-20 (no console errors, placeholders, obsolete elements) → Task 5 and the E2E4-04 walk from feature 28. Every ui-spec §9 checklist line → Task 12 step 3. api-spec §0 "never a stack trace" → Task 1. The scalability and flexibility goal → Tasks 1, 2, 4, 8, 9, 10, 11, each tied to an audit finding; nothing speculative was added. Not here on purpose: CI workflow (decision 5), screenshots (release Issue), a router, a design system.
+
+**Placeholders.** None. Three steps are deliberately procedures instead of fixed code because their content depends on tool output: the accessibility triage (Task 6 step 3, with a stated rule for what to fix and what to exclude), the dependency update (Task 7), and the "keep the old name or use the shared constant" choice in Task 2 step 5, which is bounded by "only if names and role lists match exactly".
+
+**Type consistency.** `parseId`, `guardFor`, `requireRequester`, `requireStaff`, `requireAnyRole` (Task 2) are the names the later tasks and docs use. `useSingleFlight().begin()/end()` (Task 4) match the handler recipe. `loginWithoutOrigin` (Task 3) returns `{ agent, userId }` like the other session helpers. `loadConfig` returns the shape the test and `server.ts` expect. The move maps in Task 10 are the same folders that Task 3's allowlist and Task 11's architecture doc name.
+</script>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
+<script>
+  try {
+    var md = document.getElementById('plan-md').textContent;
+    document.getElementById('plan').innerHTML = marked.parse(md);
+  } catch (e) {
+    document.getElementById('plan').innerHTML = '<pre></pre>';
+    document.querySelector('#plan pre').textContent = document.getElementById('plan-md').textContent;
+  }
+  try {
+    var dark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    mermaid.initialize({ startOnLoad: false, theme: dark ? 'dark' : 'neutral' });
+    mermaid.run({ querySelector: '.mermaid' });
+  } catch (e) {}
+</script>
+</body>
+</html>

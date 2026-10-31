@@ -135,11 +135,11 @@ File: `staff-dashboard.api.test.ts`
 | CO-03 | AC-L4-27, FR-L4-16 | Administrator edits email; duplicate; bad format; own unchanged email | 200; 400 `EMAIL_TAKEN`; 400; 200 | `carry-overs.api.test.ts` | Pass |
 | CO-04 | AC-L4-27 | Attachment upload and remove as IT Staff; list and download | 403, 403; 200, 200 | `carry-overs.api.test.ts` | Pass |
 | CO-05 | FR-L4-17 | Self-deactivation and last-Administrator codes | 409 `SELF_DEACTIVATION`, 409 `LAST_ADMINISTRATOR` | `carry-overs.api.test.ts` | Pass |
-| SEC4-01 | BR-L4-22 | IDOR sweep over Actions, history, appears-resolved, dashboards across roles and owners | Only permitted combinations succeed | `security.api.test.ts` | Planned |
-| SEC4-02 | §10 | Mass assignment on Action create and edit and on Ticket mutations | Disallowed fields ignored | `security.api.test.ts` | Planned |
-| SEC4-03 | §10 | Every new mutating route with a wrong or missing Origin | 403 `ORIGIN_MISMATCH` | `security.api.test.ts` | Planned |
-| SEC4-04 | §10 | Forced server errors and bad input | Stable code, no stack trace | `security.api.test.ts` | Planned |
-| SEC4-05 | §10 | Existing static guards over `server/src` | No raw SQL beyond the bound `FOR UPDATE`, no shell execution | `security.api.test.ts` | Planned |
+| SEC4-01 | BR-L4-22 | IDOR sweep over Actions, history, appears-resolved, dashboards across roles and owners | Only permitted combinations succeed | `security.api.test.ts` | Pass |
+| SEC4-02 | §10 | Mass assignment on Action create and edit and on Ticket mutations | Disallowed fields ignored | `security.api.test.ts` | Pass |
+| SEC4-03 | §10 | Every new mutating route with a wrong or missing Origin | 403 `ORIGIN_MISMATCH` | `security.api.test.ts` | Pass |
+| SEC4-04 | §10 | Forced server errors and bad input | Stable code, no stack trace | `security.api.test.ts` | Pass |
+| SEC4-05 | §10 | Existing static guards over `server/src` | No raw SQL beyond the bound `FOR UPDATE`, no shell execution | `security.api.test.ts` | Pass |
 
 ### Migration, Seed, and Regression
 
@@ -151,10 +151,10 @@ File: `staff-dashboard.api.test.ts`
 | MIG-04 | §7 | `rollback.sql` inside a transaction that is then discarded | New objects dropped, earlier data intact | `migration.test.ts` | Pass |
 | MIG-05 | §7 | Demo seed run twice | Same row counts; zero, one, and many Actions; a Requester with no Tickets | `migration.test.ts` | Pass |
 | MIG-06 | §7 | Re-running the seed after staff edited a seeded Action | The edit is kept | `migration.test.ts` | Pass |
-| REG-01 | AC-L4-31 | All Lab 1 to Lab 3 server suites | Pass | whole server suite | Planned |
-| REG-02 | AC-L4-31 | All Lab 1 to Lab 3 client suites | Pass | whole client suite | Planned |
-| REG-03 | AC-L4-31 | All Lab 2 and Lab 3 E2E specs | Pass | `e2e/` | Planned |
-| REG-04 | AC-L4-31 | The full server suite ten times in a row | Ten passes, no flaky failure | script and log in the release Issue | Planned |
+| REG-01 | AC-L4-31 | All Lab 1 to Lab 3 server suites | Pass | whole server suite | Pass |
+| REG-02 | AC-L4-31 | All Lab 1 to Lab 3 client suites | Pass | whole client suite | Pass |
+| REG-03 | AC-L4-31 | All Lab 2 and Lab 3 E2E specs | Pass | `e2e/` | Pass |
+| REG-04 | AC-L4-31 | The full server suite ten times in a row | Ten passes, no flaky failure | `npm run test:repeat`, log in `artifacts/lab-04/regression/server-repeat.txt` | Pass |
 
 ### UI Component
 
@@ -189,11 +189,11 @@ File: `staff-dashboard.api.test.ts`
 
 | Test ID | Requirement/AC | What It Tests | Expected Result | File | Final |
 |---|---|---|---|---|---|
-| ST4-01 | AC-L4-29 | Action status and reported-resolved badges | Text label always present; badge tokens used | `ActionsTaken.test.tsx` | Planned |
-| ST4-02 | AC-L4-29 | Read-only versus editable fields | Distinct read-only styling | `ActionsTaken.test.tsx` | Planned |
-| RESP4-01 | AC-L4-29 | Dashboards, Ticket Detail, and Actions at 1280, 768, 390px | No horizontal overflow, no clipped text | `dashboards.spec.ts` | Planned |
-| A11Y4-01 | AC-L4-29 | Keyboard walk of each new screen | Logical order, visible focus, cards reachable | `dashboards.spec.ts` | Planned |
-| A11Y4-02 | AC-L4-29 | Card and badge accessible names | Name includes label and count; state not color only | `StaffDashboard.test.tsx` | Planned |
+| ST4-01 | AC-L4-29 | Action status and reported-resolved badges | Text label always present; badge tokens used | `ActionsTaken.test.tsx`, `TicketWorkflow.test.tsx` | Pass |
+| ST4-02 | AC-L4-29 | Read-only versus editable fields | Distinct read-only styling | `ActionsTaken.test.tsx` | Pass |
+| RESP4-01 | AC-L4-29 | Dashboards, Ticket Detail, and Actions at 1280, 768, 390px | No horizontal overflow, no clipped text | `accessibility.spec.ts` | Pass |
+| A11Y4-01 | AC-L4-29 | Keyboard walk of each new screen | Logical order, visible focus, cards reachable | `accessibility.spec.ts` | Pass |
+| A11Y4-02 | AC-L4-29 | Card and badge accessible names | Name includes label and count; state not color only | `StaffDashboard.test.tsx`, `accessibility.spec.ts` | Pass |
 
 ### End to End
 
@@ -273,10 +273,10 @@ Tracks `ui-spec.md` §9. Each box is ticked in the Issue that ships the screen
 and rechecked in the hardening Issue, not backfilled at the end.
 
 - [x] Carry-over screens (carry-overs Issue): reassign selector, editable email, specific messages, and attachment controls checked by component tests and the E2E; the three-width visual pass is rechecked in the hardening Issue
-- [ ] Actions Taken, all modes (Actions UI Issue)
-- [ ] Ticket workflow controls and history (workflow Issue)
-- [ ] Requester and Staff dashboards and navigation (dashboards Issue)
-- [ ] Full-application pass at three widths (hardening Issue)
+- [x] Actions Taken, all modes (Actions UI Issue)
+- [x] Ticket workflow controls and history (workflow Issue)
+- [x] Requester and Staff dashboards and navigation (dashboards Issue)
+- [x] Full-application pass at three widths (hardening Issue): `accessibility.spec.ts` covers every role's screens, Ticket Detail and the Action form at 1280, 768 and 390 px
 
 ## 5. Test Commands
 
@@ -318,3 +318,10 @@ above exists.
 - E2E now runs one worker (`playwright.config.ts`) because E2E4-03 compares a card count with a list total on a shared database. `authentication.spec.ts` needs `npm run prisma:seed` before each run (it uses up the seeded New Hire password); this was already true in Lab 3.
 - The Lab 3 and Lab 4 E2E specs and the Lab 3 client tests were changed only for the new landing page and for Ticket Detail now being rendered by `App`.
 - Feature 28 checked in a real browser: Dashboard cards are 4 across at desktop, 2 by 2 at 768 px and one column at 390 px with no horizontal scroll.
+- **Hardening (feature 29).** Findings fixed: malformed JSON answered an HTML page with a stack trace (now JSON `INVALID_JSON`, with `NOT_FOUND`, `PAYLOAD_TOO_LARGE`, `INTERNAL_ERROR` for the other cases); none of the nine mutating forms except the Action form blocked a same-tick double submit (all now guarded, `DoubleSubmit.test.tsx`); the automated accessibility check found header text below 4.5:1 contrast (role label and dimmed navigation), the grey outline buttons (Refresh, Users strip) under 4.5:1, and `aria-readonly` on plain `div` read-only values (not allowed by ARIA, on Lab 2 to 4 screens). All fixed.
+- **Accessibility check scope.** `@axe-core/playwright` 4.10.2 fails the run on serious and critical findings and reports lesser ones without failing. It runs per role and width, so overlap and awkward wrapping that a tool cannot judge were checked by eye in the browser for features 26, 27 and 28.
+- **Dependencies.** `npm audit --omit=dev` went from 9 advisories (1 critical, 7 high, 1 moderate) to 3 high. The 3 left are one chain (`prisma` → `@prisma/config` → `deepmerge-ts`, a stack-exhaustion issue when merging recursive config objects) whose only fix is a Prisma 8 release candidate, which was not forced. It affects the CLI that loads Prisma config, not request handling. `jsdom` is now also declared at the repository root because `npm audit fix` hoisted `vitest` there and it resolves `jsdom` from its own location.
+- **Test isolation.** Server tests run in the `test_suite` schema, rebuilt on every run (ADR 0004). A run takes about 15 seconds longer; the development schema's Ticket count stayed at 33,350 across runs.
+- **REG-01 to REG-03** are one `npm run check` plus `npm run test:e2e` after a fresh seed; REG-04 is the log named above (10 of 10 runs, 266 tests each, on the final file layout).
+- **File moves.** Loose server files moved into `tickets/`, `attachments/` and `authorization/`, and client components into `components/<area>/`. Pure moves; the suites gave identical counts before and after. Lab 3 documents keep the old paths because they describe Lab 3 as it was.
+

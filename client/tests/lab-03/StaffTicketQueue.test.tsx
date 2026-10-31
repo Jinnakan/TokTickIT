@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { StaffTicketQueue } from '../../src/components/StaffTicketQueue.js'
+import { StaffTicketQueue } from '../../src/components/tickets/StaffTicketQueue.js'
 
 const categories = [{ id: 1, name: 'Hardware' }]
 

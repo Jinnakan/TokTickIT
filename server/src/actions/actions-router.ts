@@ -1,22 +1,17 @@
+import { guardFor } from '../http/guards.js'
+import { parseId } from '../http/params.js'
 import { Router } from 'express'
-import { requireSession, requirePasswordAlreadyChanged } from '../auth/require-session.js'
-import { requireRole } from '../authorization/require-role.js'
 import { checkTicketAccess } from '../authorization/ticket-access.js'
 import { createAction, listActions, updateAction } from './action-service.js'
 
 export const actionsRouter = Router({ mergeParams: true })
 
-const requireAnyRole = [requireSession, requirePasswordAlreadyChanged, requireRole('REQUESTER', 'IT_STAFF', 'ADMINISTRATOR')]
-const requireStaff = [requireSession, requirePasswordAlreadyChanged, requireRole('IT_STAFF', 'ADMINISTRATOR')]
-
-function toInteger(value: unknown): number | null {
-  const parsed = typeof value === 'number' ? value : Number(value)
-  return Number.isInteger(parsed) ? parsed : null
-}
+const requireAnyRole = guardFor('REQUESTER', 'IT_STAFF', 'ADMINISTRATOR')
+const requireStaff = guardFor('IT_STAFF', 'ADMINISTRATOR')
 
 actionsRouter.get('/', ...requireAnyRole, async (request, response, next) => {
   try {
-    const ticketId = toInteger(request.params.ticketId)
+    const ticketId = parseId(request.params.ticketId)
     if (ticketId === null) {
       response.status(404).json({ error: 'TICKET_NOT_FOUND' })
       return
@@ -33,7 +28,7 @@ actionsRouter.get('/', ...requireAnyRole, async (request, response, next) => {
 
 actionsRouter.post('/', ...requireStaff, async (request, response, next) => {
   try {
-    const ticketId = toInteger(request.params.ticketId)
+    const ticketId = parseId(request.params.ticketId)
     if (ticketId === null) {
       response.status(404).json({ error: 'TICKET_NOT_FOUND' })
       return
@@ -47,8 +42,8 @@ actionsRouter.post('/', ...requireStaff, async (request, response, next) => {
 
 actionsRouter.patch('/:actionId', ...requireStaff, async (request, response, next) => {
   try {
-    const ticketId = toInteger(request.params.ticketId)
-    const actionId = toInteger(request.params.actionId)
+    const ticketId = parseId(request.params.ticketId)
+    const actionId = parseId(request.params.actionId)
     if (ticketId === null) {
       response.status(404).json({ error: 'TICKET_NOT_FOUND' })
       return
